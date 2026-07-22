@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Friendly Poker - Texas Hold'em</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>♠</text></svg>" />
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <header class="top-bar" id="topBar">
+    <div class="brand">
+      <span class="brand-icon">♠♥♦♣</span>
+      <span class="brand-text">Friendly Poker</span>
+    </div>
+    <div class="top-info" id="topInfo" style="display:none">
+      <span class="player-chip" id="playerChip"></span>
+      <span class="points-chip" id="pointsChip"></span>
+      <button class="ghost-btn" id="logoutBtn" title="Switch user">Switch user</button>
+      <button class="ghost-btn" id="adminBtn" title="Open admin panel">Admin</button>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- ===== Login view ===== -->
+    <section id="view-login" class="view">
+      <div class="login-card">
+        <h1>Welcome to the table</h1>
+        <p class="muted">Friendly Texas Hold'em. No money. Just points.</p>
+
+        <div class="form-row">
+          <input id="loginName" type="text" maxlength="20" placeholder="Enter your name" autocomplete="off" />
+          <button id="loginBtn" class="primary-btn">Take a seat</button>
+        </div>
+
+        <div class="random-block">
+          <p class="muted small">Or pick a random name:</p>
+          <div class="name-list" id="randomNameList"></div>
+          <button id="refreshNamesBtn" class="link-btn">Shuffle names</button>
+        </div>
+
+        <div class="login-help">
+          <details>
+            <summary>How it works</summary>
+            <ul>
+              <li>Pick a name. If you've played here before, your points are saved.</li>
+              <li>Join a table to sit down. The game auto-starts with 2+ players.</li>
+              <li>The admin can give you points any time.</li>
+              <li>No money is involved &mdash; it's just for fun.</li>
+            </ul>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Lobby view ===== -->
+    <section id="view-lobby" class="view" style="display:none">
+      <div class="lobby-header">
+        <h2>Lobby</h2>
+        <p class="muted">Pick a table or create your own.</p>
+      </div>
+      <div class="lobby-grid" id="tablesGrid"></div>
+
+      <div class="create-table-card">
+        <h3>Create a new table</h3>
+        <div class="form-grid">
+          <label>
+            <span>Table name</span>
+            <input id="newTableName" type="text" maxlength="40" placeholder="e.g. Friday Night Fun" />
+          </label>
+          <label>
+            <span>Small blind</span>
+            <input id="newTableSB" type="number" min="1" max="1000" value="5" />
+          </label>
+          <label>
+            <span>Big blind</span>
+            <input id="newTableBB" type="number" min="2" max="5000" value="10" />
+          </label>
+          <label>
+            <span>Max seats</span>
+            <input id="newTableSeats" type="number" min="2" max="9" value="6" />
+          </label>
+        </div>
+        <button id="createTableBtn" class="primary-btn">Create table</button>
+      </div>
+    </section>
+
+    <!-- ===== Table view ===== -->
+    <section id="view-table" class="view" style="display:none">
+      <div class="table-info">
+        <div>
+          <h2 id="tableName">Table</h2>
+          <span class="muted small" id="handInfo"></span>
+        </div>
+        <div class="table-actions">
+          <button id="sitOutBtn" class="ghost-btn" style="display:none">Sit out</button>
+          <button id="sitInBtn"  class="ghost-btn" style="display:none">Sit in</button>
+          <button id="leaveTableBtn" class="ghost-btn">Leave table</button>
+        </div>
+      </div>
+
+      <div class="poker-table" id="pokerTable">
+        <div class="table-felt">
+          <div class="pot-display">
+            <div class="pot-label">Pot</div>
+            <div class="pot-amount" id="potAmount">0</div>
+          </div>
+          <div class="community-cards" id="communityCards"></div>
+          <div class="phase-display" id="phaseDisplay">Waiting...</div>
+          <div class="hand-result" id="handResult" style="display:none"></div>
+        </div>
+        <div class="seats" id="seatsContainer"></div>
+      </div>
+
+      <div class="action-bar" id="actionBar">
+        <button class="action-btn fold"   data-action="fold">Fold</button>
+        <button class="action-btn check"  data-action="check">Check</button>
+        <button class="action-btn call"   data-action="call">Call</button>
+        <button class="action-btn all-in" data-action="all_in">All-in</button>
+        <div class="bet-controls" id="betControls">
+          <button class="action-btn raise" id="raiseBtn">Raise</button>
+          <input id="raiseAmount" type="number" min="1" step="1" />
+          <div class="raise-presets" id="raisePresets"></div>
+        </div>
+      </div>
+
+      <div class="hand-log" id="handLog"></div>
+    </section>
+
+    <!-- ===== Admin modal ===== -->
+    <div class="modal" id="adminModal" style="display:none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Admin panel</h3>
+          <button class="close-btn" id="adminCloseBtn">&times;</button>
+        </div>
+        <div id="adminLoginArea">
+          <p class="muted">Enter the admin password to continue.</p>
+          <div class="form-row">
+            <input id="adminPasswordInput" type="password" placeholder="Admin password" />
+            <button id="adminLoginBtn" class="primary-btn">Unlock</button>
+          </div>
+          <p id="adminLoginError" class="error-text" style="display:none"></p>
+        </div>
+        <div id="adminPanelArea" style="display:none">
+          <div class="admin-actions">
+            <h4>Players</h4>
+            <p class="muted small">You can add or subtract points to anyone, anytime.</p>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr><th>Name</th><th>Points</th><th>Add</th><th>Set</th><th>Remove</th></tr>
+                </thead>
+                <tbody id="adminPlayersTbody"></tbody>
+              </table>
+            </div>
+          </div>
+          <hr />
+          <div class="admin-actions">
+            <h4>Settings</h4>
+            <div class="form-row">
+              <label class="inline-label">
+                <span>Default starting points for new players:</span>
+                <input id="adminStartingStack" type="number" min="1" />
+              </label>
+              <button id="adminStartingSave" class="primary-btn">Save</button>
+            </div>
+            <div class="form-row">
+              <label class="inline-label">
+                <span>Change admin password:</span>
+                <input id="adminNewPw" type="password" placeholder="New password" />
+              </label>
+              <button id="adminChangePwBtn" class="primary-btn">Update</button>
+            </div>
+          </div>
+          <hr />
+          <div id="adminActionFeedback" class="muted small"></div>
+          <button id="adminLogoutBtn" class="ghost-btn">Log out of admin</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" style="display:none"></div>
+
+  <script src="/js/client.js"></script>
+</body>
+</html>

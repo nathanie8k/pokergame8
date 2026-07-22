@@ -1,0 +1,15 @@
+{
+  "players": {
+    "admin123": {
+      "id": "admin123-4224",
+      "name": "admin123",
+      "points": 7769,
+      "created": 1784747056676,
+      "updated": 1784747289980
+    }
+  },
+  "adminPassword": "admin123",
+  "settings": {
+    "startingStack": 100
+  }
+}

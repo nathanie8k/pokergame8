@@ -1,0 +1,38 @@
+# ----- Node.js / dependencies -----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ----- Runtime / runtime-generated files -----
+data.json                 # player accounts and admin settings; each clone gets its own
+server.pid                # transient PID file from detached launches
+server.log                # runtime log written by the stored launcher
+
+# ----- Environment / secrets -----
+.env
+.env.local
+.env.*.local
+
+# ----- OS / editor junk -----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ----- Windows: stray nul files from mis-redirected `> nul` commands -----
+nul
+
+# ----- IDE / editor -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ----- Test / coverage outputs (in case one is added later) -----
+coverage/
+.nyc_output/
+
+# ----- Misc -----
+*.log
