@@ -406,6 +406,140 @@ function seatAt(t, idx, playerId, name, stack) {
      'Non-default table with at least one seated player survives cleanup');
 }
 
+// ----- Per-table chat (resets when everyone is out) -----
+
+// addChatMessage appends a user message with kind='user'
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'chat-test', smallBlind:5, bigBlind:10, maxSeats:6 });
+  const r = rooms.addChatMessage(t.id, 'Alice', 'hello world');
+  ok(r.ok, 'addChatMessage accepts a valid message');
+  const hist = rooms.chatHistory(t.id);
+  eq(hist.length, 1, 'addChatMessage appends one entry');
+  eq(hist[0].from, 'Alice', 'from field preserved');
+  eq(hist[0].text, 'hello world', 'text field preserved');
+  eq(hist[0].kind, 'user', 'kind is "user"');
+  ok(typeof hist[0].ts === 'number' && hist[0].ts > 0, 'ts is a positive timestamp');
+}
+
+// addChatMessage strips newlines + trims so paste floods can't push history
+// out of the visible scroll area.
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'chat-clean', smallBlind:5, bigBlind:10, maxSeats:6 });
+  rooms.addChatMessage(t.id, 'Bob', '  line1\nline2\r\nline3  ');
+  eq(rooms.chatHistory(t.id)[0].text, 'line1 line2 line3',
+     'Newlines collapsed to spaces + trimmed');
+}
+
+// addChatMessage rejects empty / whitespace-only input
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'chat-empty', smallBlind:5, bigBlind:10, maxSeats:6 });
+  ok(!rooms.addChatMessage(t.id, 'A', '').ok,
+     'addChatMessage rejects empty string');
+  ok(!rooms.addChatMessage(t.id, 'A', '   \n  ').ok,
+     'addChatMessage rejects whitespace-only string');
+  eq(rooms.chatHistory(t.id).length, 0, 'No messages added for empty inputs');
+}
+
+// addChatMessage caps at 100 entries to bound memory.
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'chat-cap', smallBlind:5, bigBlind:10, maxSeats:6 });
+  for (let i = 0; i < 110; i++) rooms.addChatMessage(t.id, 'A', 'msg ' + i);
+  const hist = rooms.chatHistory(t.id);
+  eq(hist.length, 100, 'Chat history capped at 100 messages');
+  eq(hist[0].text, 'msg 10', 'Oldest messages dropped (FIFO)');
+  eq(hist[99].text, 'msg 109', 'Newest message preserved');
+}
+
+// addSystemMessage appends a system message (no from field)
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'chat-sys', smallBlind:5, bigBlind:10, maxSeats:6 });
+  rooms.addSystemMessage(t.id, 'Alice joined');
+  const hist = rooms.chatHistory(t.id);
+  eq(hist.length, 1, 'addSystemMessage appends one entry');
+  eq(hist[0].kind, 'system', 'kind is "system"');
+  ok(!hist[0].from, 'System messages have no from field');
+  eq(hist[0].text, 'Alice joined', 'System text preserved');
+}
+
+// clearChatIfEmpty: false when a seat is occupied (chat preserved)
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'chat-keep', smallBlind:5, bigBlind:10, maxSeats:6 });
+  rooms.addChatMessage(t.id, 'Alice', 'hello');
+  seatAt(t, 0, 'A', 'A', 1000);
+  ok(!rooms.clearChatIfEmpty(t.id),
+     'clearChatIfEmpty returns false when a seat is occupied');
+  eq(rooms.chatHistory(t.id).length, 1,
+     'Chat preserved while a seat is occupied');
+}
+
+// clearChatIfEmpty: true when no seats occupied, chat wiped
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'chat-clear', smallBlind:5, bigBlind:10, maxSeats:6 });
+  rooms.addChatMessage(t.id, 'Alice', 'hello');
+  ok(rooms.clearChatIfEmpty(t.id),
+     'clearChatIfEmpty returns true when no seats occupied + chat non-empty');
+  eq(rooms.chatHistory(t.id).length, 0,
+     'Chat history wiped on clear');
+}
+
+// clearChatIfEmpty: no-op when chat already empty
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'chat-noop', smallBlind:5, bigBlind:10, maxSeats:6 });
+  ok(!rooms.clearChatIfEmpty(t.id),
+     'clearChatIfEmpty returns false when chat already empty (no-op)');
+}
+
+// End-to-end lifecycle: chat stays while at least one seat is still
+// "live" (a seated non-removed player), clears once everyone is out.
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'chat-e2e', smallBlind:5, bigBlind:10, maxSeats:6 });
+  seatAt(t, 0, 'A', 'A', 1000);
+  seatAt(t, 2, 'B', 'B', 1000);
+  P.startHand(t);
+  rooms.addChatMessage(t.id, 'A', 'gg');
+  // B leaves mid-hand: seat is marked removed+folded but NOT nulled yet.
+  rooms.unseat(t.id, 2);
+  ok(t.seats[2] && t.seats[2].removed,
+     'Mid-hand leave: B\'s seat is non-null + removed');
+  ok(!rooms.clearChatIfEmpty(t.id),
+     'clearChatIfEmpty no-ops while A is still seated');
+  eq(rooms.chatHistory(t.id).length, 1,
+     'Chat preserved while A is still here');
+  // Now A also leaves mid-hand: both seats are non-null + removed. The
+  // hasLivePlayer check returns false (every seat is either null OR
+  // removed), so the chat clears immediately — no need to wait for the
+  // post-hand cleanup loop. This is the "reset when everyone is out"
+  // semantic the user asked for.
+  rooms.unseat(t.id, 0);
+  ok(t.seats[0] && t.seats[0].removed && t.seats[2] && t.seats[2].removed,
+     'Both seats are non-null + removed after both players leave');
+  ok(rooms.clearChatIfEmpty(t.id),
+     'clearChatIfEmpty triggers when every seat is removed');
+  eq(rooms.chatHistory(t.id).length, 0,
+     'Chat history wiped when everyone is out');
+}
+
+// publicView exposes chatMessages so a fresh joiner sees the history.
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'chat-view', smallBlind:5, bigBlind:10, maxSeats:6 });
+  rooms.addChatMessage(t.id, 'Alice', 'pre-existing message');
+  const view = rooms.publicView(t.id, null);
+  eq(view.chatMessages.length, 1,
+     'publicView includes the chat history');
+  eq(view.chatMessages[0].text, 'pre-existing message',
+     'publicView chat entry matches what was added');
+}
+
 // ----- Reclaimeable removed seats ("Seat taken" false-positive fix) -----
 //
 // Regression for: clicking Join from the lobby when seatsTaken is 0 toasts

@@ -121,6 +121,19 @@
            when the viewport narrows (no JS resize listener needed). -->
       <div class="self-panel" id="selfPanel"></div>
 
+      <!-- Per-table chat panel. Hidden until the viewer joins a table (CSS
+           reads state from the panel class). When the table becomes empty
+           (everyone leaves / disconnects / busts) the server-side chat
+           history resets, and the next table_state / chat_update broadcast
+           re-renders an empty panel. -->
+      <div class="chat-panel" id="chatPanel">
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-row">
+          <input id="chatInput" type="text" placeholder="Say something..." maxlength="200" autocomplete="off" />
+          <button id="chatSendBtn" class="primary-btn">Send</button>
+        </div>
+      </div>
+
       <div class="action-bar" id="actionBar">
         <button class="action-btn fold"   data-action="fold">Fold</button>
         <button class="action-btn check"  data-action="check">Check</button>

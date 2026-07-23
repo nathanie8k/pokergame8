@@ -94,6 +94,22 @@ function broadcastAllTables() {
   for (const t of rooms.tables.values()) broadcastTable(t.id);
 }
 
+// Chat broadcast: send the table's full chat history to every socket in the
+// table_X room. Cheaper than a full broadcastTable() because it skips seats,
+// pot, action bar state, etc. — only the chat panel re-renders. The whole
+// history is sent (not just deltas) so reconnecting players get the backlog
+// without any special-casing.
+function broadcastChat(tableId) {
+  const socketsInTable = io.sockets.adapter.rooms.get('table_' + tableId);
+  if (!socketsInTable) return;
+  const messages = rooms.chatHistory(tableId);
+  for (const sid of socketsInTable) {
+    const socket = io.sockets.sockets.get(sid);
+    if (!socket) continue;
+    socket.emit('chat_update', { tableId, messages });
+  }
+}
+
 // ----- Persistence helpers -----
 
 async function saveStacksToDB(table) {
@@ -171,6 +187,10 @@ async function scheduleNextHand(tableId) {
   // stay forever even with zero seats — they're the permanent lobby entry
   // points.
   if (rooms.shouldDeleteAfterHand(t)) {
+    // Chat belongs to this session of players; clear it before the table
+    // is removed. clearChatIfEmpty is a no-op here only if the seat check
+    // returns true, which won't happen in the auto-delete branch.
+    rooms.clearChatIfEmpty(tableId);
     rooms.remove(tableId);
     broadcastLobby();
     return;
@@ -295,6 +315,10 @@ io.on('connection', (socket) => {
       }
     }
     rooms.unseat(tid, sidx);
+    // Clear chat when the leaving player was the last seated one. Chat
+    // history belongs to the current session of players; when the session
+    // ends, the history is wiped so the next joiner sees an empty panel.
+    rooms.clearChatIfEmpty(tid);
     socket.leave('table_' + tid);
     socket.data.tableId = null;
     socket.data.seatIdx = null;
@@ -328,6 +352,24 @@ io.on('connection', (socket) => {
     const result = poker.applyAction(t, sidx, 'sit_in');
     if (!result.ok) return cb && cb({ ok: false, error: result.error });
     broadcastTable(tid);
+    cb && cb({ ok: true });
+  });
+
+  socket.on('chat_message', ({ tableId, text }, cb) => {
+    const player = socket.data.player;
+    if (!player) return cb && cb({ ok: false, error: 'Not logged in' });
+    // Per-socket rate limit: 500ms between sends. Prevents leaning-on-Enter
+    // spam from causing broadcast storms + client-side repaint lag. The
+    // HTML maxlength=200 attribute already caps paste length on the client;
+    // rooms.addChatMessage slices to 200 server-side as defense-in-depth.
+    const now = Date.now();
+    if (socket.data.lastChatAt && now - socket.data.lastChatAt < 500) {
+      return cb && cb({ ok: false, error: 'Slow down' });
+    }
+    socket.data.lastChatAt = now;
+    const result = rooms.addChatMessage(tableId, player.name, text);
+    if (!result.ok) return cb && cb(result);
+    broadcastChat(tableId);
     cb && cb({ ok: true });
   });
 
@@ -468,6 +510,8 @@ io.on('connection', (socket) => {
           seat.removed = true;
         }
       }
+      // Clear chat when the disconnected player was the last seated one.
+      rooms.clearChatIfEmpty(tid);
     }
     broadcastLobby();
   });

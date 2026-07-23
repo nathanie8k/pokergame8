@@ -333,6 +333,16 @@ function renderTable() {
   } else {
     disableAllActions();
   }
+
+  // Chat panel: rendered after seats so the messages reflect whatever
+  // state.currentTable.chatMessages just got (publicView now includes it
+  // on every table_state broadcast, so a new join into an empty table
+  // re-renders an empty panel naturally).
+  renderChat();
+  // Spectators (joined the table room but not seated) see the chat but
+  // can't send — updateChatReadOnly toggles the .read-only class so CSS
+  // dims + disables the input + send button.
+  updateChatReadOnly();
 }
 
 function renderSeat(seat, idx, table, total) {
@@ -450,6 +460,73 @@ function populateSelfPanel(panelEl, seat, t) {
   }
   panelEl.appendChild(info);
   panelEl.appendChild(cards);
+}
+
+// ---------- Chat panel ----------
+
+function renderChat() {
+  const t = state.currentTable;
+  if (!t) return;
+  const host = $('chatMessages');
+  if (!host) return;
+  // Auto-scroll on new messages only if the user is already at the bottom
+  // (within 40px tolerance) — if they've scrolled up to read history, we
+  // leave them alone so they don't get yanked away.
+  const wasAtBottom = isScrolledToBottom(host);
+  host.innerHTML = '';
+  for (const m of (t.chatMessages || [])) {
+    host.appendChild(renderChatMessage(m));
+  }
+  if (wasAtBottom) host.scrollTop = host.scrollHeight;
+}
+
+function renderChatMessage(m) {
+  // All text is rendered via the el() helper's textContent path, never
+  // innerHTML, so the server is the sole sanitizer. rooms.addChatMessage
+  // trims, replaces newlines, and slices to 200 chars.
+  if (m.kind === 'system') {
+    return el('div', { class: 'chat-msg chat-system', text: m.text });
+  }
+  return el('div', { class: 'chat-msg chat-user' }, [
+    el('span', { class: 'chat-from', text: m.from }),
+    el('span', { class: 'chat-text', text: ': ' + m.text }),
+  ]);
+}
+
+function isScrolledToBottom(el) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+}
+
+function sendChat() {
+  const t = state.currentTable;
+  if (!t) return;
+  // Spectators (in the table room but not seated) can't send. Blocks chat
+  // spam + the "I saw his screen" collusion vector that poker sites
+  // typically ban outright. Input is also dimmed via CSS via the
+  // .read-only class so the constraint is visible.
+  const selfSeat = t.seats.find(s => s && s.occupied && s.isSelf);
+  if (!selfSeat) return;
+  const input = $('chatInput');
+  const text = input.value;
+  if (!text.trim()) { input.value = ''; return; }
+  socket.emit('chat_message', { tableId: t.id, text }, res => {
+    if (res && res.ok) {
+      input.value = '';
+    } else {
+      showToast(res && res.error ? res.error : 'Send failed', 'error');
+    }
+  });
+}
+
+function updateChatReadOnly() {
+  // Toggles .read-only on the panel so CSS can dim/disable the input for
+  // spectators (in the table room but not seated). Called from
+  // renderTable so it stays in sync with seat changes.
+  const t = state.currentTable;
+  const panel = $('chatPanel');
+  if (!panel) return;
+  const selfSeat = t && t.seats && t.seats.find(s => s && s.occupied && s.isSelf);
+  panel.classList.toggle('read-only', !selfSeat);
 }
 
 function seatEmpty(seatIdx, tableId) {
@@ -739,6 +816,16 @@ socket.on('disconnect', () => {
   showToast('Disconnected. Reconnecting...', 'error');
 });
 
+socket.on('chat_update', ({ tableId, messages }) => {
+  // Server sends the full history (not deltas) so reconnecting sockets
+  // also receive the backlog without special-casing. Re-render only if the
+  // update is for the table the viewer is currently looking at.
+  if (state.currentTable && state.currentTable.id === tableId) {
+    state.currentTable.chatMessages = messages || [];
+    renderChat();
+  }
+});
+
 // ---------- Wire up UI buttons ----------
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -758,6 +845,14 @@ document.addEventListener('DOMContentLoaded', () => {
   $('leaveTableBtn').addEventListener('click', leaveCurrentTable);
   $('sitOutBtn').addEventListener('click', sitOut);
   $('sitInBtn').addEventListener('click', sitIn);
+
+  // Chat panel: Enter submits, clicking Send submits. The HTML maxlength=200
+  // caps paste length natively so the server-side slice(0,200) is just
+  // defense-in-depth.
+  $('chatSendBtn').addEventListener('click', sendChat);
+  $('chatInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
+  });
 
   // Action buttons
   document.querySelectorAll('.action-btn[data-action]').forEach(b => {

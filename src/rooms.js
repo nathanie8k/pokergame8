@@ -52,6 +52,7 @@ class RoomManager {
       startingStack,
       maxSeats,
     });
+    table.chatMessages = [];
     this.tables.set(id, table);
     return table;
   }
@@ -94,6 +95,64 @@ class RoomManager {
       });
       t.default = true;
     }
+  }
+
+  // Append a user chat message. Newlines are stripped to single spaces so a
+  // paste with embedded line breaks can't push other messages out of the
+  // visible scroll. History is capped at the most recent 100 entries to
+  // bound memory; older messages fall off via FIFO splice.
+  addChatMessage(tableId, from, text) {
+    const t = this.tables.get(tableId);
+    if (!t) return { ok: false, error: 'No such table' };
+    if (typeof text !== 'string') return { ok: false, error: 'Invalid message' };
+    const clean = text.replace(/[\r\n]+/g, ' ').trim();
+    if (!clean) return { ok: false, error: 'Empty message' };
+    if (!t.chatMessages) t.chatMessages = [];
+    t.chatMessages.push({ from, text: clean.slice(0, 200), ts: Date.now(), kind: 'user' });
+    if (t.chatMessages.length > 100) {
+      t.chatMessages.splice(0, t.chatMessages.length - 100);
+    }
+    return { ok: true };
+  }
+
+  // Append a system message (e.g. "X joined"). Same newline stripping +
+  // 100-cap as user messages. Kept here as a primitive even if server.js
+  // doesn't currently call it; tests cover it and future "join/leave" system
+  // lines can plug in without a server round-trip.
+  addSystemMessage(tableId, text) {
+    const t = this.tables.get(tableId);
+    if (!t) return false;
+    const clean = String(text == null ? '' : text).replace(/[\r\n]+/g, ' ').trim();
+    if (!clean) return false;
+    if (!t.chatMessages) t.chatMessages = [];
+    t.chatMessages.push({ text: clean, ts: Date.now(), kind: 'system' });
+    if (t.chatMessages.length > 100) {
+      t.chatMessages.splice(0, t.chatMessages.length - 100);
+    }
+    return true;
+  }
+
+  chatHistory(tableId) {
+    const t = this.tables.get(tableId);
+    if (!t) return [];
+    if (!t.chatMessages) t.chatMessages = [];
+    return t.chatMessages;
+  }
+
+  // Reset chat history when the table becomes empty — no live (non-removed)
+  // seated player remains. The chat belongs to the current session of
+  // players; when the session ends (everyone left / disconnected /
+  // busted), the history is wiped so the next session starts blank. Called
+  // from server.js#unseat, the disconnect handler, and scheduleNextHand
+  // before the auto-delete branch.
+  clearChatIfEmpty(tableId) {
+    const t = this.tables.get(tableId);
+    if (!t) return false;
+    const hasLivePlayer = t.seats.some((s) => s && !s.removed);
+    if (hasLivePlayer) return false;
+    if (!t.chatMessages || t.chatMessages.length === 0) return false;
+    t.chatMessages = [];
+    return true;
   }
 
   // Find an empty seat on the table, return its index or -1.
@@ -199,6 +258,7 @@ class RoomManager {
       bbIndex: t.bbIndex,
       lastAggressor: t.lastAggressor,
       lastHandResults: t.lastHandResults,
+      chatMessages: t.chatMessages || [],
       seats: t.seats.map((s, i) => {
         if (!s) return { idx: i, occupied: false };
         const isSelf = s.playerId === viewerPlayerId;
