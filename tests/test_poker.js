@@ -6,6 +6,16 @@
 const P = require('../src/poker.js');
 const { RoomManager, DEFAULT_TABLES } = require('../src/rooms.js');
 
+// Database tests use a temp data file so they never mutate the real
+// data.json alongside the server. Setting POKER_DATA_FILE before
+// `require('../src/database.js')` redirects all reads + writes.
+const path = require('path');
+const fs   = require('fs');
+const os   = require('os');
+const tmpDataFile = path.join(os.tmpdir(), 'poker-test-data-' + process.pid + '.json');
+process.env.POKER_DATA_FILE = tmpDataFile;
+const db  = require('../src/database.js');
+
 let passed = 0;
 let failed = 0;
 
@@ -655,7 +665,123 @@ function seatAt(t, idx, playerId, name, stack) {
      'Mid-hand reclaim: new player is intact at end of hand');
 }
 
-console.log('Room / default-table tests: ' + passed + ' passed (cumulative), ' + failed + ' failed (cumulative)');
+console.log('Engine / room / state-machine tests: ' + passed + ' passed, ' + failed + ' failed');
 console.log('');
-console.log('Poker engine tests: ' + passed + ' passed, ' + failed + ' failed');
-process.exit(failed > 0 ? 1 : 0);
+
+// ----- Database stat persistence tests (async; isolated tmp file via POKER_DATA_FILE) -----
+// Wrapped in an async IIFE so the existing sync tests run first, then
+// we await the db-backed tests, then exit. All tests mutate passed/failed
+// from the module scope above, so the final process.exit still reports
+// the cumulative counts across both phases.
+async function runDbTestsAndExit() {
+  const created = await db.getOrCreatePlayer('Alice');
+  ok(created.gamesPlayed === 0, 'newly created player starts with gamesPlayed = 0');
+  ok(created.wins === 0,        'newly created player starts with wins = 0');
+  ok(typeof created.lastSeenAt === 'number' && created.lastSeenAt === 0,
+     'newly created player starts with lastSeenAt = 0');
+
+  await db.incrementStats('Alice', { gamesDelta: 1, winsDelta: 1, seenAt: 100 });
+  await db.incrementStats('Alice', { gamesDelta: 1, winsDelta: 1, seenAt: 200 });
+  const a = await db.getPlayer('Alice');
+  eq(a.gamesPlayed, 2, 'gamesPlayed accumulates across calls');
+  eq(a.wins, 2,        'wins accumulates across calls');
+  ok(a.lastSeenAt === 200, 'lastSeenAt takes the newer of conflicting timestamps');
+
+  await db.incrementStats('Alice', { seenAt: 50 }); // older -> ignored
+  const a2 = await db.getPlayer('Alice');
+  ok(a2.lastSeenAt === 200, 'older lastSeenAt does not regress');
+
+  await db.incrementStats('Alice', { gamesDelta: -99, winsDelta: -50 });
+  const a3 = await db.getPlayer('Alice');
+  eq(a3.gamesPlayed, 0, 'negative gamesDelta clamps at 0');
+  eq(a3.wins,        0, 'negative winsDelta clamps at 0');
+
+  const ghost = await db.incrementStats('__never_registered__', { gamesDelta: 1 });
+  ok(ghost === null, 'incrementStats on unknown player returns null');
+
+  // Race regression: two incrementStats calls on the same name fired in
+  // the same tick (no await between) should accumulate correctly. Before
+  // the per-name write-chain fix, both calls would read the same baseline
+  // value, both increment, last write wins, and we'd end up with N-1
+  // instead of N. The fix serializes reads after prior writes via a
+  // Promise chain keyed on the player name.
+  await db.getOrCreatePlayer('Race');
+  await db.incrementStats('Race', { gamesDelta: 1 });
+  // Fire 10 concurrent increments without awaiting them. After all
+  // promises settle, gamesPlayed should be the prior value (1) + 10 = 11.
+  const racers = [];
+  for (let i = 0; i < 10; i++) racers.push(db.incrementStats('Race', { gamesDelta: 1 }));
+  await Promise.all(racers);
+  const raced = await db.getPlayer('Race');
+  eq(raced.gamesPlayed, 11, 'Concurrent same-name incrementStats accumulates (no lost updates)');
+
+  // Filter rule: a player must have gamesPlayed > 0 to appear on the
+  // leaderboard. Seed three tied players + two never-played decoys.
+  await db.getOrCreatePlayer('Bob',   { points: 8000 });
+  await db.getOrCreatePlayer('Carol', { points: 8000 });
+  await db.getOrCreatePlayer('Dave',  { points: 8000 });
+  await db.getOrCreatePlayer('Eve',   { points: 99999 }); // never plays
+
+  await db.incrementStats('Bob',   { gamesDelta: 5, winsDelta: 2 });
+  await db.incrementStats('Carol', { gamesDelta: 5, winsDelta: 4 });
+  await db.incrementStats('Dave',  { gamesDelta: 5, winsDelta: 4 });
+
+  const rows = await db.getLeaderboardRows({ limit: 50 });
+  ok(!rows.some((r) => r.name === 'Alice'), 'Alice excluded (gamesPlayed 0 after clamp)');
+  ok(!rows.some((r) => r.name === 'Eve'),   'Eve excluded (gamesPlayed 0)');
+
+  // Tied points -> wins DESC tie-break -> gamesPlayed tie -> name ASC.
+  // Carol & Dave share wins=4, so the tie is broken by name: Carol
+  // then Dave. Bob has fewer wins and ranks last among the tied three.
+  const top = rows.slice(0, 3).map((r) => r.name);
+  eq(top, ['Carol', 'Dave', 'Bob'],
+     'Tied points tie-break: wins desc, then games desc, then name asc');
+
+  for (const r of rows) {
+    ok(typeof r.name === 'string'  && r.name.length > 0,  'row has non-empty name');
+    ok(typeof r.points === 'number' && r.points >= 0,     'row has numeric points');
+    ok(typeof r.gamesPlayed === 'number' && r.gamesPlayed > 0,
+       'returned row has gamesPlayed > 0 (filter works)');
+  }
+
+  // Backfill behavior: pre-existing data.json entries created before stat
+  // fields shipped should backfill to 0 on load and be excluded by the
+  // leaderboard filter (`gamesPlayed > 0`). We simulate that here by
+  // overwriting the tmp data file with a hand-crafted legacy shape, then
+  // reusing the existing `db` module (its dataCache will pick up the new
+  // content on the next loadData() call). Note: process.env.POKER_DATA_FILE
+  // was set at the top of the file so db continues to read tmpDataFile.
+  const legacyPath = path.join(os.tmpdir(), 'poker-legacy-' + process.pid + '.json');
+  fs.writeFileSync(legacyPath, JSON.stringify({
+    players: {
+      'Legacy1': { id: 'legacy-1', name: 'Legacy1', points: 1234, created: 1700000000000 },
+      'Legacy2': { id: 'legacy-2', name: 'Legacy2', points: 5678, created: 1700000000000 },
+    },
+    adminPassword: 'admin123',
+    settings: { startingStack: 1000 },
+  }));
+  fs.copyFileSync(legacyPath, tmpDataFile);
+  // Force the cache to reload by deleting + re-requiring; setting
+  // POKER_DATA_FILE on the new require would not pick up our copy because
+  // the env var was captured at module-load time — that's fine, we just
+  // re-attach to the same tmpDataFile path.
+  delete require.cache[require.resolve('../src/database.js')];
+  const legacyDb = require('../src/database.js');
+  const legacyRows = await legacyDb.getLeaderboardRows({ limit: 50 });
+  ok(!legacyRows.some((r) => r.name === 'Legacy1'),
+     'Legacy entry with no gamesPlayed is excluded after backfill');
+  ok(!legacyRows.some((r) => r.name === 'Legacy2'),
+     'Multi-entry legacy file: every backfilled-0-games row is excluded');
+
+  // Cleanup tmp files.
+  try { fs.unlinkSync(tmpDataFile); } catch (e) {}
+  try { fs.unlinkSync(legacyPath); }  catch (e) {}
+
+  console.log('Database stat tests: ' + passed + ' passed (cumulative), ' + failed + ' failed (cumulative)');
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+runDbTestsAndExit().catch((err) => {
+  console.error('test runner crashed:', err);
+  process.exit(1);
+});

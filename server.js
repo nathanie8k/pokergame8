@@ -213,6 +213,20 @@ function tryStartHand(tableId) {
     // crash right before any player's first action would silently revert
     // SB/BB seats back to their pre-hand balance on the next server start.
     saveStacksToDB(table).catch((err) => console.error('save stacks on startHand:', err));
+    // Bump gamesPlayed for every seated, chip-bearing, non-sitting-out
+    // player. Mirrors the same gate `poker.startHand` uses for dealing
+    // cards + posting blinds, so the count reflects hands they actually
+    // participated in (sat-out players are correctly skipped). Doing this
+    // AFTER startHand succeeded guarantees we only count hands that
+    // actually launched — startHand returns false (and sets phase to
+    // WAITING) when fewer than two players can play. Fire-and-forget to
+    // avoid blocking the broadcast cycle on a disk write.
+    for (const s of table.seats) {
+      if (s && !s.removed && s.stack > 0 && !s.satOut) {
+        db.incrementStats(s.name, { gamesDelta: 1 })
+          .catch((err) => console.error('gamesPlayed increment error:', err));
+      }
+    }
     broadcastTable(tableId);
   }, 3000);
   rooms.nextHandTimers.set(tableId, timer);
@@ -220,10 +234,40 @@ function tryStartHand(tableId) {
   broadcastTable(tableId);
 }
 
+// Records wins for any HAND_OVER hand that produced a real winner set.
+// MUST be called BEFORE poker.endHand(t), because endHand wipes
+// `table.lastHandResults` down to null. Busted-refund hands set
+// lastHandResults=null inside checkBustedRefund, so those hands
+// deliberately don't get counted (the meta-game rule is: "XXX got out,
+// refunded" -- no formal winner). Fire-and-forget — each increment is a
+// standalone fs.writeFile scheduled onto the existing writeChain.
+function recordHandOutcomes(table) {
+  if (table.phase !== poker.PHASE.HAND_OVER) return;
+  if (!table.lastHandResults || !Array.isArray(table.lastHandResults.winners)) return;
+  for (const w of table.lastHandResults.winners) {
+    if (!w || !w.name) continue;
+    db.incrementStats(w.name, { winsDelta: 1 })
+      .catch((err) => console.error('wins increment error:', err));
+  }
+  // Also stamp lastSeenAt on every still-seated seat: they showed up
+  // and finished a hand this session. Skip removed/busted seats here
+  // because `lastSeenAt` is a recency signal — a seat that ended the
+  // hand as `removed: true` shouldn't bump it (they're out).
+  for (const s of table.seats) {
+    if (!s || s.removed) continue;
+    db.incrementStats(s.name, { seenAt: Date.now() })
+      .catch((err) => console.error('seenAt stamp error:', err));
+  }
+}
+
 async function scheduleNextHand(tableId) {
   const t = rooms.get(tableId);
   if (!t) return;
   await saveStacksToDB(t);
+  // Captured results BEFORE endHand wipes lastHandResults. Busted-refund
+  // hands already null-ed their winners inside checkBustedRefund, so the
+  // filter below correctly skips them.
+  recordHandOutcomes(t);
   poker.endHand(t);
   // Cleanup removed seats (disconnect / leave / busted).
   for (let i = 0; i < t.seats.length; i++) {
@@ -261,9 +305,11 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, tables: rooms.listTables().length });
 });
 
-// Public leaderboard. Returns the top N players by points so the lobby
-// nav can show off the meta-game without requiring admin login. Only name
-// + points are exposed (no IDs / no created timestamps).
+// Public leaderboard. Returns the top N "playing" players (i.e. ones who
+// have actually participated in at least one hand) sorted by points, then
+// wins, then games played, then name. Bot-like entries (admin/test fixtures
+// that never played) are filtered out at the database layer via
+// db.getLeaderboardRows().
 //
 // Intentionally unauthenticated: this is a friendly-points app where
 // surfacing who leads the meta-game is part of the fun. Do not gate this
@@ -271,12 +317,7 @@ app.get('/api/health', (_req, res) => {
 // (which still uses socket-side admin) might be confusingly inconsistent.
 app.get('/api/leaderboard', async (_req, res) => {
   try {
-    const all = await db.getAllPlayers();
-    const players = all
-      .filter((p) => p && p.name)
-      .sort((a, b) => (b.points || 0) - (a.points || 0) || a.name.localeCompare(b.name))
-      .slice(0, 50)
-      .map((p) => ({ name: p.name, points: Math.max(0, Math.floor(p.points || 0)) }));
+    const players = await db.getLeaderboardRows({ limit: 50 });
     res.json({ players });
   } catch (err) {
     console.error('leaderboard error:', err);
@@ -304,6 +345,13 @@ io.on('connection', (socket) => {
       if (!playerSockets.has(player.name)) playerSockets.set(player.name, new Set());
       playerSockets.get(player.name).add(socket.id);
       socketToPlayer.set(socket.id, player.name);
+
+      // Stamp lastSeenAt on every login (new account, returning player,
+      // any future reconnection). gamesPlayed + wins are NOT touched here
+      // — those are derived from actual hand participation. Fire-and-forget
+      // so a slow disk write never delays the hello packet.
+      db.incrementStats(player.name, { seenAt: Date.now() })
+        .catch((err) => console.error('register stats error:', err));
 
       socket.emit('hello', { player });
       cb && cb({ ok: true, player });
@@ -407,6 +455,8 @@ io.on('connection', (socket) => {
     if (!t.seats[sidx]) return cb && cb({ ok: false, error: 'Empty seat' });
     const result = poker.applyAction(t, sidx, 'sit_out');
     if (!result.ok) return cb && cb({ ok: false, error: result.error });
+    db.incrementStats(player.name, { seenAt: Date.now() })
+      .catch((err) => console.error('sit_out stats error:', err));
     // Sit-out mid-hand folds the seat. If this is the last live player to
     // fold, `awardPot` mutates another seat's stack inside `advancePhase`.
     // Persist every seat so the winner's grown stack reaches DB before any
@@ -436,6 +486,8 @@ io.on('connection', (socket) => {
     if (t.seats[sidx].stack <= 0) return cb && cb({ ok: false, error: 'No chips (ask admin to add)' });
     const result = poker.applyAction(t, sidx, 'sit_in');
     if (!result.ok) return cb && cb({ ok: false, error: result.error });
+    db.incrementStats(player.name, { seenAt: Date.now() })
+      .catch((err) => console.error('sit_in stats error:', err));
     saveStacksToDB(t).catch((err) => console.error('save stacks on sit_in:', err));
     // Busted-refund hook (mirrors sit_out): the engine's end-of-round
     // block in applyAction may flip the table to HAND_OVER + set
@@ -487,6 +539,8 @@ io.on('connection', (socket) => {
       socket.emit('server_message', { level: 'error', text: result.error });
       return;
     }
+    db.incrementStats(player.name, { seenAt: Date.now() })
+      .catch((err) => console.error('action seenAt error:', err));
     // Best-effort: persist ALL stacks after each action so a server crash
     // mid-hand loses little. The actor's own save was the historical default,
     // but a fold-out resolves the pot inside `awardPot` (called from

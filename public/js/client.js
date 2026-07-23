@@ -719,6 +719,16 @@ function renderLeaderboard() {
     card.appendChild(el('div', { class: 'podium-medal', text: podiumMedals[idx] }));
     card.appendChild(el('div', { class: 'podium-name', text: p ? p.name : '—' }));
     card.appendChild(el('div', { class: 'podium-points', text: p ? formatNumber(p.points) + ' pts' : '' }));
+    // Stats line: games played + wins. Only appears when we have at least
+    // 1 game played (the server-side filter already guarantees this) so the
+    // "0 games · 0 wins" branch is unnecessary here.
+    if (p && (p.gamesPlayed || p.wins)) {
+      card.appendChild(el('div', {
+        class: 'podium-stats',
+        text: `${p.gamesPlayed || 0} game${(p.gamesPlayed || 0) === 1 ? '' : 's'}` +
+              (p.wins ? ` \u00B7 ${p.wins} win${p.wins === 1 ? '' : 's'}` : ''),
+      }));
+    }
     if (p && me && p.name === me) card.appendChild(el('span', { class: 'leaderboard-self-badge', text: 'You' }));
     podium.appendChild(card);
   });
@@ -731,7 +741,19 @@ function renderLeaderboard() {
       const rank = i + 4;
       const row = el('div', { class: 'lb-row' + (me && p.name === me ? ' is-self' : '') });
       row.appendChild(el('div', { class: 'lb-rank', text: '#' + rank }));
-      row.appendChild(el('div', { class: 'lb-name', text: p.name }));
+      const nameCell = el('div', { class: 'lb-name' });
+      nameCell.appendChild(el('span', { text: p.name }));
+      // Inline stats under the name in the dense list — same info as the
+      // podium chip but rendered smaller so it doesn't blow out the row
+      // height on longer lists.
+      if (p.gamesPlayed || p.wins) {
+        nameCell.appendChild(el('span', {
+          class: 'lb-stats',
+          text: ` (${p.gamesPlayed || 0}g${p.wins ? ` \u00B7 ${p.wins}w` : ''})`,
+          title: `${p.gamesPlayed || 0} games${p.wins ? `, ${p.wins} win${p.wins === 1 ? '' : 's'}` : ''}`,
+        }));
+      }
+      row.appendChild(nameCell);
       row.appendChild(el('div', { class: 'lb-points', text: formatNumber(p.points) + ' pts' }));
       list.appendChild(row);
     });

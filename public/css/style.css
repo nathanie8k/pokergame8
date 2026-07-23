@@ -695,6 +695,14 @@ input, button { color: inherit; }
   font-size: 22px; font-weight: 800;
   margin-top: 4px;
 }
+/* "X games · Y wins" sub-line below each podium card's points. Muted
+   so it doesn't compete with the chip-style rank medals. */
+.podium-card .podium-stats {
+  font-size: 11px;
+  color: rgba(255,255,255,0.55);
+  margin-top: 2px;
+  letter-spacing: 0.3px;
+}
 .podium-card .podium-medal {
   font-size: 26px; margin-top: 2px; line-height: 1;
 }
@@ -771,6 +779,13 @@ input, button { color: inherit; }
 .leaderboard-list .lb-row .lb-points {
   font-weight: 700; color: var(--accent);
   font-variant-numeric: tabular-nums;
+}
+/* Inline games/wins tag on dense leaderboard list rows. Kept small +
+   muted so the points value on the right stays visually dominant. */
+.leaderboard-list .lb-row .lb-stats {
+  font-size: 10px;
+  color: rgba(255,255,255,0.45);
+  margin-left: 4px;
 }
 .leaderboard-list .lb-row.is-self {
   background: rgba(92,205,255,0.08);
