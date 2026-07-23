@@ -345,12 +345,15 @@ function renderSeat(seat, idx, table, total) {
   ringChildren.push(el('div', { class: 'status ' + statusClass.join(' '),
     text: statusText + (statusClass.length > 0 ? ' \u00B7 ' + statusClass[1] : '') }));
 
-  // Build the inner card nodes FIRST so we can pass a flat list of Nodes to el().
-  // (Passing them nested in an outer array would cause appendChild to receive an
-  // Array instead of a Node and crash the whole render.)
-  const cardEls = seat.holeCards && seat.holeCards.length > 0
+  // Cards: real faces for the viewer who has holeCards data; face-down card
+  // backs for everyone else (opponents, and the viewer between hands when
+  // the server sends no cards). The CSS already has a `.card.face-down`
+  // design prepared in style.css — we just plug into it here so cards
+  // never render as blank placeholder boxes.
+  const cardEls = (seat.isSelf && seat.holeCards && seat.holeCards.length > 0)
     ? seat.holeCards.map((c, i) => renderCard(c, { delay: i * 80, small: true }))
-    : [el('div', { class: 'empty-card' }), el('div', { class: 'empty-card' })];
+    : [renderCard(null, { small: true, faceDown: true }),
+       renderCard(null, { small: true, faceDown: true })];
   ringChildren.push(el('div', { class: 'cards' }, cardEls));
 
   ringChildren.forEach(c => wrap.appendChild(buildRing(c)));
@@ -364,10 +367,20 @@ function buildRing(...kids) {
 }
 
 function renderCard(c, opts = {}) {
-  const card = el('div', { class: 'card' + (SUIT_COLOR[c.suit] === 'red' ? ' red' : '') + (opts.small ? ' card-small' : '') + ' fade-in' });
-  card.appendChild(el('div', { class: 'rank', text: rankLabel(c.rank) }));
-  card.appendChild(el('div', { class: 'suit-l', text: SUIT_GLYPH[c.suit] }));
-  card.appendChild(el('div', { class: 'center-suit', text: SUIT_GLYPH[c.suit] }));
+  // Render either a real card face (rank + suit) or a face-down card back.
+  // `opts.faceDown` forces the back design, and is also used when no card
+  // data is available, so opponents' hole slots are never blank boxes.
+  const faceDown = !!opts.faceDown || !c;
+  const card = el('div', {
+    class: (faceDown ? 'card face-down' : 'card' + (SUIT_COLOR[c.suit] === 'red' ? ' red' : ''))
+         + (opts.small ? ' card-small' : '')
+         + ' fade-in',
+  });
+  if (!faceDown) {
+    card.appendChild(el('div', { class: 'rank', text: rankLabel(c.rank) }));
+    card.appendChild(el('div', { class: 'suit-l', text: SUIT_GLYPH[c.suit] }));
+    card.appendChild(el('div', { class: 'center-suit', text: SUIT_GLYPH[c.suit] }));
+  }
   return card;
 }
 
