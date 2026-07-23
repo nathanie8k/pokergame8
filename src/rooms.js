@@ -8,6 +8,19 @@
 
 const poker = require('./poker');
 
+// ----- Default tables -----
+//
+// Five permanent tables with increasing stakes. Created on server startup
+// (see `ensureDefaultTables`) and excluded from auto-deletion so the lobby
+// always has at least one entry at every stakes tier — even when empty.
+const DEFAULT_TABLES = [
+  { name: 'Beginners Table', smallBlind: 5,   bigBlind: 10  },
+  { name: 'Low Stakes',      smallBlind: 25,  bigBlind: 50  },
+  { name: 'Medium Stakes',   smallBlind: 50,  bigBlind: 100 },
+  { name: 'High Stakes',     smallBlind: 100, bigBlind: 200 },
+  { name: 'VIP',             smallBlind: 250, bigBlind: 500 },
+];
+
 class RoomManager {
   constructor() {
     this.tables = new Map();          // tableId -> table
@@ -49,6 +62,38 @@ class RoomManager {
     const t = this.nextHandTimers.get(tableId);
     if (t) { clearTimeout(t); this.nextHandTimers.delete(tableId); }
     this.tables.delete(tableId);
+  }
+
+  // Returns true when `table` should be auto-deleted at the end of a hand:
+  // every seat is empty AND the table is not one of the permanent default
+  // starter tables. Default tables stay in the lobby even with zero players.
+  // Intentional mirror of the scheduleNextHand branch in server.js — kept
+  // here so the rule lives next to the lifecycle primitives it depends on
+  // and the test suite can call it directly.
+  shouldDeleteAfterHand(table) {
+    if (!table) return false;
+    if (table.default) return false;
+    for (const s of table.seats) if (s) return false;
+    return true;
+  }
+
+  // Idempotent: creates any of `DEFAULT_TABLES` that are missing. Each
+  // created table is marked with `default = true` so the auto-delete path
+  // in server.js can tell it apart from user-created tables. Never re-tags
+  // pre-existing same-named tables — that would silently promote a
+  // user-created table to permanent status.
+  ensureDefaultTables() {
+    const have = new Set(Array.from(this.tables.values()).map((t) => t.name));
+    for (const cfg of DEFAULT_TABLES) {
+      if (have.has(cfg.name)) continue;
+      const t = this.createTable({
+        name: cfg.name,
+        smallBlind: cfg.smallBlind,
+        bigBlind: cfg.bigBlind,
+        maxSeats: 6,
+      });
+      t.default = true;
+    }
   }
 
   // Find an empty seat on the table, return its index or -1.
@@ -165,4 +210,4 @@ function serializeCard(c) {
   return { rank: c.rank, suit: c.suit };
 }
 
-module.exports = { RoomManager };
+module.exports = { RoomManager, DEFAULT_TABLES };

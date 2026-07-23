@@ -134,14 +134,10 @@ async function doLogin() {
   });
 }
 
-function logout() {
-  state.player = null;
-  try { localStorage.removeItem('pokerName'); } catch (e) {}
-  socket.disconnect();
-  socket.connect();
-  setView('login');
-  $('topInfo').style.display = 'none';
-}
+// Account switching is intentionally disabled: once a device registers, the
+// name in localStorage is the only identity for that device. The only way to
+// "switch" is to clear browser data. See public/index.html (no Switch user
+// button) and server.js (the cached name is what gets sent on every connect).
 
 // ---------- Lobby view ----------
 
@@ -698,7 +694,6 @@ document.addEventListener('DOMContentLoaded', () => {
   $('loginName').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   $('refreshNamesBtn').addEventListener('click', () => socket.emit('random_names'));
 
-  $('logoutBtn').addEventListener('click', logout);
   $('adminBtn').addEventListener('click', openAdmin);
   $('adminCloseBtn').addEventListener('click', closeAdmin);
   $('adminLoginBtn').addEventListener('click', adminLogin);

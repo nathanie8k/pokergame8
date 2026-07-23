@@ -26,6 +26,9 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = new RoomManager();
+// Create the 5 permanent default tables immediately so the lobby is never
+// empty — even on a fresh server start with zero connected players.
+rooms.ensureDefaultTables();
 
 // Session tracking
 const playerSockets   = new Map(); // playerName -> Set<socketId>
@@ -162,6 +165,15 @@ async function scheduleNextHand(tableId) {
   // Cleanup removed seats (disconnect / leave / busted).
   for (let i = 0; i < t.seats.length; i++) {
     if (t.seats[i] && t.seats[i].removed) t.seats[i] = null;
+  }
+  // Auto-delete empty non-default tables so the lobby doesn't accumulate
+  // ghost tables over time. Default/starter tables (see ensureDefaultTables)
+  // stay forever even with zero seats — they're the permanent lobby entry
+  // points.
+  if (rooms.shouldDeleteAfterHand(t)) {
+    rooms.remove(tableId);
+    broadcastLobby();
+    return;
   }
   broadcastTable(tableId);
   broadcastLobby();

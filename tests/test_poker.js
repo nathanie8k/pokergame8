@@ -4,6 +4,7 @@
 'use strict';
 
 const P = require('../src/poker.js');
+const { RoomManager, DEFAULT_TABLES } = require('../src/rooms.js');
 
 let passed = 0;
 let failed = 0;
@@ -309,6 +310,103 @@ function make4PlayerTable() {
      'lastHandResults populated for client banner');
 }
 
+console.log('');
+// ----- Default tables / auto-delete empty tables -----
+
+// Helper: clear removed seats like scheduleNextHand does after endHand.
+function simulateHandCleanup(t) {
+  for (let i = 0; i < t.seats.length; i++) {
+    if (t.seats[i] && t.seats[i].removed) t.seats[i] = null;
+  }
+}
+
+// Helper: insert a seat at `idx` for the auto-delete setup. Bypasses
+// P.startHand so we don't depend on the poker engine's seeding logic.
+function seatAt(t, idx, playerId, name, stack) {
+  t.seats[idx] = {
+    playerId, name, stack,
+    holeCards: [], folded: false, allIn: false,
+    removed: false, satOut: false, disconnected: false,
+    contributed: 0,
+  };
+}
+
+// ensureDefaultTables creates the 5 default tables exactly once on a fresh
+// RoomManager. Each has the documented stakes, the default flag, and a sane
+// seat count.
+{
+  const rooms = new RoomManager();
+  rooms.ensureDefaultTables();
+  ok(Array.isArray(DEFAULT_TABLES) && DEFAULT_TABLES.length === 5,
+     'DEFAULT_TABLES is an exported array of 5 entries');
+  eq(rooms.tables.size, 5,
+     'ensureDefaultTables creates exactly 5 tables on a fresh RoomManager');
+
+  const sorted = Array.from(rooms.tables.values())
+    .sort((a, b) => a.smallBlind - b.smallBlind);
+  eq(sorted.map((t) => [t.smallBlind, t.bigBlind]),
+     [[5, 10], [25, 50], [50, 100], [100, 200], [250, 500]],
+     'Default tables have the exact stakes in the task spec');
+
+  for (const t of rooms.tables.values()) {
+    ok(t.default === true, `Table ${t.name} is marked default=true`);
+    ok(t.maxSeats >= 2 && t.maxSeats <= 9,
+       `Table ${t.name} has a sane maxSeats (${t.maxSeats})`);
+  }
+}
+
+// ensureDefaultTables is idempotent: running it twice doesn't double-up.
+{
+  const rooms = new RoomManager();
+  rooms.ensureDefaultTables();
+  rooms.ensureDefaultTables();
+  eq(rooms.tables.size, 5,
+     'ensureDefaultTables is idempotent (still 5 tables after a second call)');
+}
+
+// A default table survives when the last seated player leaves and the hand
+// ends with zero occupied seats.
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'default-empty', smallBlind:5, bigBlind:10, maxSeats:6 });
+  t.default = true;
+  // Hand ended; the only seated player just got removed (e.g. disconnected).
+  seatAt(t, 1, 'A', 'A', 0);
+  t.seats[1].removed = true;        // post-hand cleanup will null this seat
+  simulateHandCleanup(t);
+  if (rooms.shouldDeleteAfterHand(t)) rooms.remove(t.id);
+  ok(rooms.has(t.id),
+     'Default table with zero occupied seats survives HAND_OVER cleanup');
+}
+
+// A non-default table with zero occupied seats is auto-deleted at HAND_OVER.
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'custom-empty', smallBlind:20, bigBlind:40, maxSeats:4 });
+  ok(!t.default, 'Fresh user-created table is not marked default');
+  seatAt(t, 2, 'A', 'A', 0);
+  t.seats[2].removed = true;
+  simulateHandCleanup(t);
+  if (rooms.shouldDeleteAfterHand(t)) rooms.remove(t.id);
+  ok(!rooms.has(t.id),
+     'Non-default empty table is auto-deleted at HAND_OVER cleanup');
+}
+
+// A non-default table with at least one seat survives cleanup (it stays
+// waiting in the lobby for that player to come back or for others to join).
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'custom-occupied', smallBlind:20, bigBlind:40, maxSeats:6 });
+  seatAt(t, 1, 'A', 'A', 0);   // A leaves / busted -> removed post-hand
+  t.seats[1].removed = true;
+  seatAt(t, 3, 'B', 'B', 1000); // B still seated with chips
+  simulateHandCleanup(t);
+  if (rooms.shouldDeleteAfterHand(t)) rooms.remove(t.id);
+  ok(rooms.has(t.id),
+     'Non-default table with at least one seated player survives cleanup');
+}
+
+console.log('Room / default-table tests: ' + passed + ' passed (cumulative), ' + failed + ' failed (cumulative)');
 console.log('');
 console.log('Poker engine tests: ' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);
