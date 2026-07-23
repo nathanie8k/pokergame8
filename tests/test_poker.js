@@ -237,6 +237,49 @@ function make4PlayerTable() {
   }
 }
 
+// Heads-up turn alternation: SB (A) acts first preflop, BB (B) acts last.
+// Postflop, the first active player LEFT of the button (B, the BB) acts first.
+{
+  const t = P.createTable({ id:'turn', smallBlind:5, bigBlind:10, maxSeats:6 });
+  t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+  t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+  t.buttonIndex = 0;
+  P.startHand(t);
+  eq(t.currentPlayerIndex, 1, 'Preflop heads-up: dealer/SB (A) acts first');
+  ok(P.applyAction(t, 1, 'call').ok, 'A limps');
+  eq(t.currentPlayerIndex, 2, 'After A, turn rotates to B (no skip)');
+  ok(P.applyAction(t, 2, 'check').ok, 'B checks');
+  eq(t.phase, P.PHASE.FLOP, 'Round advances to FLOP after both acted');
+  eq(t.currentPlayerIndex, 2, 'Postflop first to act is BB (B) — left of button');
+  ok(P.applyAction(t, 2, 'check').ok, 'B checks flop');
+  eq(t.currentPlayerIndex, 1, 'Flop turn rotates back to A');
+  ok(P.applyAction(t, 1, 'check').ok, 'A checks flop');
+  eq(t.phase, P.PHASE.TURN, 'Round advances to TURN');
+}
+
+// Regression: all-in / call deadlock.
+// A raises preflop, B shoves all-in (lastAggressor = B), A calls to match.
+// Before the bug fix, nextActivePlayer returned A again because every other
+// seat was filtered (B all-in, all other seats empty), so the engine handed
+// A another turn on the same round and froze the hand. The fix changes the
+// loop bound to `i < n` so the just-acted seat is never returned to itself.
+{
+  const t = P.createTable({ id:'turnLock', smallBlind:5, bigBlind:10, maxSeats:6 });
+  t.seats[1] = { playerId:'A', name:'A', stack:200, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+  t.seats[2] = { playerId:'B', name:'B', stack:100, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+  t.buttonIndex = 0;
+  P.startHand(t);
+  ok(t.seats[1].allIn === false && t.seats[2].allIn === false, 'Both seated, no one all-in yet');
+  ok(P.applyAction(t, t.currentPlayerIndex, 'raise', 30).ok, 'A raises to 30');
+  ok(P.applyAction(t, t.currentPlayerIndex, 'all_in').ok, 'B shoves all-in');
+  ok(t.seats[2].allIn === true, 'B is all-in');
+  ok(P.applyAction(t, t.currentPlayerIndex, 'call').ok, 'A calls the all-in');
+  eq(t.phase, P.PHASE.HAND_OVER, 'Hand reaches HAND_OVER via auto-fast-forward (no infinite loop on A)');
+  // After HAND_OVER, no further action should be accepted.
+  const res = P.applyAction(t, 1, 'call');
+  ok(!res.ok, 'No further action accepted once hand is over');
+}
+
 // Auto-advance when every live player is all-in.
 // Before the bug fix, heads-up where both players shoved pre-flop would
 // deal the flop, set currentPlayerIndex = -1 (nobody to act), then deadlock:

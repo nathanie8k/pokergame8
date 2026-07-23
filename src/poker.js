@@ -216,7 +216,20 @@ function firstOccupiedAfter(table, from) {
 
 function nextActivePlayer(table, from) {
   const n = table.seats.length;
-  for (let i = 1; i <= n; i++) {
+  // `i < n` (NOT `i <= n`). With `<=`, on the final iteration `idx` resolves
+  // to `(from + n) % n === from`, so when every candidate between from+1 and
+  // from+n-1 is filtered out (folded/all-in/sat-out/removed/empty) AND
+  // `from` itself is still active, the function would return `from` — handing
+  // the just-acted seat another turn.
+  //
+  // This is the precise route to a turn-rotation deadlock: A raises, B
+  // shoves all-in (lastAggressor = B), A calls to match. End-of-round sees
+  // liveCount>1, allMatched=true, lastAggressor(B) != seatIdx(A) so the
+  // closer check fails, and the else branch then asks nextActivePlayer for
+  // the next seat. Without this fix the answer was A again, so the engine
+  // looped A indefinitely on A's "turn" even though A had nothing left to
+  // bet, freezing both players.
+  for (let i = 1; i < n; i++) {
     const idx = (from + i) % n;
     const s = table.seats[idx];
     if (s && !s.removed && !s.folded && !s.allIn && !s.satOut) return idx;
@@ -445,12 +458,20 @@ function beginBettingRound(table) {
     if (!s) continue;
     s.contributed = 0;
   }
-  // First to act: first active player after the dealer button. They are also
-  // the "implied closer" of the round - if no one bets/raises, the round ends
-  // when action returns to them.
+  // First to act: first active player left of the button (UTG-equivalent).
   const firstIdx = nextActivePlayer(table, table.buttonIndex);
   table.currentPlayerIndex = firstIdx;
-  table.lastAggressor = firstIdx;
+  // Round closer: the last player who must have a chance to check (or
+  // raise/call) before the round closes naturally in a check-around.
+  // Preflop: BB is the closer (last to act preflop). Postflop: the button is
+  // the closer (last to act in the postflop turn order). Storing this in
+  // `lastAggressor` lets the `seatIdx === lastAggressor && allMatched`
+  // close-branch fire once action has wound back to the closer — not when
+  // the *first* postflop actor (left-of-button) checks. Note that raises
+  // during the round overwrite this with the actual last aggressor.
+  table.lastAggressor = (table.phase === PHASE.PRE_FLOP)
+    ? table.bbIndex
+    : table.buttonIndex;
 }
 
 function applyAction(table, seatIdx, action, amountParam) {
