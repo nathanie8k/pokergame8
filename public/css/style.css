@@ -398,18 +398,62 @@ input, button { color: inherit; }
   border-radius: 4px;
 }
 
+/* Take-a-seat pill. Mirrors the .seat-ring shape so the chair reads as
+   "reserved / waiting for a player" rather than a broken placeholder.
+   Reduced opacity background signals emptiness; hover lights up with the
+   same gold-glow that the active seat ring uses to confirm it's clickable. */
 .empty-seat {
+  position: relative;
   width: 130px;
-  height: 96px;
-  display: flex; align-items: center; justify-content: center;
-  border: 2px dashed rgba(255,255,255,0.15);
-  border-radius: var(--radius-md);
-  color: var(--text-mute);
-  font-size: 12px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px;
+  padding: 14px 12px;
+  border-radius: 999px;                /* same pill shape as .seat-ring */
+  background: rgba(0,0,0,0.22);
+  border: 1px dashed rgba(255,204,77,0.30);
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: background 80ms, border-color 80ms, color 80ms;
+  user-select: none;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease,
+              box-shadow 140ms ease, transform 140ms ease;
 }
-.empty-seat:hover { background: rgba(255,255,255,0.05); border-color: var(--accent); color: var(--text); }
+.empty-seat .empty-seat-icon {
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  width: 24px; height: 24px;
+  border-radius: 999px;
+  border: 1px dashed rgba(255,255,255,0.22);
+  color: var(--text-mute);
+  font-size: 14px; line-height: 1;
+  font-weight: 600;
+  transition: color 140ms ease, border-color 140ms ease, border-style 140ms ease;
+}
+.empty-seat .empty-seat-label {
+  white-space: nowrap;
+  line-height: 1;
+}
+.empty-seat:hover,
+.empty-seat:focus-visible {
+  background: rgba(0,0,0,0.42);
+  border-color: var(--accent);
+  border-style: solid;
+  color: var(--accent);
+  /* Same gold-glow recipe as the active seat ring, slightly tighter. */
+  box-shadow:
+    0 0 0 4px rgba(255,204,77,0.15),
+    0 0 22px rgba(255,204,77,0.35);
+  transform: translateY(-1px);
+  outline: none;
+}
+.empty-seat:hover .empty-seat-icon,
+.empty-seat:focus-visible .empty-seat-icon {
+  border-color: var(--accent);
+  border-style: solid;
+  color: var(--accent);
+}
 
 /* ===== Playing cards ===== */
 .card {
@@ -659,4 +703,17 @@ input, button { color: inherit; }
   .seat .empty-card { width: 20px; height: 28px; }
   .action-bar { flex-direction: column; align-items: stretch; }
   .bet-controls { margin-left: 0; }
+}
+
+/* Empty-seat responsive sizing — track the existing seat widths and let the
+   long "Sit here" label collapse to icon-only below ~480px so it never
+   truncates ("...ere") on phones. */
+@media (max-width: 720px) {
+  .empty-seat { width: 96px; padding: 11px 8px; font-size: 10px; letter-spacing: 0.5px; }
+  .empty-seat .empty-seat-icon { width: 20px; height: 20px; font-size: 12px; }
+}
+@media (max-width: 480px) {
+  .empty-seat { width: 78px; padding: 10px 6px; }
+  .empty-seat .empty-seat-icon { width: 18px; height: 18px; font-size: 12px; }
+  .empty-seat .empty-seat-label { display: none; }
 }

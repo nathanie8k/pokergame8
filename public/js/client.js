@@ -284,11 +284,17 @@ function renderTable() {
       const seatEl = renderSeat(seat, i, t, N);
       seatsHost.appendChild(seatEl);
     } else {
+      // Take-a-seat pill: subtle empty chair with a + icon and "Sit here" label.
+      // The label is hidden on narrow viewports (≤480px via CSS) so it never
+      // truncates mid-character ("...ere").
       const emptyEl = el('div', {
         class: 'empty-seat',
         title: 'Click to sit here',
         onclick: () => seatEmpty(i, t.id),
-      }, [el('span', { text: 'Sit here' })]);
+      }, [
+        el('span', { class: 'empty-seat-icon', text: '+', 'aria-hidden': 'true' }),
+        el('span', { class: 'empty-seat-label', text: 'Sit here' }),
+      ]);
       Object.assign(emptyEl.style, seatPosition(i, N));
       seatsHost.appendChild(emptyEl);
     }
