@@ -36,6 +36,46 @@ const socketToPlayer  = new Map(); // socketId -> playerName
 const socketToAdmin   = new Set(); // socketIds currently in admin mode
 const lobbyBroadcastInterval = setInterval(broadcastLobby, 1500);
 
+// AFK kick — every 5s scan every table for seats whose currentActor
+// `_actionClockAt` (set in src/poker.js on every applyAction + postBlind
+// + currentPlayer rotation) is older than 90 seconds. The RoomManager's
+// kickAfkPlayers runs engine.applyAction('fold') and then flags the seat
+// removed+disconnected; we then broadcast + broadcastChat (the kick
+// message is a system chat entry) + scheduleNextHand if the fold ended
+// the hand.
+const AFK_KICK_INTERVAL_MS = 5000;
+const AFK_KICK_THRESHOLD_MS = 90 * 1000;
+// Reentrancy guard: setInterval does not await async bodies, so if
+// scheduleNextHand's `await saveStacksToDB` chain ever exceeds 5s under
+// disk pressure, two ticks could overlap. The flag skips a tick while
+// the previous one is still resolving — negligible skipped ticks for a
+// safer serial flow. (lobbyBroadcastInterval has no async work inside
+// so it doesn't need this guard.)
+let isAfkKicking = false;
+setInterval(async () => {
+  if (isAfkKicking) return;
+  isAfkKicking = true;
+  try {
+    let kicked, ended;
+    try {
+      ({ kicked, ended } = rooms.kickAfkPlayers(AFK_KICK_THRESHOLD_MS));
+    } catch (err) {
+      console.error('kickAfkPlayers error:', err);
+      return;
+    }
+    for (const tid of kicked) {
+      broadcastChat(tid);
+      broadcastTable(tid);
+    }
+    for (const tid of ended) {
+      try { await scheduleNextHand(tid); }
+      catch (err) { console.error('scheduleNextHand after AFK-kick error:', err); }
+    }
+  } finally {
+    isAfkKicking = false;
+  }
+}, AFK_KICK_INTERVAL_MS);
+
 // ----- Random name generator -----
 const ADJ = [
   'Lucky','Brave','Wild','Clever','Happy','Jolly','Sneaky','Bold','Daring',
@@ -372,7 +412,17 @@ io.on('connection', (socket) => {
     // Persist every seat so the winner's grown stack reaches DB before any
     // crash (scheduleNextHand runs async and could miss a server halt).
     saveStacksToDB(t).catch((err) => console.error('save stacks on sit_out:', err));
-    broadcastTable(tid);
+    // Busted-refund hook: a sit-out may still trigger checkBustedRefund
+    // (e.g. all-in player + remaining live player sits out → fold-out →
+    // awardPot → checkBustedRefund). Emit the system chat so other
+    // players see why balances were just reset.
+    if (t.phase === poker.PHASE.HAND_OVER) {
+      rooms.emitBustedRefundIfAny(tid);
+      broadcastChat(tid);
+      scheduleNextHand(tid);
+    } else {
+      broadcastTable(tid);
+    }
     cb && cb({ ok: true });
   });
 
@@ -387,7 +437,17 @@ io.on('connection', (socket) => {
     const result = poker.applyAction(t, sidx, 'sit_in');
     if (!result.ok) return cb && cb({ ok: false, error: result.error });
     saveStacksToDB(t).catch((err) => console.error('save stacks on sit_in:', err));
-    broadcastTable(tid);
+    // Busted-refund hook (mirrors sit_out): the engine's end-of-round
+    // block in applyAction may flip the table to HAND_OVER + set
+    // t._bustedRefundThisHand even on a sit_in (rare — only if it
+    // triggered a fold-out somehow). Surface the chat consistently.
+    if (t.phase === poker.PHASE.HAND_OVER) {
+      rooms.emitBustedRefundIfAny(tid);
+      broadcastChat(tid);
+      scheduleNextHand(tid);
+    } else {
+      broadcastTable(tid);
+    }
     cb && cb({ ok: true });
   });
 
@@ -440,6 +500,14 @@ io.on('connection', (socket) => {
     cb && cb({ ok: true });
 
     if (t.phase === poker.PHASE.HAND_OVER) {
+      // Busted-refund hook: if any seat ended the hand with stack===0
+      // (the engine fired checkBustedRefund between awardPot and the
+      // end-of-round block), surface it in chat so players see their
+      // balances magically reset and understand why. The helper
+      // centralizes the wording + marker-clear so every caller
+      // (action / sit_out / sit_in / AFK loop) emits the same line.
+      rooms.emitBustedRefundIfAny(tableId);
+      broadcastChat(tableId);
       scheduleNextHand(tableId);
     }
   });

@@ -230,6 +230,70 @@ class RoomManager {
     table._pendingUnseat = [];
   }
 
+  // Periodically scan every table for the seat that the engine currently
+  // reports as the actor (table.currentPlayerIndex) and whose AFK clock
+  // (table._actionClockAt, stamped by src/poker.js on every applyAction +
+  // postBlind + currentPlayer rotation) has been ticking past `maxIdleMs`
+  // without any engine progress.
+  //
+  // For each AFK actor we run `poker.applyAction(t, cpi, 'fold')` — the
+  // engine then resolves the betting round normally (fold-out → awardPot)
+  // — and afterwards mark the seat removed+disconnected so it leaves the
+  // table visually and gets pruned by scheduleNextHand's cleanup loop.
+  //
+  // Order matters: applyAction runs FIRST, then we flag removed. If we
+  // flagged removed first, the engine would refuse with "Not seated" and
+  // never rotate the turn — freezing the table on the AFK'd seat.
+  //
+  // Why engine clock and not socket.lastActivityAt? Because honest
+  // waiting (tab foregrounded, chat message, mouse move) shouldn't reset
+  // the timer — only progress on the action timer counts. Players who
+  // go AFK with the tab open are still AFK.
+  kickAfkPlayers(maxIdleMs = 90_000) {
+    const now = Date.now();
+    const kicked = [];
+    const ended = [];
+    for (const t of this.tables.values()) {
+      if (t.phase === poker.PHASE.WAITING || t.phase === poker.PHASE.HAND_OVER) continue;
+      const cpi = t.currentPlayerIndex;
+      if (cpi < 0 || !t.seats[cpi]) continue;
+      const seat = t.seats[cpi];
+      if (!seat || seat.removed || seat.folded || seat.allIn || seat.satOut) continue;
+      const since = t._actionClockAt ? (now - t._actionClockAt) : 0;
+      if (since < maxIdleMs) continue;
+      const result = poker.applyAction(t, cpi, 'fold');
+      if (!(result && result.ok)) continue;
+      seat.removed = true;
+      seat.disconnected = true;
+      this.addSystemMessage(t.id, `${seat.name} timed out (90s) — kicked from the table.`);
+      kicked.push(t.id);
+      // If the engine's applyAction triggered checkBustedRefund (very
+      // rare during a pure fold — only if a prior action already left
+      // stack===0 elsewhere), surface it in chat via the same helper
+      // every other handler uses, so the wording lives in one place.
+      this.emitBustedRefundIfAny(t.id);
+      if (t.phase === poker.PHASE.HAND_OVER) ended.push(t.id);
+    }
+    return { kicked, ended };
+  }
+
+  // Helper used by server.js every time an applyAction-shaped handler
+  // ends a hand with the busted-refund marker set. We factor this out so
+  // all four handlers (action, sit_out, sit_in, AFK loop) emit the
+  // exact same system message and clear the marker consistently. The
+  // engine writes t._bustedRefundThisHand (array of name strings) when
+  // a non-folded live seat ended the hand at stack===0; otherwise the
+  // array is null and this is a no-op.
+  emitBustedRefundIfAny(tableId) {
+    const t = this.tables.get(tableId);
+    if (!t) return;
+    if (Array.isArray(t._bustedRefundThisHand) && t._bustedRefundThisHand.length) {
+      const bustedNames = t._bustedRefundThisHand.join(', ');
+      this.addSystemMessage(tableId, `${bustedNames} got out — other players refunded to pre-hand balances.`);
+      t._bustedRefundThisHand = null;
+    }
+  }
+
   // Build a serializable public view of the table for the viewer.
   // Their own hole cards are included; others are nulled out.
   // NOTE: viewerPlayerId is the viewer's database player id (NOT their display

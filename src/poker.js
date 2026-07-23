@@ -276,15 +276,29 @@ function startHand(table) {
   table.lastHandResults = null;
   table.handLog = [];
 
-  // Reset per-hand seat state
-  for (const s of table.seats) {
+  // Reset per-hand seat state. We also snapshot each seat's stack into
+  // `preHandStack` so the busted-refund rule (see `checkBustedRefund`)
+  // can restore the live players' balances to their PRE-HAND value when
+  // one player gets out mid-game. Snapshotted after the busted-player
+  // filter so a re-entry of someone who sat down with 0 stack is not
+  // counted as a pre-hand "balance".
+  for (let i = 0; i < table.seats.length; i++) {
+    const s = table.seats[i];
     if (!s) continue;
     s.holeCards = [];
     s.folded = false;
     s.contributed = 0;
     s.allIn = false;
-    if (s.stack <= 0) s.removed = true;
+    if (s.stack <= 0) {
+      s.removed = true;
+      s.preHandStack = 0;
+    } else {
+      s.preHandStack = s.stack;
+    }
   }
+  // Mark the hand as having just begun so the AFK idle timer starts fresh
+  // for whoever the currentPlayer ends up being.
+  table._actionClockAt = Date.now();
 
   if (countPlayablePlayers(table) < 2) {
     table.phase = PHASE.WAITING;
@@ -370,7 +384,17 @@ function startHand(table) {
     table.minRaise = 0;
     table.lastAggressor = -1;
   }
+  // Stamp the AFK clock so the actor whose turn it now is has the full
+  // 90s window. (Post-blind amounts the actor might call next turn is
+  // not relevant here; we just want a fresh "your turn started" moment.)
+  table._actionClockAt = Date.now();
   table.handLog.push({ type: 'hand_start', number: table.handNumber, seats: order });
+  // Reset the AFK clock right after the hand starts so the first actor
+  // gets the full 90s window. (The earlier `table._actionClockAt = Date.now()`
+  // snapshot also fires here, but a second stamp immediately before
+  // currentPlayerIndex is set means the clock starts exactly when it's
+  // the actor's turn.}
+  table._actionClockAt = Date.now();
 
   // Action order:
   // - Normal: starts left of BB
@@ -401,13 +425,19 @@ function postBlind(table, seatIdx, amount) {
 function advancePhase(table) {
   const live = countLivePlayers(table);
   if (live <= 1) {
-    // Only one (or zero) not-folded -> hand is over.
+    // Only one (or zero) not-folded -> hand is over by fold-out.
     const winnerSeat = table.seats.find(s => s && !s.removed && !s.folded);
     if (winnerSeat) {
       awardPot(table, [winnerSeat], [table.pot]);
     }
     table.phase = PHASE.HAND_OVER;
     table.currentPlayerIndex = -1;
+    // Busted-refund rule: if any seat ended the hand with stack === 0
+    // (they went all-in and lost, or were forced all-in by a raise they
+    // couldn't match), reset the OTHER live players' stacks to their
+    // pre-hand snapshot and void the pot. This keeps the meta-game fair:
+    // no one can be crippled by a single all-in loss.
+    checkBustedRefund(table);
     return false;
   }
 
@@ -617,6 +647,11 @@ function applyAction(table, seatIdx, action, amountParam) {
       advancePhase(table);
     } else {
       table.currentPlayerIndex = nextIdx;
+      // Stamp the AFK clock so the new currentPlayer has a fresh 90s
+      // window. Without this, the previous actor's clock would carry
+      // over and the new actor could be AFK-kicked before they ever see
+      // their turn.
+      table._actionClockAt = Date.now();
     }
   }
 
@@ -685,6 +720,51 @@ function resolveShowdown(table) {
   table.phase = PHASE.HAND_OVER;
   table.currentPlayerIndex = -1;
   table.showdownShown = true;
+  // Busted-refund rule (multi-way showdown variant): same as the
+  // fold-out branch above. If any non-folded, non-removed, non-sat-out
+  // seat ended the hand with stack===0, void the in-flight balances and
+  // refund everyone else to their pre-hand stacks.
+  checkBustedRefund(table);
+}
+
+// Voids the in-flight balances of the hand if any seat "got out"
+// (stack === 0) mid-hand, and refunds every other live seat's stack to
+// its preHandStack snapshot. The busted seat(s) stay at 0 and are
+// marked removed so they can't return.
+//
+// IMPORTANT: this is called ONLY inside the engine, after awardPot has
+// already paid out the pot to the formal winner(s). It then REFUNDS the
+// winner(s) too — the user-visible result is "the hand was voided; every
+// still-in player's chip count reverts to what it was when the hand
+// started, and the busted player(s) are flagged out". lastHandResults is
+// cleared so the client shows no winner banner (the event is signalled
+// via a system chat message instead, see rooms.addSystemMessage caller).
+function checkBustedRefund(table) {
+  if (table.phase === PHASE.WAITING || table.phase === PHASE.HAND_OVER) return false;
+  const liveWithZeroStack = [];
+  for (const s of table.seats) {
+    if (s && !s.removed && !s.folded && !s.satOut && s.stack === 0) {
+      liveWithZeroStack.push(s);
+    }
+  }
+  if (!liveWithZeroStack.length) return false;
+  for (let i = 0; i < table.seats.length; i++) {
+    const s = table.seats[i];
+    if (!s || s.removed) continue;
+    if (liveWithZeroStack.indexOf(s) !== -1) {
+      s.removed = true; // out of the game
+    } else if (typeof s.preHandStack === 'number') {
+      // Refund: revert to the snapshot taken at hand start. The winner's
+      // stack (which awardPot just boosted) is rolled back here.
+      s.stack = s.preHandStack;
+    }
+  }
+  table.pot = 0;
+  table.phase = PHASE.HAND_OVER;
+  table.currentPlayerIndex = -1;
+  table.lastHandResults = null;
+  table._bustedRefundThisHand = liveWithZeroStack.map((s) => s.name);
+  return true;
 }
 
 function endHand(table) {

@@ -381,7 +381,13 @@ function renderSeat(seat, idx, table, total) {
        renderCard(null, { small: true, faceDown: true })];
   ringChildren.push(el('div', { class: 'cards' }, cardEls));
 
-  ringChildren.forEach(c => wrap.appendChild(buildRing(c)));
+  // ONE seat-ring holding name + status + cards. Earlier this looped
+  // over each child and wrapped each in its OWN seat-ring, producing 3
+  // stacked pills per seat — the cards pill fell to the bottom of the
+  // visible area and the user reported "cards don't show". The single
+  // buildRing(...ringChildren) call below folds all siblings into one
+  // ring so the seat reads as name + status + cards inside one pill.
+  wrap.appendChild(buildRing(...ringChildren));
   return wrap;
 }
 

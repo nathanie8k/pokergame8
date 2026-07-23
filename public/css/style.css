@@ -1163,12 +1163,23 @@ input, button { color: inherit; }
   .form-grid { grid-template-columns: 1fr; }
   .table-card { padding: 12px; }
 
-  /* Tighter opponents row + smaller pills. */
+  /* Tighter opponents row + smaller pills.
+     Seat width 80px. Two card-small (40px each + 4px gap = 84px) used
+     to overflow the 80px seat now that cards live inside the same
+     .seat-ring as the name (post-renderSeat fix). Shrink the in-seat
+     card variants so the pair fits with a small breath of room. */
   .seat, .empty-seat { width: 80px; }
   .empty-seat { padding: 10px 6px; }
   .empty-seat .empty-seat-icon { width: 18px; height: 18px; font-size: 12px; }
-  .seat .seat-ring { padding: 6px 8px; }
+  .seat .seat-ring { padding: 6px 6px; }
   .seat .name { font-size: 10px; }
+  .seat .cards { gap: 2px; }
+  .seat .cards .card { width: 32px; height: 44px; }
+  .seat .cards .card .corner.top { top: 2px; left: 3px; }
+  .seat .cards .card .corner.bottom { bottom: 2px; right: 3px; }
+  .seat .cards .card .corner .rank { font-size: 11px; }
+  .seat .cards .card .corner .suit { font-size: 8px; }
+  .seat .cards .card .center-suit { font-size: 18px; }
 
   /* Smaller self-panel cards and tighter typography. */
   .self-panel { padding: 10px; gap: 8px; }
