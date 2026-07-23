@@ -76,8 +76,13 @@ function broadcastTable(tableId) {
   for (const sid of socketsInTable) {
     const socket = io.sockets.sockets.get(sid);
     if (!socket) continue;
-    const playerName = socket.data.playerName;
-    socket.emit('table_state', { table: rooms.publicView(tableId, playerName) });
+    // publicView expects a stable viewer identifier that matches each seat's
+    // `playerId` (the database id set when the player was seated). Passing the
+    // NAME here made isSelf always evaluate false, which broke the viewer's
+    // own hole-card reveal AND the action-bar gating. Use the player id.
+    const viewerId = socket.data.player && socket.data.player.id;
+    if (!viewerId) continue;
+    socket.emit('table_state', { table: rooms.publicView(tableId, viewerId) });
   }
   broadcastLobby();
 }

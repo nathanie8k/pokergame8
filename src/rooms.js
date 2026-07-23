@@ -111,6 +111,11 @@ class RoomManager {
 
   // Build a serializable public view of the table for the viewer.
   // Their own hole cards are included; others are nulled out.
+  // NOTE: viewerPlayerId is the viewer's database player id (NOT their display
+  // name). Each seat has `playerId: player.id` (set in `seatPlayer`), so
+  // server.js broadcasts must pass `socket.data.player.id` here — passing the
+  // name made `isSelf` always evaluate false for every viewer, which silently
+  // hid the viewer's own hole cards AND disabled their action bar.
   publicView(tableId, viewerPlayerId) {
     const t = this.tables.get(tableId);
     if (!t) return null;
