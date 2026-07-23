@@ -8,7 +8,7 @@
 
 'use strict';
 
-const RANK_NAMES = { 2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'T',11:'J',12:'Q',13:'K',14:'A' };
+const RANK_NAMES = { 2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'10',11:'J',12:'Q',13:'K',14:'A' };
 const SUIT_GLYPH = { s: '♠', h: '♥', d: '♦', c: '♣' };
 const SUIT_COLOR = { s: 'black', h: 'red', d: 'red', c: 'black' };
 
@@ -373,9 +373,12 @@ function buildRing(...kids) {
 }
 
 function renderCard(c, opts = {}) {
-  // Render either a real card face (rank + suit) or a face-down card back.
-  // `opts.faceDown` forces the back design, and is also used when no card
-  // data is available, so opponents' hole slots are never blank boxes.
+  // Real playing card layout: rank + small suit pair in top-left and
+  // bottom-right corners (the bottom corner is mirrored via CSS rotate so
+  // the rank reads correctly when the card faces the player), with a large
+  // suit glyph centered. Face-down cards use the existing purple back
+  // design (.card.face-down in style.css) and skip these elements.
+  // `opts.faceDown` is also implied when no card data is available.
   const faceDown = !!opts.faceDown || !c;
   const card = el('div', {
     class: (faceDown ? 'card face-down' : 'card' + (SUIT_COLOR[c.suit] === 'red' ? ' red' : ''))
@@ -383,9 +386,20 @@ function renderCard(c, opts = {}) {
          + ' fade-in',
   });
   if (!faceDown) {
-    card.appendChild(el('div', { class: 'rank', text: rankLabel(c.rank) }));
-    card.appendChild(el('div', { class: 'suit-l', text: SUIT_GLYPH[c.suit] }));
-    card.appendChild(el('div', { class: 'center-suit', text: SUIT_GLYPH[c.suit] }));
+    const rank = rankLabel(c.rank);
+    // Add an extra class for "10" so CSS can tighten the corner spacing
+    // (two-character rank fits less comfortably than a single glyph).
+    const rankClass = 'rank' + (rank === '10' ? ' is-ten' : '');
+    const suit = SUIT_GLYPH[c.suit];
+    card.appendChild(el('div', { class: 'corner top' }, [
+      el('div', { class: rankClass, text: rank }),
+      el('div', { class: 'suit', text: suit }),
+    ]));
+    card.appendChild(el('div', { class: 'center-suit', text: suit }));
+    card.appendChild(el('div', { class: 'corner bottom' }, [
+      el('div', { class: rankClass, text: rank }),
+      el('div', { class: 'suit', text: suit }),
+    ]));
   }
   return card;
 }
@@ -449,6 +463,10 @@ function setupActionButtons(selfSeat, t) {
   const maxRaise = selfSeat.stack + selfSeat.contributed;
 
   raiseBtn.disabled = selfSeat.stack <= 0 || maxRaise < minRaiseTotal;
+  // When no one has bet yet (post-flop first action or a pre-flop limp scenario),
+  // the existing "Raise" button takes a Bet role. Relabel it so the player
+  // sees the correct poker term.
+  raiseBtn.textContent = (t.currentBet || 0) === 0 ? 'Bet' : 'Raise';
   raiseInput.min = minRaiseTotal;
   raiseInput.max = maxRaise;
   raiseInput.value = Math.min(minRaiseTotal, maxRaise);
@@ -698,9 +716,30 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.action-btn[data-action]').forEach(b => {
     b.addEventListener('click', () => performAction(b.dataset.action));
   });
+  // The "Raise" button submits a 'raise' when there is a bet to raise, and a
+  // 'bet' when there is no current bet (first money in voluntarily). The
+  // typed amount is clamped to the legal range so it always succeeds; the
+  // server validates the same range and would otherwise toast an error.
   $('raiseBtn').addEventListener('click', () => {
-    const amt = parseInt($('raiseAmount').value, 10);
-    performAction('raise', amt);
+    const t = state.currentTable;
+    if (!t) return;
+    const selfSeat = t.seats.find(s => s.occupied && s.isSelf);
+    if (!selfSeat) return;
+    const raw = parseInt($('raiseAmount').value, 10);
+    if (!Number.isFinite(raw) || raw <= 0) {
+      showToast('Enter a valid amount', 'error');
+      return;
+    }
+    const isBet = (t.currentBet || 0) === 0;
+    let min;
+    if (isBet) {
+      min = t.bigBlind;
+    } else {
+      min = (t.currentBet || 0) + Math.max(t.minRaise || t.bigBlind, t.bigBlind);
+    }
+    const max = selfSeat.stack + selfSeat.contributed;
+    const total = Math.max(min, Math.min(raw, max));
+    performAction(isBet ? 'bet' : 'raise', total);
   });
 
   loadRandomNames();

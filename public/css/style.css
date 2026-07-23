@@ -459,28 +459,59 @@ input, button { color: inherit; }
 .card {
   width: var(--card-w);
   height: var(--card-h);
-  background: linear-gradient(135deg, #fffaf0, #f3e7d8);
-  border-radius: 8px;
-  display: flex; flex-direction: column; justify-content: space-between;
-  padding: 8px 10px;
-  color: #222;
-  font-weight: 700;
+  /* Tactile white + cream gradient + inset highlight + soft shadow so the
+     card feels lifted off the felt instead of printed on it. */
+  background: linear-gradient(160deg, #ffffff 0%, #f7efdc 92%);
+  border-radius: 9px;
   border: 1px solid #d7c7a8;
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 rgba(255,255,255,0.7);
+  color: #1f1a14;
+  font-weight: 700;
   font-family: "Trebuchet MS", "Helvetica Neue", sans-serif;
   position: relative;
   user-select: none;
+  overflow: hidden;
 }
 .card.red { color: #c40d1a; }
-.card .rank { font-size: 18px; line-height: 1; }
-.card .suit-l { font-size: 20px; line-height: 1; }
+
+/* Real-playing-card layout:
+   - .corner.top holds the rank stacked above a small suit (top-left).
+   - .corner.bottom is identical but rotated 180° via CSS so the rank reads
+     upright when the card faces the player on the bottom-right.
+   - .center-suit is the large visual pip in the middle. */
+.card .corner {
+  position: absolute;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+}
+.card .corner.top    { top: 5px;     left: 6px; }
+.card .corner.bottom { bottom: 5px;  right: 6px; transform: rotate(180deg); }
+.card .corner .rank {
+  font-size: 19px;
+  letter-spacing: 0;
+}
+/* "10" is two characters and reads loose at the corner; tighten the spacing
+   so it sits as compactly as the single-letter ranks. */
+.card .corner .rank.is-ten { letter-spacing: -1.5px; }
+.card .corner .suit {
+  font-size: 12px;
+  margin-top: 1px;
+}
+
 .card .center-suit {
   position: absolute;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 32px;
-  opacity: 0.8;
+  font-size: 38px;
+  line-height: 1;
+  opacity: 0.92;
+  pointer-events: none;
 }
+
 .card.face-down {
   background: linear-gradient(135deg, #4a2f99, #6b3fb5);
   color: #fff;
@@ -489,22 +520,25 @@ input, button { color: inherit; }
     linear-gradient(135deg, #4a2f99, #6b3fb5);
   border-color: #2a1a55;
 }
-.card.face-down .rank,
-.card.face-down .suit-l { visibility: hidden; }
+/* Hide face elements when showing the back design. */
+.card.face-down .corner,
+.card.face-down .center-suit { visibility: hidden; }
 .card.face-down::before {
   content: "";
   position: absolute; inset: 6px;
   border: 2px solid rgba(255,255,255,0.3);
   border-radius: 4px;
 }
+
 .card-small {
   width: 40px; height: 56px;
-  padding: 4px 6px;
-  font-size: 12px;
+  padding: 0;
 }
-.card-small .rank { font-size: 12px; }
-.card-small .suit-l { font-size: 12px; }
-.card-small .center-suit { font-size: 18px; }
+.card-small .corner.top    { top: 3px;    left: 4px; }
+.card-small .corner.bottom { bottom: 3px; right: 4px; }
+.card-small .corner .rank  { font-size: 13px; }
+.card-small .corner .suit  { font-size: 9px; }
+.card-small .center-suit   { font-size: 22px; }
 
 .community-cards .card.fade-in,
 .seat .cards .card.fade-in { animation: cardIn 250ms ease-out; }
@@ -685,10 +719,12 @@ input, button { color: inherit; }
   .seat { width: 96px; }
   .seat .name { font-size: 11px; }
   .seat .stack { font-size: 12px; }
-  .card { width: 48px; height: 70px; padding: 6px 8px; }
-  .card .rank { font-size: 14px; }
-  .card .suit-l { font-size: 16px; }
-  .card .center-suit { font-size: 22px; }
+  .card { width: 48px; height: 70px; padding: 0; }
+  .card .corner.top    { top: 3px;     left: 4px; }
+  .card .corner.bottom { bottom: 3px;  right: 4px; }
+  .card .corner .rank  { font-size: 13px; }
+  .card .corner .suit  { font-size: 9px; }
+  .card .center-suit   { font-size: 24px; }
   .top-bar { padding: 10px 14px; }
   .view { padding: 14px; }
   :root { --card-w: 48px; --card-h: 70px; }
