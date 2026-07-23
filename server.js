@@ -166,6 +166,13 @@ function tryStartHand(tableId) {
     if (table.phase !== poker.PHASE.WAITING) return;
     if (poker.countPlayablePlayers(table) < 2) return;
     poker.startHand(table);
+    // Persist stacks immediately after startHand so a server crash mid-hand
+    // doesn't lose the SB/BB posts. startHand deducts from SB + BB via
+    // postBlind, and those stack changes were not previously saved back to
+    // data.json until the hand's HAND_OVER phase. Without this hook, a
+    // crash right before any player's first action would silently revert
+    // SB/BB seats back to their pre-hand balance on the next server start.
+    saveStacksToDB(table).catch((err) => console.error('save stacks on startHand:', err));
     broadcastTable(tableId);
   }, 3000);
   rooms.nextHandTimers.set(tableId, timer);
@@ -337,6 +344,11 @@ io.on('connection', (socket) => {
     if (!t.seats[sidx]) return cb && cb({ ok: false, error: 'Empty seat' });
     const result = poker.applyAction(t, sidx, 'sit_out');
     if (!result.ok) return cb && cb({ ok: false, error: result.error });
+    // Sit-out mid-hand folds the seat. If this is the last live player to
+    // fold, `awardPot` mutates another seat's stack inside `advancePhase`.
+    // Persist every seat so the winner's grown stack reaches DB before any
+    // crash (scheduleNextHand runs async and could miss a server halt).
+    saveStacksToDB(t).catch((err) => console.error('save stacks on sit_out:', err));
     broadcastTable(tid);
     cb && cb({ ok: true });
   });
@@ -351,6 +363,7 @@ io.on('connection', (socket) => {
     if (t.seats[sidx].stack <= 0) return cb && cb({ ok: false, error: 'No chips (ask admin to add)' });
     const result = poker.applyAction(t, sidx, 'sit_in');
     if (!result.ok) return cb && cb({ ok: false, error: result.error });
+    saveStacksToDB(t).catch((err) => console.error('save stacks on sit_in:', err));
     broadcastTable(tid);
     cb && cb({ ok: true });
   });
@@ -391,10 +404,15 @@ io.on('connection', (socket) => {
       socket.emit('server_message', { level: 'error', text: result.error });
       return;
     }
-    // Best-effort: persist stack after each action so disconnect mid-hand loses little.
-    if (t.seats[sidx]) {
-      db.setPoints(t.seats[sidx].name, t.seats[sidx].stack).catch(() => {});
-    }
+    // Best-effort: persist ALL stacks after each action so a server crash
+    // mid-hand loses little. The actor's own save was the historical default,
+    // but a fold-out resolves the pot inside `awardPot` (called from
+    // `advancePhase` when `liveCount <= 1`), which boosts a *different*
+    // seat's stack — that winner's stack is otherwise only persisted at
+    // HAND_OVER via `scheduleNextHand`'s saveStacksToDB. Saving the whole
+    // table here guarantees the DB matches memory at every action boundary,
+    // not just at hand end.
+    saveStacksToDB(t).catch((err) => console.error('save stacks on action:', err));
     broadcastTable(tableId);
     cb && cb({ ok: true });
 
@@ -502,6 +520,11 @@ io.on('connection', (socket) => {
           seat.removed = true;
           if (t.currentPlayerIndex === sidx) {
             poker.applyAction(t, sidx, 'fold');
+            // Mid-hand disconnect-folds can resolve the hand via fold-out,
+            // which lets `awardPot` push the pot into another seat's stack.
+            // Save every seat so a crash here doesn't revert the disconnected
+            // crash-recovery to the pre-fold snapshot for the winner.
+            saveStacksToDB(t).catch((err) => console.error('save stacks on disconnect fold:', err));
             broadcastTable(tid);
           } else {
             seat.folded = true;
@@ -536,9 +559,30 @@ server.listen(PORT, HOST, () => {
 process.on('SIGINT',  () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-function shutdown(signal) {
+async function shutdown(signal) {
   console.log('\nReceived ' + signal + ' - shutting down...');
   clearInterval(lobbyBroadcastInterval);
-  io.close();
-  server.close(() => process.exit(0));
+  // BEFORE snapshotting, stop every code path that could mutate seat stacks:
+  //   1. tryStartHand's 3-second setTimeout (rooms.nextHandTimers) — its
+  //      callback calls poker.startHand, which posts blinds and adjusts
+  //      seat stacks.
+  //   2. io.close() — disconnects live sockets, which fires our disconnect
+  //      handler. That handler applies 'fold' (stacks unchanged for the
+  //      folder but awardPot may grow the winner), and is exactly the
+  //      final stack state we want to persist.
+  // Awaiting io.close() means we wait for all disconnect handlers to drain
+  // before snapshotting — no post-snapshot mutation is possible.
+  for (const [tid, timer] of rooms.nextHandTimers.entries()) {
+    clearTimeout(timer);
+    rooms.nextHandTimers.delete(tid);
+  }
+  await new Promise((resolve) => io.close(() => resolve()));
+  // Persist every seated player's stack so a graceful restart (e.g. a
+  // deployment) doesn't lose in-flight chips.
+  for (const t of rooms.tables.values()) {
+    try { await saveStacksToDB(t); }
+    catch (err) { console.error('shutdown save error:', err); }
+  }
+  await new Promise((resolve) => server.close(() => resolve()));
+  process.exit(0);
 }
