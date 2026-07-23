@@ -38,7 +38,11 @@ function el(tag, attrs = {}, children = []) {
     else if (k.startsWith('on') && typeof attrs[k] === 'function') e.addEventListener(k.slice(2), attrs[k]);
     else e.setAttribute(k, attrs[k]);
   }
-  for (const c of [].concat(children)) {
+  // Accept children as a flat list OR a (possibly nested) array of nodes/strings.
+  // This guards against accidentally passing the result of .map() inside another array,
+  // which would otherwise hit appendChild with an Array instead of a Node.
+  const list = Array.isArray(children) ? children : [children];
+  for (const c of list.flat(Infinity)) {
     if (c == null) continue;
     if (typeof c === 'string') e.appendChild(document.createTextNode(c));
     else e.appendChild(c);
@@ -341,11 +345,13 @@ function renderSeat(seat, idx, table, total) {
   ringChildren.push(el('div', { class: 'status ' + statusClass.join(' '),
     text: statusText + (statusClass.length > 0 ? ' \u00B7 ' + statusClass[1] : '') }));
 
-  ringChildren.push(el('div', { class: 'cards' }, [
-    seat.holeCards && seat.holeCards.length > 0
-      ? seat.holeCards.map((c, i) => renderCard(c, { delay: i * 80, small: true }))
-      : [el('div', { class: 'empty-card' }), el('div', { class: 'empty-card' })]
-  ]));
+  // Build the inner card nodes FIRST so we can pass a flat list of Nodes to el().
+  // (Passing them nested in an outer array would cause appendChild to receive an
+  // Array instead of a Node and crash the whole render.)
+  const cardEls = seat.holeCards && seat.holeCards.length > 0
+    ? seat.holeCards.map((c, i) => renderCard(c, { delay: i * 80, small: true }))
+    : [el('div', { class: 'empty-card' }), el('div', { class: 'empty-card' })];
+  ringChildren.push(el('div', { class: 'cards' }, cardEls));
 
   ringChildren.forEach(c => wrap.appendChild(buildRing(c)));
   return wrap;
