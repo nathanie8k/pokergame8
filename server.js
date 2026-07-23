@@ -259,7 +259,15 @@ io.on('connection', (socket) => {
       targetSeat = rooms.findEmptySeat(tableId);
     }
     if (targetSeat === -1) return cb && cb({ ok: false, error: 'No empty seats' });
-    if (t.seats[targetSeat]) return cb && cb({ ok: false, error: 'Seat taken' });
+    // A seat counts as "taken" ONLY when it's both non-null AND not flagged
+    // as removed. The lobby's seatsTaken count (and rooms.findEmptySeat,
+    // which both ignore removed seats) treat removed seats as empty, so the
+    // take-check has to agree or a player who sees "0/6 seats" in the lobby
+    // gets a "Seat taken" toast when they hit Join. The disconnect handler
+    // flags seats removed=true but doesn't null them outside mid-hand, and
+    // endHand flags busted players the same way — both can leave stale
+    // removed-but-non-null seats behind that need to be reclaimable.
+    if (t.seats[targetSeat] && !t.seats[targetSeat].removed) return cb && cb({ ok: false, error: 'Seat taken' });
 
     const result = rooms.seatPlayer(tableId, targetSeat, player);
     if (!result.ok) return cb && cb({ ok: false, error: result.error });

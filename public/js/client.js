@@ -275,7 +275,14 @@ function renderTable() {
   const N = t.maxSeats;
   let playerSeatedHere = false;
   t.seats.forEach((seat, i) => {
-    if (seat && seat.occupied) {
+    // A seat with `removed` or `disconnected === true` is server-side a stale
+    // occupant that the lobby's seatsTaken count already excludes — see
+    // server.js#listTables and server.js#join_table. Render it as the same
+    // "Sit here" empty-chair the lobby advertises so the view stays
+    // consistent; otherwise the player sees an occupied-looking chair with
+    // a "Removed"/"Disconnected" status label, thinks "nobody is sitting",
+    // and the server can still toast "Seat taken" if they tried to sit there.
+    if (seat && seat.occupied && !seat.removed && !seat.disconnected) {
       if (seat.isSelf) playerSeatedHere = true;
       const seatEl = renderSeat(seat, i, t, N);
       seatsHost.appendChild(seatEl);
@@ -342,8 +349,6 @@ function renderSeat(seat, idx, table, total) {
   if (seat.folded)  statusClass.push('folded',  'Folded');
   else if (seat.allIn)   statusClass.push('all-in',  'All-in');
   else if (seat.satOut)  statusClass.push('sat-out', 'Sitting out');
-  else if (seat.removed) statusClass.push('removed','Removed');
-  else if (seat.disconnected) statusClass.push('removed','Disconnected');
   ringChildren.push(el('div', { class: 'status ' + statusClass.join(' '),
     text: statusText + (statusClass.length > 0 ? ' \u00B7 ' + statusClass[1] : '') }));
 

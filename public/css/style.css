@@ -384,7 +384,6 @@ input, button { color: inherit; }
 .seat .status { font-size: 11px; color: var(--text-dim); }
 .seat .status.folded   { color: var(--text-mute); }
 .seat .status.all-in   { color: var(--good); }
-.seat .status.removed  { color: var(--danger); font-style: italic; }
 .seat .status.sat-out  { color: var(--text-mute); font-style: italic; }
 
 .seat .cards {

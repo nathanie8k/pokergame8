@@ -110,7 +110,24 @@ class RoomManager {
     const t = this.tables.get(tableId);
     if (!t) return { ok: false, error: 'No such table' };
     if (seatIdx < 0 || seatIdx >= t.seats.length) return { ok: false, error: 'Bad seat' };
-    if (t.seats[seatIdx]) return { ok: false, error: 'Seat taken' };
+    // Removed seats are reclaimable: they linger as non-null after a mid-hand
+    // disconnect leaves the table mid-hand, or after endHand flags a busted
+    // player's seat removed=true. findEmptySeat already considers them empty,
+    // and the lobby's seatsTaken count filters them out, so the take-check
+    // must agree — otherwise a player sees "0 seats" in the lobby but gets
+    // "Seat taken" when clicking Join. The new seat object below overwrites
+    // the stale entry wholesale (removed: false in particular), so nothing
+    // leaks from the previous occupant.
+    if (t.seats[seatIdx] && !t.seats[seatIdx].removed) return { ok: false, error: 'Seat taken' };
+    // If the seat was mid-hand-leaved before this reclaim, drop the stale
+    // _pendingUnseat entry: finishPendingUnseat runs at HAND_OVER and
+    // nulls a seat only when its `removed` is still true. The new occupant
+    // has removed=false, so the old index would silently leak in the array
+    // forever. Filter the entry we just claimed out so the array stays
+    // accurate.
+    if (t._pendingUnseat && t._pendingUnseat.includes(seatIdx)) {
+      t._pendingUnseat = t._pendingUnseat.filter((i) => i !== seatIdx);
+    }
     t.seats[seatIdx] = {
       playerId: player.id,
       name: player.name,

@@ -406,6 +406,121 @@ function seatAt(t, idx, playerId, name, stack) {
      'Non-default table with at least one seated player survives cleanup');
 }
 
+// ----- Reclaimeable removed seats ("Seat taken" false-positive fix) -----
+//
+// Regression for: clicking Join from the lobby when seatsTaken is 0 toasts
+// "Seat taken". Root cause was a take-check / findEmptySeat definition
+// mismatch: server.js#join_table and rooms.seatPlayer rejected non-null
+// seats regardless of the `removed` flag, but the lobby's seatsTaken count
+// (and findEmptySeat) already treat removed seats as empty. The disconnect
+// handler and endHand can leave seats in non-null + removed=true state
+// between hands, so the user-facing behavior broke once any player left.
+
+// 1) rooms.seatPlayer accepts a removed-but-non-null seat (the fix).
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'reclaim', smallBlind:5, bigBlind:10, maxSeats:6 });
+  // Simulate Player A disconnected: seat object is non-null but flagged
+  // removed + disconnected — the exact preserved state that triggered the bug.
+  seatAt(t, 0, 'A', 'A', 1000);
+  t.seats[0].removed = true;
+  t.seats[0].disconnected = true;
+  // Sanity: lobby says 0 seats taken (matching what the user actually saw).
+  const lobby = rooms.listTables().find((x) => x.id === t.id);
+  eq(lobby.seatsTaken, 0,
+     'Lobby seatsTaken excludes a stale removed-but-non-null seat');
+  // Player B now joins. Previously this returned `{ ok:false, error:"Seat taken" }`.
+  const result = rooms.seatPlayer(t.id, 0, { id:'B', name:'B', points:750 });
+  ok(result.ok === true && result.error === undefined,
+     'rooms.seatPlayer accepts reclaimeing a removed-but-non-null seat');
+  eq(t.seats[0].name, 'B', 'Seat is now bound to the new player');
+  ok(t.seats[0].removed === false && t.seats[0].disconnected === false,
+     'New seat data is fully reset (removed=false, disconnected=false)');
+}
+
+// 2) rooms.seatPlayer STILL rejects a normal occupied (non-null, non-removed) seat.
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'occupied', smallBlind:5, bigBlind:10, maxSeats:6 });
+  seatAt(t, 0, 'A', 'A', 1000);
+  const result = rooms.seatPlayer(t.id, 0, { id:'B', name:'B', points:750 });
+  ok(!result.ok && result.error === 'Seat taken',
+     'rooms.seatPlayer still rejects a normal occupied seat');
+}
+
+// 3) findEmptySeat matches the take-check semantics (returns the lowest
+//    index of a removed-but-non-null seat).
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'findEmpty', smallBlind:5, bigBlind:10, maxSeats:6 });
+  seatAt(t, 0, 'A', 'A', 0);  t.seats[0].removed = true; // busted seat
+  seatAt(t, 3, 'B', 'B', 0);  t.seats[3].removed = true; // busted seat
+  eq(rooms.findEmptySeat(t.id), 0,
+     'findEmptySeat returns the lowest index of a removed-but-non-null seat');
+}
+
+// 4) end-to-end bug scenario: after endHand, busted seats are non-null +
+//    removed=true; lobby shows 0 seats; new seatPlayer calls succeed.
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'busted-afterhand', smallBlind:5, bigBlind:10, maxSeats:6 });
+  seatAt(t, 0, 'A', 'A', 1000);
+  seatAt(t, 2, 'B', 'B', 1000);
+  P.startHand(t);
+  P.endHand(t);
+  // Force both players to 0 chips — endHand flags 0-stack seats removed=true,
+  // exactly the persisted state the original bug was triggered by.
+  for (const s of t.seats) if (s) s.stack = 0;
+  for (const s of t.seats) if (s && s.stack <= 0) s.removed = true;
+  ok(t.seats[0] && t.seats[0].removed === true,
+     'Post-hand: busted seat is non-null with removed=true');
+  eq(rooms.listTables().find((x) => x.id === t.id).seatsTaken, 0,
+     'Post-hand: lobby reports 0 occupied seats');
+  // New players walking in. Previously got "Seat taken"; now they reclame.
+  const r0 = rooms.seatPlayer(t.id, 0, { id:'C', name:'C', points:500 });
+  const r2 = rooms.seatPlayer(t.id, 2, { id:'D', name:'D', points:500 });
+  ok(r0.ok, 'Post-bust: new player can reclaim a removed seat at index 0');
+  ok(r2.ok, 'Post-bust: new player can reclaim a removed seat at index 2');
+  eq(rooms.listTables().find((x) => x.id === t.id).seatsTaken, 2,
+     'Post-reclaim: lobby reports both new seats as occupied');
+}
+
+// 5) Mid-hand reclaim: a player whose seat was marked removed+folded by
+//    the leave-mid-hand path can be replaced by a fresh joiner before the
+//    hand finishes. Visually the seat shows as an empty pill (matching
+//    what the lobby's seatsTaken count has been advertising all along),
+//    so the server's take-check agreeing is the correct invariant.
+{
+  const rooms = new RoomManager();
+  const t = rooms.createTable({ name:'mid-hand-reclaim', smallBlind:5, bigBlind:10, maxSeats:6 });
+  seatAt(t, 0, 'A', 'A', 1000);
+  seatAt(t, 3, 'B', 'B', 1000);
+  P.startHand(t);
+  // Mid-hand leave: Player B's seat is folded + removed + queued for cleanup.
+  rooms.unseat(t.id, 3);
+  ok(t.seats[3] && t.seats[3].removed === true && t.seats[3].folded === true,
+     'Mid-hand leave marks B\'s seat non-null with removed=true + folded=true');
+  // Player C joins mid-hand. The lobby's seatsTaken doesn't count seat 3,
+  // so the visible "0/6" math has always suggested the seat is empty; the
+  // server now agrees and lets C overwrite the stale entry in-place.
+  const reclame = rooms.seatPlayer(t.id, 3, { id:'C', name:'C', points:500 });
+  ok(reclame.ok, 'Mid-hand: new player can reclaim a removed+folded seat');
+  ok(t.seats[3] && t.seats[3].removed === false && t.seats[3].folded === false,
+     'Mid-hand: reclaiming resets the seat\'s removed/folded flags');
+  // Mid-hand leave queued seat 3 in _pendingUnseat. Reclaiming has to drop
+  // that stale entry: finishPendingUnseat only nulls when removed=true, and
+  // the new occupant has removed=false, so a leftover entry would silently
+  // leak in the array forever.
+  eq(t._pendingUnseat, [],
+     'Mid-hand: reclaiming drops the stale _pendingUnseat entry from the prior leave');
+  // The hand should still run cleanly to completion without crashing.
+  P.endHand(t);
+  eq(t.phase, P.PHASE.WAITING, 'Mid-hand reclaim: hand completes normally on endHand');
+  // After endHand, C is still seated (stack > 0) and ready for next hand.
+  ok(t.seats[3] && t.seats[3].name === 'C' && t.seats[3].stack === 500,
+     'Mid-hand reclaim: new player is intact at end of hand');
+}
+
 console.log('Room / default-table tests: ' + passed + ' passed (cumulative), ' + failed + ' failed (cumulative)');
 console.log('');
 console.log('Poker engine tests: ' + passed + ' passed, ' + failed + ' failed');
