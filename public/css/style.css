@@ -478,8 +478,11 @@ input, button { color: inherit; }
 
 /* Real-playing-card layout:
    - .corner.top holds the rank stacked above a small suit (top-left).
-   - .corner.bottom is identical but rotated 180° via CSS so the rank reads
-     upright when the card faces the player on the bottom-right.
+   - .corner.bottom is the same content positioned at bottom-right; we
+     deliberately do NOT rotate it 180° because that mirrors Unicode glyphs
+     ("A" -> "∀", "K" -> "ʞ", etc.) which renders as broken-looking
+     characters in most browsers/fonts. Modern digital poker UIs
+     (Hearthstone, PokerStars, etc.) render both corners upright-readable.
    - .center-suit is the large visual pip in the middle. */
 .card .corner {
   position: absolute;
@@ -489,7 +492,7 @@ input, button { color: inherit; }
   pointer-events: none;
 }
 .card .corner.top    { top: 5px;     left: 6px; }
-.card .corner.bottom { bottom: 5px;  right: 6px; transform: rotate(180deg); }
+.card .corner.bottom { bottom: 5px;  right: 6px; }
 .card .corner .rank {
   font-size: 19px;
   letter-spacing: 0;

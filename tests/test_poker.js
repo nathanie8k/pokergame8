@@ -237,6 +237,35 @@ function make4PlayerTable() {
   }
 }
 
+// Auto-advance when every live player is all-in.
+// Before the bug fix, heads-up where both players shoved pre-flop would
+// deal the flop, set currentPlayerIndex = -1 (nobody to act), then deadlock:
+// only applyAction ever calls advancePhase, and no socket event could fire
+// with currentPlayerIndex === -1. The fix is advancePhase recursing when the
+// freshly-started round has no active player, so the remaining community
+// cards are dealt automatically until resolveShowdown runs.
+{
+  const t = P.createTable({ id:'ai', smallBlind:5, bigBlind:10, maxSeats:6 });
+  t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+  t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+  t.buttonIndex = 0;
+  P.startHand(t);
+  // Both players shove their entire stack pre-flop.
+  ok(P.applyAction(t, t.currentPlayerIndex, 'all_in').ok, 'First all-in applied');
+  ok(P.applyAction(t, t.currentPlayerIndex, 'all_in').ok, 'Second all-in applied');
+  eq(t.phase, P.PHASE.HAND_OVER, 'All-in pre-flop auto-advances to HAND_OVER (no deadlock)');
+  eq(t.communityCards.length, 5, 'All 5 community cards dealt once nobody can act');
+  // Chips must be conserved (no leak in the auto-advance path).
+  const totalChips = t.seats.filter(s => s && !s.removed).reduce((a, s) => a + s.stack, 0);
+  eq(totalChips, 2000, 'Chips conserved across both all-in players (2000 total)');
+  // And a winner must be paid out (or split equally to both).
+  const winners = t.seats.filter(s => s && s.stack > 0);
+  ok(winners.length >= 1, 'At least one player has chips after auto-advance to showdown');
+  // Sanity: lastHandResults is populated so the client can render a banner.
+  ok(!!t.lastHandResults && t.lastHandResults.winners.length >= 1,
+     'lastHandResults populated for client banner');
+}
+
 console.log('');
 console.log('Poker engine tests: ' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);

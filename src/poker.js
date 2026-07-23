@@ -419,6 +419,22 @@ function advancePhase(table) {
 
   // Start new betting round.
   beginBettingRound(table);
+
+  // Auto-fast-forward: once we've dealt the next phase, if every remaining
+  // player is all-in / sat-out / folded, no one can act for the new round —
+  // e.g. heads-up where both players shoved pre-flop. Without this guard the
+  // game deadlocks here because only `applyAction` calls `advancePhase`, but
+  // no socket action will ever arrive when `currentPlayerIndex === -1`.
+  // Recurse to deal the remaining streets until `resolveShowdown` sets
+  // `HAND_OVER`, which terminates the recursion cleanly.
+  if (
+    table.currentPlayerIndex === -1 &&
+    table.phase !== PHASE.HAND_OVER &&
+    table.phase !== PHASE.SHOWDOWN
+  ) {
+    return advancePhase(table);
+  }
+
   return true;
 }
 
