@@ -6,6 +6,30 @@
       "points": 7769,
       "created": 1784747056676,
       "updated": 1784747289980
+    },
+    "Alice": {
+      "id": "alice-7769",
+      "name": "Alice",
+      "points": 5000,
+      "created": 1784827297277
+    },
+    "Bob": {
+      "id": "bob-0b0b",
+      "name": "Bob",
+      "points": 8500,
+      "created": 1784827297277
+    },
+    "Carol": {
+      "id": "carol-70f4",
+      "name": "Carol",
+      "points": 3200,
+      "created": 1784827297277
+    },
+    "Dave": {
+      "id": "dave-3918",
+      "name": "Dave",
+      "points": 0,
+      "created": 1784827297277
     }
   },
   "adminPassword": "admin123",

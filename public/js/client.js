@@ -18,6 +18,7 @@ const state = {
   isAdmin:       false,
   tables:        [],         // lobby view: [{ id, name, seatsTaken, maxSeats, phase, handInProgress }]
   currentTable:  null,       // full table state if joined
+  leaderboardData: null,     // last /api/leaderboard payload, used for re-renders
   view:          'login',    // 'login' | 'lobby' | 'table'
   toastTimer:    null,
   toastType:     null,
@@ -640,6 +641,98 @@ function performAction(action, amount) {
   });
 }
 
+// ---------- Leaderboard modal ----------
+// Public "top players" view. Open from the top-bar button, fetch /api/leaderboard
+// once on open (or on Refresh), and render a podium for top 3 + a dense list
+// for the remainder (current viewer is highlighted wherever they appear so
+// they don't have to scroll). Cached `state.leaderboardData` lets switching
+// between views re-render without a network round-trip; explicitly nulled on
+// socket reconnect so the next open fresh-loads.
+async function openLeaderboard() {
+  $('leaderboardModal').style.display = '';
+  // Always reload on open — points shift constantly during play, so showing
+  // a stale snapshot would defeat the meta-game meaning of the view.
+  await loadLeaderboard();
+}
+function closeLeaderboard() {
+  $('leaderboardModal').style.display = 'none';
+}
+async function loadLeaderboard() {
+  const body = $('leaderboardBody');
+  if (body) body.innerHTML = '<div class="leaderboard-empty muted">Loading…</div>';
+  // Monotonic request-id token: if the user spam-clicks Refresh, multiple
+  // fetches are in flight and could resolve out of order. We only render
+  // the response from the most-recent request (`reqId === state.lbReqId`)
+  // so earlier slow responses can't overwrite a fresher one.
+  const reqId = (state.lbReqId = (state.lbReqId || 0) + 1);
+  try {
+    const r = await fetch('/api/leaderboard');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (reqId !== state.lbReqId) return; // a newer request superseded us
+    state.leaderboardData = data.players || [];
+    const ts = $('leaderboardUpdatedAt');
+    if (ts) {
+      const d = new Date();
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const ss = String(d.getSeconds()).padStart(2, '0');
+      ts.textContent = `Updated ${hh}:${mm}:${ss}`;
+    }
+    renderLeaderboard();
+  } catch (err) {
+    if (reqId !== state.lbReqId) return;
+    if (body) body.innerHTML = '<div class="leaderboard-empty muted">Could not load leaderboard. Try refresh.</div>';
+  }
+}
+function renderLeaderboard() {
+  const body = $('leaderboardBody');
+  if (!body) return;
+  body.innerHTML = '';
+  const players = state.leaderboardData || [];
+  if (!players.length) {
+    body.appendChild(el('div', { class: 'leaderboard-empty muted', text: 'No players yet. Start a game to climb the ranks!' }));
+    return;
+  }
+  const me = state.player && state.player.name;
+  const top = players.slice(0, 3);
+  const rest = players.slice(3);
+
+  // Podium: render the top 3 in classic 2-1-3 visual order regardless of
+  // their actual ranks so the gold medallion sits at the top-center. Pad to
+  // length 3 with a stretch of null placeholders so the podium always feels
+  // complete; the empty placeholder still gets a faint rank chip so the
+  // visual rhythm is preserved.
+  const podiumOrder = [top[1] || null, top[0] || null, top[2] || null];
+  const podiumRanks = [2, 1, 3];
+  const podiumMedals = ['🥈', '🥇', '🥉'];
+  const podium = el('div', { class: 'podium' });
+  podiumOrder.forEach((p, idx) => {
+    const card = el('div', { class: 'podium-card rank-' + podiumRanks[idx] + (p && me && p.name === me ? ' is-self' : '') });
+    card.appendChild(el('span', { class: 'podium-rank', text: '#' + podiumRanks[idx] }));
+    card.appendChild(el('div', { class: 'podium-medal', text: podiumMedals[idx] }));
+    card.appendChild(el('div', { class: 'podium-name', text: p ? p.name : '—' }));
+    card.appendChild(el('div', { class: 'podium-points', text: p ? formatNumber(p.points) + ' pts' : '' }));
+    if (p && me && p.name === me) card.appendChild(el('span', { class: 'leaderboard-self-badge', text: 'You' }));
+    podium.appendChild(card);
+  });
+  body.appendChild(podium);
+
+  // Ranks 4+
+  if (rest.length) {
+    const list = el('div', { class: 'leaderboard-list' });
+    rest.forEach((p, i) => {
+      const rank = i + 4;
+      const row = el('div', { class: 'lb-row' + (me && p.name === me ? ' is-self' : '') });
+      row.appendChild(el('div', { class: 'lb-rank', text: '#' + rank }));
+      row.appendChild(el('div', { class: 'lb-name', text: p.name }));
+      row.appendChild(el('div', { class: 'lb-points', text: formatNumber(p.points) + ' pts' }));
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+  }
+}
+
 // ---------- Admin modal ----------
 
 function openAdmin() {
@@ -782,6 +875,16 @@ function adminChangePassword() {
 
 socket.on('connect', () => {
   console.log('Connected to server.');
+  // Drop any cached leaderboard snapshot so the next modal open refetches
+  // with up-to-date points; without this, a stale page could show ranks
+  // and points from the prior session on a fast Refresh click.
+  state.leaderboardData = null;
+  // Only clear the admin flag on a *reconnect* — the server already
+  // removed our prior socket from socketToAdmin on the previous disconnect,
+  // so on a true reconnect the local flag is stale. `state.player` is the
+  // simplest discriminator: it's null on a fresh page load (auto-login has
+  // not yet run) and stays truthy across reconnects within the same page.
+  if (state.player) state.isAdmin = false;
   // Auto-login if we have a saved name
   try {
     const saved = localStorage.getItem('pokerName');
@@ -832,6 +935,15 @@ document.addEventListener('DOMContentLoaded', () => {
   $('loginBtn').addEventListener('click', doLogin);
   $('loginName').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   $('refreshNamesBtn').addEventListener('click', () => socket.emit('random_names'));
+
+  $('leaderboardBtn').addEventListener('click', openLeaderboard);
+  $('leaderboardCloseBtn').addEventListener('click', closeLeaderboard);
+  // Refresh button + click-outside-to-close on the backdrop (but not the
+  // inner content) match the admin modal pattern.
+  $('leaderboardRefreshBtn').addEventListener('click', loadLeaderboard);
+  $('leaderboardModal').addEventListener('click', (e) => {
+    if (e.target === $('leaderboardModal')) closeLeaderboard();
+  });
 
   $('adminBtn').addEventListener('click', openAdmin);
   $('adminCloseBtn').addEventListener('click', closeAdmin);

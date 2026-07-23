@@ -221,6 +221,29 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, tables: rooms.listTables().length });
 });
 
+// Public leaderboard. Returns the top N players by points so the lobby
+// nav can show off the meta-game without requiring admin login. Only name
+// + points are exposed (no IDs / no created timestamps).
+//
+// Intentionally unauthenticated: this is a friendly-points app where
+// surfacing who leads the meta-game is part of the fun. Do not gate this
+// behind admin without first auditing whether things like admin_list
+// (which still uses socket-side admin) might be confusingly inconsistent.
+app.get('/api/leaderboard', async (_req, res) => {
+  try {
+    const all = await db.getAllPlayers();
+    const players = all
+      .filter((p) => p && p.name)
+      .sort((a, b) => (b.points || 0) - (a.points || 0) || a.name.localeCompare(b.name))
+      .slice(0, 50)
+      .map((p) => ({ name: p.name, points: Math.max(0, Math.floor(p.points || 0)) }));
+    res.json({ players });
+  } catch (err) {
+    console.error('leaderboard error:', err);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
 // ----- Socket.io handlers -----
 
 io.on('connection', (socket) => {

@@ -17,6 +17,7 @@
     <div class="top-info" id="topInfo" style="display:none">
       <span class="player-chip" id="playerChip"></span>
       <span class="points-chip" id="pointsChip"></span>
+      <button class="ghost-btn" id="leaderboardBtn" title="View top players">★ Leaderboard</button>
       <button class="ghost-btn" id="adminBtn" title="Open admin panel">Admin</button>
     </div>
   </header>
@@ -204,6 +205,30 @@
   </main>
 
   <div id="toast" class="toast" style="display:none"></div>
+
+  <!-- Leaderboard modal — opened from the top-bar "★ Leaderboard" button.
+       Polished casino-style view of the top 50 by points. Top 3 are
+       rendered as a podium with gold / silver / bronze accents so the
+       meta-game has immediate visual hierarchy. The current viewer's row
+       is highlighted wherever they appear so they can find themselves. -->
+  <div class="modal" id="leaderboardModal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="leaderboardHeading">
+    <div class="modal-content leaderboard-content">
+      <div class="modal-header">
+        <div class="leaderboard-title">
+          <span class="leaderboard-trophy" aria-hidden="true">🏆</span>
+          <h3>Top Players</h3>
+        </div>
+        <button class="close-btn" id="leaderboardCloseBtn" title="Close">×</button>
+      </div>
+      <div class="leaderboard-meta">
+        <span class="muted small" id="leaderboardUpdatedAt"></span>
+        <button class="link-btn" id="leaderboardRefreshBtn" title="Refresh now">Refresh</button>
+      </div>
+      <div class="leaderboard-body" id="leaderboardBody">
+        <div class="leaderboard-empty muted">Loading…</div>
+      </div>
+    </div>
+  </div>
 
   <script src="/js/client.js"></script>
 </body>

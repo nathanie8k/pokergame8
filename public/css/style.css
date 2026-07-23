@@ -634,6 +634,173 @@ input, button { color: inherit; }
   color: var(--text-dim);
 }
 
+/* ===== Leaderboard =====
+   Modal that lists the top 50 players by points. The top 3 are rendered as
+   a podium with gold / silver / bronze card accents so the meta-game has
+   immediate visual hierarchy. Ranks 4+ flow into a compact, dense table
+   with the current viewer's row highlighted regardless of rank so they
+   can find themselves even when buried. */
+.leaderboard-content { max-width: 760px; }
+.leaderboard-title { display: flex; align-items: center; gap: 10px; }
+.leaderboard-title h3 { margin: 0; letter-spacing: 0.4px; }
+.leaderboard-trophy {
+  font-size: 26px; line-height: 1;
+  filter: drop-shadow(0 2px 6px rgba(255,204,77,0.5));
+}
+.leaderboard-meta {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 14px;
+}
+.leaderboard-body { display: flex; flex-direction: column; gap: 18px; }
+.leaderboard-empty {
+  text-align: center; padding: 24px 0; font-style: italic;
+}
+
+.podium {
+  display: flex; align-items: flex-end; justify-content: center;
+  gap: 14px;
+  padding: 12px 6px 0;
+}
+.podium-card {
+  flex: 1 1 0; min-width: 0;
+  background: var(--bg-2);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg);
+  padding: 18px 14px 16px;
+  text-align: center;
+  position: relative;
+  box-shadow: var(--shadow-sm);
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+  animation: podiumRise 360ms ease-out both;
+}
+.podium-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(255,255,255,0.18);
+}
+.podium-card .podium-rank {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  border-radius: 999px;
+  font-weight: 800; font-size: 16px;
+  color: #1f1a14;
+  box-shadow: var(--shadow-sm);
+  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+}
+.podium-card .podium-name {
+  font-weight: 700; font-size: 15px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.podium-card .podium-points {
+  font-size: 22px; font-weight: 800;
+  margin-top: 4px;
+}
+.podium-card .podium-medal {
+  font-size: 26px; margin-top: 2px; line-height: 1;
+}
+.podium-card .leaderboard-self-badge {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  background: var(--info); color: #062b36;
+  padding: 2px 8px; border-radius: 999px;
+  font-weight: 700;
+}
+.podium-card.rank-1 {
+  background: linear-gradient(180deg, rgba(255,204,77,0.18), var(--bg-2));
+  border-color: rgba(255,204,77,0.5);
+  padding-top: 26px; min-height: 132px;
+}
+.podium-card.rank-1 .podium-rank { background: linear-gradient(135deg, #ffe27a, #c9931f); }
+.podium-card.rank-1 .podium-points { color: #ffe27a; }
+.podium-card.rank-1 { animation-delay: 60ms; }
+.podium-card.rank-2 {
+  background: linear-gradient(180deg, rgba(220,220,235,0.16), var(--bg-2));
+  border-color: rgba(220,220,235,0.45);
+  padding-top: 26px; min-height: 116px;
+}
+.podium-card.rank-2 .podium-rank { background: linear-gradient(135deg, #f1f1f4, #b1b3c0); }
+.podium-card.rank-2 .podium-points { color: #f1f1f4; }
+.podium-card.rank-3 {
+  background: linear-gradient(180deg, rgba(217,150,86,0.16), var(--bg-2));
+  border-color: rgba(217,150,86,0.45);
+  padding-top: 26px; min-height: 100px;
+}
+.podium-card.rank-3 .podium-rank { background: linear-gradient(135deg, #f0c594, #a5672a); }
+.podium-card.rank-3 .podium-points { color: #f0c594; }
+.podium-card.rank-3 { animation-delay: 120ms; }
+/* When the viewer lands on the podium, light it up with the same info-cyan
+   recipe the lb-row.is-self uses, so their silhouette is unmistakable —
+   gold/silver/bronze accents stay but the border + glow say "you". */
+.podium-card.is-self {
+  box-shadow:
+    0 0 0 3px rgba(92,205,255,0.35),
+    0 0 24px rgba(92,205,255,0.3);
+}
+@keyframes podiumRise {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.leaderboard-list {
+  display: flex; flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.leaderboard-list .lb-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center; gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 14px;
+  transition: background 80ms;
+}
+.leaderboard-list .lb-row:last-child { border-bottom: none; }
+.leaderboard-list .lb-row:hover { background: rgba(255,255,255,0.04); }
+.leaderboard-list .lb-row .lb-rank {
+  color: var(--text-mute); font-weight: 700; font-size: 13px;
+  text-align: center;
+}
+.leaderboard-list .lb-row .lb-name {
+  font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.leaderboard-list .lb-row .lb-points {
+  font-weight: 700; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.leaderboard-list .lb-row.is-self {
+  background: rgba(92,205,255,0.08);
+  border-left: 3px solid var(--info);
+  padding-left: 11px;
+}
+.leaderboard-list .lb-row.is-self .lb-name { color: var(--info); }
+.leaderboard-list .lb-row.is-self .lb-rank { color: var(--info); }
+
+@media (max-width: 720px) {
+  .podium { gap: 8px; }
+  .podium-card { padding: 14px 8px 12px; min-height: 0; }
+  .podium-card.rank-1 { min-height: 116px; }
+  .podium-card.rank-2 { min-height: 102px; }
+  .podium-card.rank-3 { min-height: 90px; }
+  .podium-card .podium-points { font-size: 18px; }
+  .podium-card .podium-name { font-size: 13px; }
+  .leaderboard-list .lb-row { grid-template-columns: 36px 1fr auto; padding: 8px 12px; font-size: 13px; }
+}
+
+@media (max-width: 480px) {
+  /* Cap podium card sizes + ellipsize names so three stacked cards still fit
+     on a tiny phone without horizontal overflow. */
+  .podium-card { max-width: 110px; min-height: 0 !important; padding: 18px 6px 12px; }
+  .podium-card .podium-rank { width: 30px; height: 30px; font-size: 14px; top: -12px; }
+  .podium-card .podium-medal { font-size: 22px; }
+  .podium-card .podium-points { font-size: 16px; }
+  .podium-card .podium-name { font-size: 12px; }
+}
+
 /* ===== Modal ===== */
 .modal {
   position: fixed; inset: 0; z-index: 200;
