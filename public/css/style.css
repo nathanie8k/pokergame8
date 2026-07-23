@@ -715,43 +715,247 @@ input, button { color: inherit; }
   to   { transform: translate(-50%, 0);     opacity: 1; }
 }
 
+/* ===== Self-panel (mobile-only your-hand area) =====
+   Hidden on desktop entirely. Below the stacked-mobile breakpoint the
+   layout flips from an around-oval table to a vertical stack: opponents
+   row -> felt (pot/community/phase/result) -> self panel -> action bar.
+   The .seat.is-self pill is also hidden from .seats in the same @media
+   block so self doesn't appear twice. */
+.self-panel { display: none; }
+
 /* ===== Responsive ===== */
-@media (max-width: 720px) {
+
+/* Tablet / small desktop — moderate compression. Pure desktop layout still
+   works here but we tighten padding + shrink seats slightly.
+   The 16px input rule applies here (not just at ≤720px) so tablet portrait
+   (721–900px) inputs don't trigger iOS Safari auto-zoom on focus. */
+@media (max-width: 900px) {
+  .top-bar { padding: 12px 16px; }
   .poker-table { aspect-ratio: 4 / 3; }
-  .seat { width: 96px; }
+  .seat { width: 110px; }
+  .seat .name { font-size: 12px; }
+  .empty-seat { width: 110px; padding: 12px 10px; }
+  .view { padding: 16px; }
+  /* 16px prevents iOS Safari auto-zoom on focus. The three explicit
+     overrides below restore the same specificity the original narrow rule
+     had: .form-row / .form-grid / .admin-table inputs all sit inside
+     selectors with higher specificity (0,2,0 or 0,2,1) than this broad
+     rule's (0,1,1), so without the overrides the base rules' 13/14/15px
+     font-size wins and iOS zoom still fires on those inputs. */
+  input[type=text], input[type=password], input[type=number], select, textarea { font-size: 16px; }
+  .form-row input[type=text], .form-row input[type=password] { font-size: 16px; }
+  .form-grid input { font-size: 16px; }
+  .admin-table input[type=number] { font-size: 16px; }
+  /* #raiseAmount is .bet-controls input[type=number] — same specificity
+     issue as the three above: the base rule sets 14px, the broad rule's
+     (0,1,1) loses, so on tablets (721-900px) this would still trigger
+     iOS Safari auto-zoom. */
+  .bet-controls input[type=number] { font-size: 16px; }
+}
+
+/* Tablet portrait + large phone — fully stacked layout, touch-friendly.
+   Inputs use 16px so iOS Safari doesn't auto-zoom on focus; action buttons
+   are >=48px tall to satisfy Material/HIG touch-target guidelines; the
+   around-oval seating is replaced with a flex-wrap opponents row + the
+   .self-panel below the felt so the viewer's own hole cards are big and
+   legible instead of crammed inside a tiny seat ring. */
+@media (max-width: 720px) {
+  html, body { font-size: 15px; }
+
+  /* Top bar */
+  .top-bar { padding: 10px 12px; }
+  .brand-text { font-size: 14px; }
+  .brand-icon { font-size: 16px; }
+  .top-info { gap: 8px; }
+  .player-chip, .points-chip { padding: 5px 9px; font-size: 12px; }
+  .ghost-btn { padding: 7px 11px; font-size: 12px; }
+
+  /* Views + login */
+  .view { padding: 12px; }
+  .login-card { margin: 28px auto; padding: 24px 18px; }
+  .login-card h1 { font-size: 22px; }
+  /* Lobby */
+  .lobby-grid { grid-template-columns: 1fr; gap: 12px; }
+  .table-card { padding: 14px; }
+  .table-card .name { font-size: 16px; }
+  /* Full-width Join button on phone - bigger tap area for thumbs. */
+  .table-card .primary-btn { width: 100%; padding: 12px; }
+  .form-grid { grid-template-columns: 1fr 1fr; }
+
+  /* Table view — switch from absolute oval to stacked layout */
+  .poker-table {
+    aspect-ratio: auto;
+    min-height: 0;
+    border-width: 4px;
+    padding: 12px;
+    max-height: none;
+    display: block; /* was flex/center */
+  }
+  .table-felt {
+    position: static;
+    inset: auto;
+    width: auto;
+    height: auto;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    gap: 12px;
+    background: rgba(0,0,0,0.18);
+    pointer-events: auto;
+  }
+  /* Opponents row above the felt. JS still computes around-oval coords via
+     seatPosition() so desktop.js stays untouched - we override those
+     positioning styles with !important below. */
+  .seats {
+    position: static;
+    inset: auto;
+    pointer-events: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 14px;
+  }
+  .seat, .empty-seat {
+    /* !important overrides the JS-set inline position (left/top/transform
+       from seatPosition). The opposition row above the felt is the new
+       layout context. */
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    transform: none !important;
+    width: 100px;
+  }
+  /* The viewer is no longer in the opponents row - their info lives in
+     .self-panel below the felt so their own hole cards get a prominent
+     treatment instead of being crammed into a tiny seat ring. */
+  .seat.is-self { display: none; }
+  .empty-seat { padding: 12px 10px; }
+  .empty-seat .empty-seat-label { display: none; }
   .seat .name { font-size: 11px; }
-  .seat .stack { font-size: 12px; }
+  /* Card layout shrinks so opponent seat pills fit. */
   .card { width: 48px; height: 70px; padding: 0; }
   .card .corner.top    { top: 3px;     left: 4px; }
   .card .corner.bottom { bottom: 3px;  right: 4px; }
   .card .corner .rank  { font-size: 13px; }
   .card .corner .suit  { font-size: 9px; }
   .card .center-suit   { font-size: 24px; }
-  .top-bar { padding: 10px 14px; }
-  .view { padding: 14px; }
   :root { --card-w: 48px; --card-h: 70px; }
+
+  /* Self-panel — the prominent "your hand" area on phones */
+  .self-panel {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    background: rgba(92,205,255,0.10);
+    border: 2px solid var(--info);
+    border-radius: var(--radius-lg);
+    padding: 12px 14px;
+    margin: 12px 0;
+    box-shadow: 0 0 0 4px rgba(92,205,255,0.06);
+  }
+  /* Active-turn cue for self's "your hand" panel. The .seat.is-self pill is
+     hidden on mobile, so this recipe (same gold-glow as the desktop
+     .seat.is-active ring) keeps a visible cue when self's index matches
+     table.currentPlayerIndex. */
+  .self-panel.is-active {
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 4px rgba(255,204,77,0.15),
+      0 0 24px rgba(255,204,77,0.4);
+  }
+  .self-panel .self-info { flex: 1; min-width: 0; }
+  .self-panel .self-name { font-size: 16px; font-weight: 700; color: var(--text); }
+  .self-panel .self-stack { font-size: 20px; font-weight: 800; color: var(--accent); margin-top: 2px; }
+  .self-panel .self-status { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .self-panel .self-marks { font-size: 11px; color: var(--info); margin-top: 4px; font-weight: 600; }
+  .self-panel .self-cards { display: flex; gap: 4px; }
+  /* Big cards in self-panel - override .card defaults with a friendlier
+     size for the viewer's own hole cards. */
+  .self-panel .card { width: 52px; height: 76px; }
+  .self-panel .card .corner.top { top: 4px; left: 5px; }
+  .self-panel .card .corner.bottom { bottom: 4px; right: 5px; }
+  .self-panel .card .corner .rank { font-size: 14px; }
+  .self-panel .card .corner .suit { font-size: 10px; }
+  .self-panel .card .center-suit { font-size: 26px; }
+
+  /* Action bar — touch-friendly buttons + larger raise input. */
+  .action-bar {
+    padding: 8px;
+    gap: 6px;
+    bottom: 8px;
+  }
+  .action-btn {
+    padding: 14px 10px;
+    font-size: 15px;
+    min-height: 48px;
+  }
+  .bet-controls { gap: 6px; }
+  .bet-controls input[type=number] {
+    width: 70px;
+    padding: 14px 8px;
+    font-size: 16px;
+    min-height: 48px;
+  }
+
+  /* Toast — relocate above the sticky action bar so it doesn't get
+     pinned underneath the buttons on phones. */
+  .toast { bottom: auto; top: 80px; }
+
+  /* Modal — full screen on mobile so passwords and admin tables are
+     readable without wasted side gutters. */
+  .modal-content {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: 100vh;
+    border-radius: 0;
+    padding: 16px;
+  }
 }
 
+/* Tiny phone — extra-compact spacing, action bar wraps to 2 rows. */
 @media (max-width: 480px) {
-  .poker-table { aspect-ratio: 1 / 1; }
-  .seat { width: 78px; }
+  .top-bar { padding: 8px 10px; }
+  .view { padding: 10px; }
+
+  .lobby-grid { grid-template-columns: 1fr; gap: 10px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .table-card { padding: 12px; }
+
+  /* Tighter opponents row + smaller pills. */
+  .seat, .empty-seat { width: 80px; }
+  .empty-seat { padding: 10px 6px; }
+  .empty-seat .empty-seat-icon { width: 18px; height: 18px; font-size: 12px; }
   .seat .seat-ring { padding: 6px 8px; }
   .seat .name { font-size: 10px; }
-  .seat .stack { font-size: 11px; }
-  .seat .empty-card { width: 20px; height: 28px; }
-  .action-bar { flex-direction: column; align-items: stretch; }
-  .bet-controls { margin-left: 0; }
-}
 
-/* Empty-seat responsive sizing — track the existing seat widths and let the
-   long "Sit here" label collapse to icon-only below ~480px so it never
-   truncates ("...ere") on phones. */
-@media (max-width: 720px) {
-  .empty-seat { width: 96px; padding: 11px 8px; font-size: 10px; letter-spacing: 0.5px; }
-  .empty-seat .empty-seat-icon { width: 20px; height: 20px; font-size: 12px; }
-}
-@media (max-width: 480px) {
-  .empty-seat { width: 78px; padding: 10px 6px; }
-  .empty-seat .empty-seat-icon { width: 18px; height: 18px; font-size: 12px; }
-  .empty-seat .empty-seat-label { display: none; }
+  /* Smaller self-panel cards and tighter typography. */
+  .self-panel { padding: 10px; gap: 8px; }
+  .self-panel .card { width: 44px; height: 64px; }
+  .self-panel .card .corner .rank { font-size: 12px; }
+  .self-panel .card .corner .suit { font-size: 8px; }
+  .self-panel .card .center-suit { font-size: 22px; }
+  .self-panel .self-name { font-size: 14px; }
+  .self-panel .self-stack { font-size: 17px; }
+
+  /* Action bar wraps: 4 primary buttons become a 2x2 grid, then bet
+     controls take a full row below so the numeric input + raise presets
+     have room without cramping. */
+  .action-bar {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .action-btn { flex: 1 1 calc(50% - 4px); }
+  .bet-controls {
+    flex: 1 1 100%;
+    /* Reset the base margin-left:auto so bet-controls doesn't stick to the
+       right edge of its own full-width row, leaving whitespace on the left. */
+    margin-left: 0;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .bet-controls input[type=number] { flex: 0 0 80px; font-size: 16px; }
+  .raise-presets { flex: 1; gap: 4px; }
+  .raise-presets button { flex: 1; font-size: 11px; padding: 8px 6px; }
 }

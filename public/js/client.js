@@ -305,6 +305,13 @@ function renderTable() {
 
   // Sit-out / Sit-in buttons for self
   const selfSeat = t.seats.find(s => s.occupied && s.isSelf);
+  // Self-panel: populated any time the viewer is seated so it's ready when
+  // the viewport narrows. CSS hides the element entirely on desktop and
+  // shows it as a prominent "your hand" card on phones/tablets, where the
+  // self seat is also hidden from the .seats row to keep the opponents
+  // strip from being cluttered by the viewer's own pill.
+  populateSelfPanel($('selfPanel'), selfSeat, t);
+
   $('sitOutBtn').style.display = (selfSeat && !selfSeat.folded && !selfSeat.allIn && !selfSeat.satOut && selfSeat.stack > 0) ? '' : 'none';
   // Sit-in only makes sense between hands (not folded / not all-in for current round).
   $('sitInBtn').style.display  = (selfSeat && selfSeat.satOut && !selfSeat.folded && !selfSeat.allIn && selfSeat.stack > 0) ? '' : 'none';
@@ -403,6 +410,46 @@ function renderCard(c, opts = {}) {
     ]));
   }
   return card;
+}
+
+function populateSelfPanel(panelEl, seat, t) {
+  // Populate the mobile-only "your hand" panel with the viewer's own cards
+  // and identity. Always invoked from renderTable (CSS hides the element on
+  // desktop) so the data is ready the moment the viewport narrows below the
+  // stacked-mobile breakpoint. When `seat` is null (observer mode or pre-join)
+  // the panel is emptied — CSS already hides the empty container.
+  if (!panelEl) return;
+  panelEl.innerHTML = '';
+  if (!seat) { panelEl.classList.remove('is-active'); return; }
+  const sidx = t.seats.findIndex((s) => s && s.isSelf);
+  // Mobile "your turn" cue: since .seat.is-self is hidden on phones, the
+  // .self-panel needs its own active-glow so the viewer has a visual cue
+  // when currentPlayerIndex points at them. CSS mirrors the desktop
+  // .seat.is-active gold-glow recipe on .self-panel.is-active.
+  panelEl.classList.toggle('is-active', sidx >= 0 && sidx === t.currentPlayerIndex);
+  const info = el('div', { class: 'self-info' });
+  info.appendChild(el('div', { class: 'self-name' }, seat.name));
+  info.appendChild(el('div', { class: 'self-stack' }, formatNumber(seat.stack) + ' pts'));
+  let status = '';
+  if (seat.folded)      status = 'Folded';
+  else if (seat.allIn)  status = 'All-in';
+  else if (seat.satOut) status = 'Sitting out';
+  if (status) info.appendChild(el('div', { class: 'self-status' }, status));
+  const marks = [];
+  if (sidx === t.buttonIndex) marks.push('Dealer (D)');
+  if (sidx === t.sbIndex)     marks.push('Small Blind');
+  if (sidx === t.bbIndex)     marks.push('Big Blind');
+  if (marks.length) info.appendChild(el('div', { class: 'self-marks' }, marks.join(' \u00B7 ')));
+
+  const cards = el('div', { class: 'self-cards' });
+  if (seat.holeCards && seat.holeCards.length === 2) {
+    seat.holeCards.forEach((c, i) => cards.appendChild(renderCard(c, { delay: i * 80 })));
+  } else {
+    cards.appendChild(renderCard(null, { faceDown: true }));
+    cards.appendChild(renderCard(null, { faceDown: true }));
+  }
+  panelEl.appendChild(info);
+  panelEl.appendChild(cards);
 }
 
 function seatEmpty(seatIdx, tableId) {

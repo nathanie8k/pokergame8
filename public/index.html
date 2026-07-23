@@ -112,6 +112,15 @@
         <div class="seats" id="seatsContainer"></div>
       </div>
 
+      <!-- Self-panel: hidden on desktop via CSS. On phones, this becomes the
+           prominent "your hand" area where the viewer sees their own two hole
+           cards next to their name, stack, and dealer/sb/bb markers — the
+           self seat is hidden from the .seats row on mobile to keep the
+           opponents row above the felt from being cluttered by self. The
+           element is always populated by renderTable() so the data is ready
+           when the viewport narrows (no JS resize listener needed). -->
+      <div class="self-panel" id="selfPanel"></div>
+
       <div class="action-bar" id="actionBar">
         <button class="action-btn fold"   data-action="fold">Fold</button>
         <button class="action-btn check"  data-action="check">Check</button>
