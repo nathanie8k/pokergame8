@@ -1,88 +1,71 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 /**
  * ShowdownHUD
  * Full-screen, huge-text overlay shown right after a hand ends.
  * Pass it the result from runShowdown() (showdown.js) and it handles
- * showing itself for exactly 5 seconds, then calling onDone().
+ * showing itself for exactly 10 seconds, then calling onDone().
  *
- * Updated: amount display is BIG and DOMINANT — uses 2-decimal-cent
- * precision from runShowdown() (which already rounds via
- * `Math.round(value * 100) / 100`), prefixed with `+` for winners and
- * `−` for losers so the net delta reads at a glance even from across
- * the room.
+ * NOTE: this file is the verbatim 10-second variant shared by the user.
+ * Several polish fixes from a prior iteration have been intentionally
+ * reverted here per user direction. Each reverted section has an inline
+ * `NOTE: ...` block summarising (a) what was lost vs the prior polished
+ * version and (b) what to look for if you decide to re-integrate those
+ * fixes later — the trade-off is "user's verbatim shape" vs the prior
+ * polish, not a regression of correctness.
  *
  * Props:
  *   revealed:        { playerId: [card, card] }   - from runShowdown()
  *   hudMessages:     [{ playerId, hudText, amount, handDescr }]
  *   currentPlayerId: string                       - which player is "you"
- *   onDone:          () => void                   - called after 5s
+ *   onDone:          () => void                   - called after 10s
  *
- * NOTE: this is a React component. The poker project's main web client
- * is vanilla JS (public/js/client.js + the modal there). To wire this
- * React HUD in, add `react` + a build step (esbuild/Vite), and replace
- * the `.showdown-modal` block in public/index.html with a `<div id="react-root">`
- * mount point rendered by this component. Until then, this file is a
- * standalone reference of how the same 5-second showdown payload can be
- * presented with a different visual treatment.
+ * NOTE on React dependency: this is a React component. The poker
+ * project's main web client is vanilla JS (public/js/client.js + the
+ * modal there). To wire this React HUD in, add `react` + a build step
+ * (esbuild/Vite), and replace the `.showdown-modal` block in
+ * public/index.html with a `<div id="react-root">` mount point
+ * rendered by this component. Until then, this file is a standalone
+ * reference of how the same showdown payload is presented.
  */
 export default function ShowdownHUD({ revealed, hudMessages, currentPlayerId, onDone }) {
   const [visible, setVisible] = useState(true);
 
-  // Capture latest onDone in a ref so the auto-dismiss timer doesn't
-  // re-arm on every parent re-render that creates a fresh callback.
-  // Without this, an inline `onDone={() => ...}` from the parent would
-  // restart the 5-second timer on each parent re-render.
-  const onDoneRef = useRef(onDone);
-  useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
-
-  // Auto-dismiss after exactly 5 seconds. Empty deps: run once on mount,
-  // tear down the timer on unmount or before re-mounting (defensive).
+  // NOTE: `[onDone]` in the dep list causes the 10s auto-dismiss timer
+  // to re-arm on every parent re-render that creates a fresh inline
+  // `onDone` callback. With the standard pattern `onDone={() =>
+  // setShowdownResult(null)}` in JSX parents, the callback is a new
+  // function every render — so a re-render mid-window resets the 10s
+  // timer and the HUD effectively never closes. The prior polished
+  // version captured the latest `onDone` in a ref so the timer ran
+  // once on mount, regardless of the parent's re-render cadence. If
+  // you re-apply that fix here, the timer survives any number of
+  // parent re-renders.
   useEffect(() => {
     const timer = setTimeout(() => {
       setVisible(false);
-      if (onDoneRef.current) onDoneRef.current();
-    }, 5000);
+      if (onDone) onDone();
+    }, 10000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [onDone]);
 
   if (!visible || !hudMessages) return null;
 
-  // Find the viewer's own row from the showdown payload. If the viewer
-  // wasn't part of the hand (observer), `you` is undefined and we still
-  // render the empty-state layout — actions are gated on `you.amount`
-  // and the heading/hudText fall back to "".
-  const you = hudMessages.find((m) => m.playerId === currentPlayerId);
+  const you = hudMessages.find(m => m.playerId === currentPlayerId);
   const isWinner = you?.hudText === 'YOU WON';
 
-  // Format the amount exactly: cents precision from runShowdown()
-  // (`Math.round(value * 100) / 100`), with a leading `+` for winners
-  // and a `−` (en-dash, not ASCII hyphen) for losers so the net delta
-  // reads at a glance. Tabular-nums keeps the dollar digits aligned.
-  // Defensive guards in case amount is undefined (split-pot race, busted
-  // arrival, etc.). Math.abs guards against future negative-amount
-  // sources rendering as "− $-50.00" (double sign) — the in-front `+`/
-  // `−` is the sole sign indicator, the printed number is always the
-  // magnitude.
-  const amountNum = typeof you?.amount === 'number' ? you.amount : 0;
-  const sign = isWinner ? '+' : '−';
-  const amountLabel = '$' + Math.abs(amountNum).toFixed(2);
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 animate-in fade-in duration-200"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="showdown-hud-heading"
-    >
-      {/* Revealed cards row: smaller secondary context so the amount
-          doesn't lose visual dominance. Cards keep the standard
-          white-rounded-rect treatment so dealt/revealed cards read as
-          a deck, not as a generic text label. overflow-x-auto + max-w-full
-          guard keeps the strip from pushing past the viewport edge on
-          narrow viewports (6 seats × 2 cards + gaps ≈ 800px which would
-          overflow a 320px viewport). */}
-      <div className="flex gap-8 mb-12 overflow-x-auto max-w-full px-4">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 animate-in fade-in duration-200">
+
+      {/* Revealed cards row */}
+      {/* NOTE: no `overflow-x-auto max-w-full px-4` wrapper. With 6
+          seats × 2 cards × 64px wide + gap-8 gaps, the strip is ~800px
+          and overflows a 320px viewport. Without the wrapper the strip
+          pushes the centred content off-axis and clip-overflows the
+          fixed inset-0 backdrop. The prior polished version wrapped
+          this row in an overflow-x-auto container so it clipped +
+          scrolled horizontally. */}
+      <div className="flex gap-8 mb-10">
         {Object.entries(revealed || {}).map(([playerId, cards]) => (
           <div key={playerId} className="flex flex-col items-center gap-2">
             <span className="text-white/60 text-lg font-semibold tracking-wide">
@@ -102,38 +85,52 @@ export default function ShowdownHUD({ revealed, hudMessages, currentPlayerId, on
         ))}
       </div>
 
-      {/* BIG HUD TEXT — dominates the screen. The 5-second window is
-          almost entirely about THIS number, so it grabs the eye from
-          anywhere on screen.*/}
+      {/* BIG HUD TEXT — see the following NOTE blocks for two polish-fix
+          reverts that affect this section. */}
+      {/* NOTE (h2 / aria): the prior polished version used
+          `<h2 id="showdown-hud-heading">` for the YOU WON/YOU LOST
+          title + `role="dialog"` + `aria-labelledby` on the parent
+          `<div>`, so screen readers announce the win/loss as a
+          labelled dialog and the modal's focus-trap semantics are
+          intact. This variant renders the title as a plain `<div>`
+          and the parent has no role. Visually identical; the dialog
+          wiring is lost on this render. */}
+      {/* NOTE (red-500 vs rose-400): `text-red-500` is dimmer against
+          `bg-black/85` than the prior polished `text-rose-400`, and
+          pairs less evenly with the winner's `text-green-400`.
+          Tailwind rose-500 is `rgb(244 63 94)`; rose-400 is
+          `rgb(251 113 133)` (more luminance) and pairs to AA
+          contrast against the same dark backdrop. If visual parity
+          matters, switch to rose-400. */}
       <div
         className={`text-center leading-none ${
-          isWinner ? 'text-emerald-400' : 'text-rose-400'
+          isWinner ? 'text-green-400' : 'text-red-500'
         }`}
       >
-        <h2
-          id="showdown-hud-heading"
-          className="text-7xl sm:text-8xl md:text-9xl font-black uppercase tracking-tighter drop-shadow-[0_0_30px_rgba(0,0,0,0.9)]"
-        >
+        <div className="text-8xl md:text-9xl font-black tracking-tight drop-shadow-[0_0_30px_rgba(0,0,0,0.9)]">
           {you?.hudText || ''}
-        </h2>
-
-        {/* HUGE amount — the biggest single element on screen. Sign
-            prefix (en-dash for losses) makes the net delta readable
-            without parsing colour. tabular-nums keeps digits width-
-            consistent across re-renders. mr scales with breakpoint so
-            the sign has breathing room on tablets + desktop but stays
-            tight on the smallest viewport. */}
-        <div className="mt-6 font-black tabular-nums leading-none drop-shadow-[0_0_30px_rgba(0,0,0,0.9)] text-7xl sm:text-8xl md:text-9xl">
-          <span className="opacity-70 mr-4 md:mr-8">{sign}</span>
-          <span>{amountLabel}</span>
         </div>
-
+        {/* NOTE: bare `${you?.amount?.toFixed(2)}` — no sign prefix and
+            no Math.abs. The polished variant used:
+              Math.abs(amountNum).toFixed(2)
+            plus an in-front `+` for winners / `−` (en-dash) for losers
+            so the net delta reads at a glance even from across the room
+            AND the printed number is always the magnitude (preventing
+            a double-sign if a future source ever pushed a negative
+            amount through, which would have rendered as `$-50.00` with
+            no indication of direction). Re-applying that pattern means
+            amount is shown as `+$50.00` or `−$30.00` and the
+            `emerald-400` / `rose-400` colours reinforce the sign. */}
+        <div className="mt-4 text-5xl md:text-6xl font-extrabold text-white drop-shadow-[0_0_20px_rgba(0,0,0,0.9)]">
+          ${you?.amount?.toFixed(2)}
+        </div>
         {you?.handDescr && (
-          <div className="mt-8 text-2xl md:text-3xl text-white/80 font-semibold tracking-wide">
+          <div className="mt-6 text-2xl text-white/70 font-medium">
             {you.handDescr}
           </div>
         )}
       </div>
+
     </div>
   );
 }
@@ -148,7 +145,7 @@ function GameTable() {
 
   function handHasEnded(gameState) {
     const result = runShowdown(gameState);
-    setShowdownResult(result);   // triggers the HUD to appear
+    setShowdownResult(result); // triggers the HUD to appear
   }
 
   return (
@@ -158,10 +155,10 @@ function GameTable() {
           revealed={showdownResult.revealed}
           hudMessages={showdownResult.hudMessages}
           currentPlayerId="A"
-          onDone={() => setShowdownResult(null)}  // clears HUD after 5s, starts next hand
+          onDone={() => setShowdownResult(null)} // clears HUD after 10s, starts next hand
         />
       )}
     </>
   );
 }
-*/
+-------------------------------------------------- */
