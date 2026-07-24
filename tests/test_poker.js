@@ -581,6 +581,91 @@ async function main() {
        'Mid-hand reclaim: new player is intact at end of hand');
   }
 
+  // ----- Showdown reveal coverage -----
+  //
+  // publicView must reveal non-self holeCards at hand_over + lastHandResults
+  // so all viewers can see every non-folded player's hole cards once the
+  // betting ends. Folded seats still muck. Busted-refund hands (HAND_OVER
+  // WITHOUT lastHandResults) do NOT trigger the reveal so the voided
+  // cards don't confuse players about which hands counted.
+  {
+    const rooms = new RoomManager();
+    const t = rooms.createTable({ name: 'show-reveal', smallBlind: 5, bigBlind: 10, maxSeats: 6 });
+    // Reuse the existing seatAt helper, then layer holeCards / storedHandName
+    // on top — same shape as production seats, so the reveal policy is
+    // exercised against realistic data.
+    const seedSeat = (idx, playerId, name, hole, handName) => {
+      seatAt(t, idx, playerId, name, 1000);
+      t.seats[idx].holeCards = hole;
+      t.seats[idx].storedHandName = handName;
+    };
+    seedSeat(1, 'A', 'Alice', [{ rank: 14, suit: 's' }, { rank: 13, suit: 'h' }], 'Pair of Kings');
+    seedSeat(3, 'B', 'Bob',   [{ rank: 12, suit: 'd' }, { rank: 11, suit: 'c' }], 'Pair of Queens');
+    seedSeat(5, 'C', 'Carol', [{ rank:  9, suit: 's' }, { rank:  8, suit: 's' }], null);
+    t.seats[5].folded = true; // Carol folded out pre-flop
+    t.seats[3].allIn  = true; // Bob pushed all-in during the run-out
+
+    // ----- pre-flop (no reveal) -----
+    t.phase = P.PHASE.PRE_FLOP;
+    let view = rooms.publicView(t.id, 'A');
+    ok(Array.isArray(view.seats[1].holeCards) && view.seats[1].holeCards.length === 2,
+      'pre-flop: self Alice sees own holeCards');
+    ok(view.seats[3].holeCards === null,
+      'pre-flop: opponent Bob holeCards hidden');
+    ok(view.seats[5].holeCards === null,
+      'pre-flop: folded Carol holeCards hidden');
+    ok(view.seats[1].storedHandName === 'Pair of Kings',
+      'pre-flop: self storedHandName visible to self only');
+    ok(view.seats[3].storedHandName === null,
+      'pre-flop: opponent storedHandName hidden');
+
+    // ----- HAND_OVER without lastHandResults (busted-refund / voided) -----
+    t.phase = P.PHASE.HAND_OVER;
+    view = rooms.publicView(t.id, 'A');
+    ok(view.seats[3].holeCards === null,
+      'HAND_OVER (no lastHandResults): holeCards still hidden');
+    ok(view.seats[3].storedHandName === null,
+      'HAND_OVER (no lastHandResults): storedHandName still hidden');
+
+    // ----- HAND_OVER + lastHandResults (REAL showdown: cards revealed) -----
+    t.lastHandResults = {
+      winners: [{ id: 'B', name: 'Bob', handName: 'Pair of Queens', share: 50 }],
+    };
+    view = rooms.publicView(t.id, 'A');
+    ok(Array.isArray(view.seats[1].holeCards) && view.seats[1].holeCards.length === 2,
+      'showdown: self Alice still sees own holeCards');
+    ok(Array.isArray(view.seats[3].holeCards) && view.seats[3].holeCards.length === 2,
+      'showdown: all-in opponent Bob holeCards REVEALED (not folded -> still in scoring)');
+    ok(view.seats[5].holeCards === null,
+      'showdown: folded Carol holeCards stay null (mucked)');
+    ok(view.seats[3].storedHandName === 'Pair of Queens',
+      'showdown: opponent Bob storedHandName REVEALED to all viewers');
+    ok(view.seats[5].storedHandName === null,
+      'showdown: folded Carol storedHandName still hidden');
+
+    // ----- Anonymous spectator (viewerPlayerId=null) at showdown -----
+    const anonView = rooms.publicView(t.id, null);
+    ok(anonView.seats[1].isSelf === false && anonView.seats[3].isSelf === false
+       && anonView.seats[5].isSelf === false,
+      'anonymous spectator: nobody is isSelf');
+    ok(Array.isArray(anonView.seats[1].holeCards) && anonView.seats[1].holeCards.length === 2,
+      'anonymous spectator: Alice\'s holeCards revealed');
+    ok(Array.isArray(anonView.seats[3].holeCards) && anonView.seats[3].holeCards.length === 2,
+      'anonymous spectator: Bob\'s holeCards revealed');
+    ok(anonView.seats[5].holeCards === null,
+      'anonymous spectator: folded Carol stays face-down');
+    ok(anonView.seats[3].storedHandName === 'Pair of Queens',
+      'anonymous spectator: Bob\'s storedHandName revealed');
+
+    // ----- After hand ends and next hand starts (HAND_OVER -> WAITING) -----
+    t.phase = P.PHASE.WAITING;
+    view = rooms.publicView(t.id, 'A');
+    ok(view.seats[3].holeCards === null,
+      'next hand starts: cards reset, opponent hidden again');
+    ok(view.seats[3].storedHandName === null,
+      'next hand starts: storedHandName reset, opponent hidden again');
+  }
+
   console.log('Engine / room / state-machine tests: ' + passed + ' passed, ' + failed + ' failed');
   console.log('');
 

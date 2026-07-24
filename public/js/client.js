@@ -370,12 +370,15 @@ function renderSeat(seat, idx, table, total) {
   ringChildren.push(el('div', { class: 'status ' + statusClass.join(' '),
     text: statusText + (statusClass.length > 0 ? ' \u00B7 ' + statusClass[1] : '') }));
 
-  // Cards: real faces for the viewer who has holeCards data; face-down card
-  // backs for everyone else (opponents, and the viewer between hands when
-  // the server sends no cards). The CSS already has a `.card.face-down`
-  // design prepared in style.css — we just plug into it here so cards
-  // never render as blank placeholder boxes.
-  const cardEls = (seat.isSelf && seat.holeCards && seat.holeCards.length > 0)
+  // Cards: real faces whenever the server has populated `seat.holeCards`,
+  // face-down card backs otherwise. The server's publicView populates this
+  // for (a) the seat's owner in any phase, and (b) every non-folded seat
+  // during the showdown window (hand_over + lastHandResults) so all
+  // viewers can see everyone else's hole cards after the betting ends.
+  // Folded seats stay face-down (the muck). The CSS already has a
+  // `.card.face-down` design prepared in style.css — we just plug into it
+  // here so cards never render as blank placeholder boxes.
+  const cardEls = (seat.holeCards && seat.holeCards.length > 0)
     ? seat.holeCards.map((c, i) => renderCard(c, { delay: i * 80, small: true }))
     : [renderCard(null, { small: true, faceDown: true }),
        renderCard(null, { small: true, faceDown: true })];

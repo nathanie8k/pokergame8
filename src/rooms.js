@@ -295,7 +295,11 @@ class RoomManager {
   }
 
   // Build a serializable public view of the table for the viewer.
-  // Their own hole cards are included; others are nulled out.
+  // Their own hole cards are included; others are nulled out — EXCEPT at
+  // showdown (hand_over phase with lastHandResults populated), where every
+  // non-folded seat's holeCards and every seat's storedHandName are
+  // exposed to all viewers so the cards can be revealed after the betting
+  // ends. Folded seats keep their cards hidden (the muck).
   // NOTE: viewerPlayerId is the viewer's database player id (NOT their display
   // name). Each seat has `playerId: player.id` (set in `seatPlayer`), so
   // server.js broadcasts must pass `socket.data.player.id` here — passing the
@@ -304,6 +308,14 @@ class RoomManager {
   publicView(tableId, viewerPlayerId) {
     const t = this.tables.get(tableId);
     if (!t) return null;
+    // Showdown reveal window: the hand ended naturally with a real winner
+    // (resolveShowdown or fold-out). NOT the busted-refund case, which
+    // nulls lastHandResults and should keep cards hidden to avoid
+    // confusing the player about which cards 'counted'.
+    const isShowdownReveal = t.phase === poker.PHASE.HAND_OVER
+      && !!t.lastHandResults
+      && Array.isArray(t.lastHandResults.winners)
+      && t.lastHandResults.winners.length > 0;
     return {
       id: t.id,
       name: t.name,
@@ -326,6 +338,13 @@ class RoomManager {
       seats: t.seats.map((s, i) => {
         if (!s) return { idx: i, occupied: false };
         const isSelf = s.playerId === viewerPlayerId;
+        // During showdown, reveal the holeCards of every non-folded seat
+        // to every viewer. Folded seats still muck (holeCards=null). The
+        // viewer themselves always sees their own cards (even if folded).
+        const revealCards = isSelf || (isShowdownReveal && !s.folded);
+        // storedHandName ('High Card A', 'Pair of Kings', 'Won by fold')
+        // is useful to every viewer at showdown — let it through.
+        const revealHandName = isSelf || isShowdownReveal;
         return {
           idx: i,
           occupied: true,
@@ -338,8 +357,10 @@ class RoomManager {
           satOut: s.satOut,
           removed: s.removed,
           disconnected: s.disconnected,
-          holeCards: isSelf ? s.holeCards.map(serializeCard) : null,
-          storedHandName: isSelf ? s.storedHandName : null,
+          holeCards: (revealCards && s.holeCards.length > 0)
+            ? s.holeCards.map(serializeCard)
+            : null,
+          storedHandName: revealHandName ? s.storedHandName : null,
         };
       }),
     };
