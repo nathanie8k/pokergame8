@@ -4,13 +4,18 @@
   "description": "Friendly Texas Hold'em poker game with admin-controlled points - no real money involved.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node tests/test_poker.js"
   },
   "dependencies": {
     "express": "^4.19.2",
+    "mongoose": "^9.8.0",
     "socket.io": "^4.7.5"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^11.2.0"
   }
 }
