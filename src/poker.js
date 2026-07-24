@@ -282,6 +282,12 @@ function startHand(table) {
   // one player gets out mid-game. Snapshotted after the busted-player
   // filter so a re-entry of someone who sat down with 0 stack is not
   // counted as a pre-hand "balance".
+  // `acted` is the per-round flag (reset at every `beginBettingRound`)
+  // that tells the round-close predicate whether this seat has had a
+  // turn in the current betting round. Posting blinds does NOT mark
+  // `acted` — BB still gets the option post-limp. Reset here for safety
+  // so a hand that started from a recycled seat doesn't carry stale
+  // acted=true from a prior round.
   for (let i = 0; i < table.seats.length; i++) {
     const s = table.seats[i];
     if (!s) continue;
@@ -289,6 +295,7 @@ function startHand(table) {
     s.folded = false;
     s.contributed = 0;
     s.allIn = false;
+    s.acted = false;
     if (s.stack <= 0) {
       s.removed = true;
       s.preHandStack = 0;
@@ -484,9 +491,13 @@ function advancePhase(table) {
 function beginBettingRound(table) {
   table.currentBet = 0;
   table.minRaise = 0;
+  // Reset every active seat's per-round `acted` flag so the round-close
+  // predicate starts fresh for the new street. Posters of blinds are NOT
+  // exempt — BB still needs an option after a limp-around.
   for (const s of table.seats) {
     if (!s) continue;
     s.contributed = 0;
+    s.acted = false;
   }
   // First to act: first active player left of the button (UTG-equivalent).
   const firstIdx = nextActivePlayer(table, table.buttonIndex);
@@ -623,22 +634,38 @@ function applyAction(table, seatIdx, action, amountParam) {
       return { ok: false, error: 'Unknown action' };
   }
 
+  // Mark this seat as having taken a turn in the current betting round.
+  // Posting blinds does NOT mark `acted` (postBlind doesn't call this
+  // function), so the BB still gets the option after a limp-around. Set
+  // here so the close predicate below sees `acted=true` for the actor
+  // without waiting for the next iteration. Validation rejections
+  // (e.g. "Not your turn", "Cannot act") return BEFORE reaching here, so
+  // a failed action never spuriously marks `acted`.
+  seat.acted = true;
+
   // End-of-round check.
   // A round is complete when:
   //   (a) At most one live player is left (everyone else folded), OR
-  //   (b) All currently-acting players have matched the current bet AND the
-  //       player who just acted is the round "closer" - the BB preflop, the
-  //       last aggressor after a raise, or the first active player in a
-  //       check-around round.
+  //   (b) Every currently-acting player has matched the current bet AND
+  //       has taken a turn this round (`seat.acted`). The per-seat
+  //       `acted` flag is the round close trigger we use in place of the
+  //       previous “seatIdx === table.lastAggressor” check. That old
+  //       check forced the original aggressor to “check” themselves
+  //       after every caller matched — the user could CALL, but the
+  //       round would not advance until the raiser re-acted with
+  //       pay=0. Tracking `acted` instead closes the round the moment
+  //       everyone has had a turn AND matched the bet, which is the
+  //       natural Texas-Hold'em semantics (raises re-open, calls
+  //       close-as-soon-as-matched).
   const liveCount = countLivePlayers(table);
   const acting = table.seats.filter(s => s && !s.removed && !s.folded && !s.allIn && !s.satOut);
-  const allMatched = acting.length === 0
-    ? true
-    : acting.every(s => s.contributed === table.currentBet);
+  const allActedAndMatched = acting.every(
+    s => s.acted && s.contributed === table.currentBet
+  );
 
   if (liveCount <= 1) {
     advancePhase(table);
-  } else if (allMatched && table.lastAggressor !== -1 && seatIdx === table.lastAggressor) {
+  } else if (allActedAndMatched) {
     advancePhase(table);
   } else {
     const nextIdx = nextActivePlayer(table, seatIdx);
@@ -778,6 +805,7 @@ function endHand(table) {
     s.contributed = 0;
     s.folded = false;
     s.allIn = false;
+    s.acted = false;
     s.storedHandName = null;
     if (s.stack <= 0) s.removed = true;
   }

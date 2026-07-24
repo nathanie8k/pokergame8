@@ -198,6 +198,7 @@ class RoomManager {
       satOut: false,
       disconnected: false,
       contributed: 0,
+      acted: false,                 // per-round flag; reset by beginBettingRound
       storedHandName: null,
     };
     return { ok: true, seatIdx };

@@ -138,7 +138,7 @@ async function main() {
       t.seats[i] = {
         playerId:name, name, stack:1000,
         holeCards:[], folded:false, allIn:false, removed:false, satOut:false,
-        disconnected:false, contributed:0,
+        disconnected:false, contributed:0, acted:false,
       };
     });
     return t;
@@ -150,7 +150,7 @@ async function main() {
     P.startHand(t);
     const b1 = t.buttonIndex;
     P.endHand(t);
-    for (const s of t.seats) if (s) { s.contributed=0; s.holeCards=[]; s.folded=false; s.allIn=false; s.removed=false; }
+    for (const s of t.seats) if (s) { s.contributed=0; s.holeCards=[]; s.folded=false; s.allIn=false; s.removed=false; s.acted=false; }
     t.phase = P.PHASE.WAITING;
     P.startHand(t);
     eq(t.buttonIndex, (b1 + 1) % 4, 'Button advances 1 seat per hand');
@@ -168,8 +168,8 @@ async function main() {
   // Heads-up: dealer = SB; SB acts first pre-flop.
   {
     const t = P.createTable({ id:'h', smallBlind:5, bigBlind:10, maxSeats:6 });
-    t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
-    t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+    t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
     t.buttonIndex = 0; // advance lands on seat 1 (A)
     P.startHand(t);
     eq(t.buttonIndex, 1, 'Heads-up dealer at A');
@@ -196,8 +196,8 @@ async function main() {
   // Fold-out: in a 2-player heads-up, whoevers turn it is folds and the other wins.
   {
     const t = P.createTable({ id:'fo', smallBlind:5, bigBlind:10, maxSeats:6 });
-    t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
-    t.seats[3] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+    t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    t.seats[3] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
     t.buttonIndex = 1;
     P.startHand(t);
     const firstActor = t.currentPlayerIndex;
@@ -217,8 +217,8 @@ async function main() {
   // Sit-out players do NOT receive cards and do NOT pay blinds.
   {
     const t = P.createTable({ id:'sit', smallBlind:5, bigBlind:10, maxSeats:6 });
-    t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
-    t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+    t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
     t.buttonIndex = 0;
     P.startHand(t);
     P.endHand(t);
@@ -246,8 +246,8 @@ async function main() {
   // Heads-up turn alternation: SB (A) acts first preflop, BB (B) acts last.
   {
     const t = P.createTable({ id:'turn', smallBlind:5, bigBlind:10, maxSeats:6 });
-    t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
-    t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+    t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
     t.buttonIndex = 0;
     P.startHand(t);
     eq(t.currentPlayerIndex, 1, 'Preflop heads-up: dealer/SB (A) acts first');
@@ -265,8 +265,8 @@ async function main() {
   // Regression: all-in / call deadlock.
   {
     const t = P.createTable({ id:'turnLock', smallBlind:5, bigBlind:10, maxSeats:6 });
-    t.seats[1] = { playerId:'A', name:'A', stack:200, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
-    t.seats[2] = { playerId:'B', name:'B', stack:100, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+    t.seats[1] = { playerId:'A', name:'A', stack:200, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    t.seats[2] = { playerId:'B', name:'B', stack:100, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
     t.buttonIndex = 0;
     P.startHand(t);
     ok(t.seats[1].allIn === false && t.seats[2].allIn === false, 'Both seated, no one all-in yet');
@@ -282,8 +282,8 @@ async function main() {
   // Auto-advance when every live player is all-in.
   {
     const t = P.createTable({ id:'ai', smallBlind:5, bigBlind:10, maxSeats:6 });
-    t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
-    t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0 };
+    t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
     t.buttonIndex = 0;
     P.startHand(t);
     ok(P.applyAction(t, t.currentPlayerIndex, 'all_in').ok, 'First all-in applied');
@@ -296,6 +296,82 @@ async function main() {
     ok(winners.length >= 1, 'At least one player has chips after auto-advance to showdown');
     ok(!!t.lastHandResults && t.lastHandResults.winners.length >= 1,
        'lastHandResults populated for client banner');
+  }
+
+  // Regression: raise + every caller matches -> round closes on the
+  // LAST call, no "extra check" required from the aggressor.
+  //
+  // Before the per-seat `acted` flag was introduced, the round-close
+  // predicate required `seatIdx === table.lastAggressor`. That fired
+  // only when the seat that just acted WAS the raiser — so on
+  // raise-then-N-calls, the engine would land on the last caller
+  // (NOT the raiser) and stall, waiting for the raiser to "check"
+  // themselves to close the round. The user described this as "after
+  // CALL the game doesn't open the FLOP".
+  {
+    const t = P.createTable({ id:'raise-call', smallBlind:5, bigBlind:10, maxSeats:6 });
+    t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    t.seats[3] = { playerId:'C', name:'C', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    P.startHand(t);
+    // UTG (one of A/B/C depending on button + heads-up state — not
+    // pinned here) raises to 30. Whichever seat it is, all 3 must
+    // eventually call.
+    const raiser = t.currentPlayerIndex;
+    ok(P.applyAction(t, raiser, 'raise', 30).ok, 'UTG raises to 30');
+    // Phase-bounded loop. Runs callers' CALLs until PRE_FLOP closes
+    // (limit 10 is a safety cap so a regression can't infinite-loop).
+    let safety = 0;
+    let callerCount = 0;
+    let rotatedToRaiser = false;
+    while (t.phase === P.PHASE.PRE_FLOP && safety < 10) {
+      const cur = t.currentPlayerIndex;
+      if (cur === -1) break;
+      if (cur === raiser) {
+        // Aggressor must NOT have to "check themselves" — the round
+        // should already be on FLOP by here.
+        rotatedToRaiser = true;
+        break;
+      }
+      ok(P.applyAction(t, cur, 'call').ok,
+         'Opponent #' + (callerCount + 1) + ' calls 30');
+      callerCount++;
+      safety++;
+    }
+    ok(!rotatedToRaiser,
+       'Action never rotated back to the raiser preflop (extra-check bug)');
+    eq(t.phase, P.PHASE.FLOP,
+       'Raise + all callers advances directly to FLOP (no raiser re-action)');
+    eq(t.communityCards.length, 3, '3 community cards dealt on the FLOP');
+    eq(callerCount, 2, 'Both non-raiser seats called the raise');
+  }
+
+  // Regression: check-around post-flop advances the street without
+  // requiring any player to "raise" — everyone had a turn AND
+  // contributed matched. Same `acted`-flag predicate.
+  {
+    const t = P.createTable({ id:'check-around-flop', smallBlind:5, bigBlind:10, maxSeats:4 });
+    t.seats[0] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    t.seats[1] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    t.seats[2] = { playerId:'C', name:'C', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
+    P.startHand(t);
+    // Limp everyone in to reach the FLOP quickly.
+    for (let i = 0; i < 20; i++) {
+      const cur = t.currentPlayerIndex;
+      if (cur === -1) break;
+      P.applyAction(t, cur, 'call');
+      if (t.phase === P.PHASE.FLOP) break;
+    }
+    eq(t.phase, P.PHASE.FLOP, 'Preflop limp-around reaches FLOP');
+    // 3-seat check-around on the flop should close after all 3 acted.
+    const cap = 12;
+    for (let i = 0; i < cap && t.phase === P.PHASE.FLOP; i++) {
+      const cur = t.currentPlayerIndex;
+      if (cur === -1) break;
+      ok(P.applyAction(t, cur, 'check').ok, 'Check-around iter ' + i);
+    }
+    eq(t.phase, P.PHASE.TURN,
+       'Check-around post-flop closes to TURN (every player acted & matched)');
   }
 
   console.log('');
@@ -312,7 +388,7 @@ async function main() {
       playerId, name, stack,
       holeCards: [], folded: false, allIn: false,
       removed: false, satOut: false, disconnected: false,
-      contributed: 0,
+      contributed: 0, acted: false,
     };
   }
 
