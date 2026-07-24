@@ -4,9 +4,9 @@ import React, { useEffect, useState } from 'react';
  * ShowdownHUD
  * Full-screen, huge-text overlay shown right after a hand ends.
  * Pass it the result from runShowdown() (showdown.js) and it handles
- * showing itself for exactly 10 seconds, then calling onDone().
+ * showing itself for exactly 20 seconds, then calling onDone().
  *
- * NOTE: this file is the verbatim 10-second variant shared by the user.
+ * NOTE: this file is the verbatim 20-second variant shared by the user.
  * Several polish fixes from a prior iteration have been intentionally
  * reverted here per user direction. Each reverted section has an inline
  * `NOTE: ...` block summarising (a) what was lost vs the prior polished
@@ -18,7 +18,7 @@ import React, { useEffect, useState } from 'react';
  *   revealed:        { playerId: [card, card] }   - from runShowdown()
  *   hudMessages:     [{ playerId, hudText, amount, handDescr }]
  *   currentPlayerId: string                       - which player is "you"
- *   onDone:          () => void                   - called after 10s
+ *   onDone:          () => void                   - called after 20s
  *
  * NOTE on React dependency: this is a React component. The poker
  * project's main web client is vanilla JS (public/js/client.js + the
@@ -31,11 +31,11 @@ import React, { useEffect, useState } from 'react';
 export default function ShowdownHUD({ revealed, hudMessages, currentPlayerId, onDone }) {
   const [visible, setVisible] = useState(true);
 
-  // NOTE: `[onDone]` in the dep list causes the 10s auto-dismiss timer
+  // NOTE: `[onDone]` in the dep list causes the 20s auto-dismiss timer
   // to re-arm on every parent re-render that creates a fresh inline
   // `onDone` callback. With the standard pattern `onDone={() =>
   // setShowdownResult(null)}` in JSX parents, the callback is a new
-  // function every render — so a re-render mid-window resets the 10s
+  // function every render — so a re-render mid-window resets the 20s
   // timer and the HUD effectively never closes. The prior polished
   // version captured the latest `onDone` in a ref so the timer ran
   // once on mount, regardless of the parent's re-render cadence. If
@@ -45,7 +45,7 @@ export default function ShowdownHUD({ revealed, hudMessages, currentPlayerId, on
     const timer = setTimeout(() => {
       setVisible(false);
       if (onDone) onDone();
-    }, 10000);
+    }, 20000);
     return () => clearTimeout(timer);
   }, [onDone]);
 
@@ -155,7 +155,7 @@ function GameTable() {
           revealed={showdownResult.revealed}
           hudMessages={showdownResult.hudMessages}
           currentPlayerId="A"
-          onDone={() => setShowdownResult(null)} // clears HUD after 10s, starts next hand
+          onDone={() => setShowdownResult(null)} // clears HUD after 20s, starts next hand
         />
       )}
     </>

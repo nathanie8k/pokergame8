@@ -818,7 +818,7 @@ input, button { color: inherit; }
 
 /* ===== Showdown modal & per-seat banners ===== */
 
-/* Centered modal that pops up for 5s at the end of a real showdown
+/* Centered modal that pops up for 20s at the end of a real showdown
    (full board + multiple players evaluated). Fold-out ('Won by fold')
    hands deliberately skip this modal — see client.js#maybeShowShowdown
    for the discrimination rule — and show a lighter per-seat banner
@@ -835,7 +835,7 @@ input, button { color: inherit; }
     0 0 0 1px rgba(255,204,77,0.10),
     0 0 60px rgba(255,204,77,0.15);
   /* Slide in from above (small parallax feel) on every first-show event;
-     re-renders within the same 5s window don't re-trigger the animation
+     re-renders within the same 20s window don't re-trigger the animation
      — the .no-pop class guards against that. */
   animation: showdownIn 280ms ease-out;
 }
@@ -973,7 +973,7 @@ input, button { color: inherit; }
 }
 
 /* ===== Per-seat showdown banner =====
-   Tiny floating pill anchored above each seat for the same 5-second
+   Tiny floating pill anchored above each seat for the same 20-second
    showdown window. Winners get a gold "WON $X" pill; losers get a
    muted "lost" pill. Fold-out winners (single live player at
    preflop-/flop-/turn-fold) get a lighter gold pill reading "WON". */

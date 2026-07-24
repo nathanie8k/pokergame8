@@ -25,7 +25,7 @@ const state = {
   pendingError:  null,
   // Showdown modal state.
   // - `showdownWindow`: { handNumber, expiresAt, closed } | null — the
-  //   active 10s showdown window for the current hand. Set when the
+  //   active 20s showdown window for the current hand. Set when the
   //   modal first pops; flipped to `closed: true` when the timer fires
   //   (so a re-render during the same hand doesn't pop a fresh modal);
   //   nulled only on phase transitions out of hand_over, on leave-table,
@@ -34,7 +34,7 @@ const state = {
   // - `showdownModalTimer`: setTimeout handle, cancelled on leave /
   //   clearShowdown. The timer is the ONLY close path for the live
   //   showdown modal — players have no way to dismiss it before the
-  //   10 seconds elapse (no Escape, no close button, no click-outside)
+  //   20 seconds elapse (no Escape, no close button, no click-outside)
   //   per the design contract.
   showdownWindow: null,
   showdownModalTimer: null,
@@ -582,7 +582,7 @@ function leaveCurrentTable() {
     if (res && res.ok) {
       state.currentTable = null;
       // Tear down any in-flight showdown modal + timer so leaving mid-hand
-      // doesn't strand a 10-second timer that would re-render an empty
+      // doesn't strand a 20-second timer that would re-render an empty
       // lobby once it fires.
       clearShowdown();
       setView('lobby');
@@ -610,13 +610,13 @@ function sitIn() {
 // "hand_over" with non-null lastHandResults, we pop a centered modal
 // listing every non-folded seat (board + their 2 hole cards + hand
 // descriptor like "Two Pair, Aces and Kings"), apply a per-seat banner
-// ("WON $120" / "LOST" / fold-out variants) for the same 10-second
+// ("WON $120" / "LOST" / fold-out variants) for the same 20-second
 // window, and let the underlying banner still show after we fade out.
 //
 // Contract: the showdown modal is undismissable by the player. The
 // timer is the ONLY close path — no Escape handler, no close button,
 // no click-outside-to-close on the modal backdrop. Players have to
-// wait the full 10 seconds before play resumes. The per-seat fold
+// wait the full 20 seconds before play resumes. The per-seat fold
 // banner (lighter, no modal) also follows the same undismissable
 // timer contract.
 //
@@ -624,14 +624,14 @@ function sitIn() {
 // full board (communityCards.length < 5) AND every lastHandResults
 // winner has handName === 'Won by fold'. In that case we skip the
 // modal (nothing to reveal) and show a smaller fold-out per-seat
-// banner only — still on the same 10-second timer.
+// banner only — still on the same 20-second timer.
 
 // Driver: called from the bottom of renderTable(). Checks current
 // table state and either: (a) cleans up if no real showdown is in
 // progress, (b) maintains a per-handNumber modal that auto-fades
-// after 10s, or (c) pops + schedules a new modal for a fresh
+// after 20s, or (c) pops + schedules a new modal for a fresh
 // handNumber. Idempotent across re-renders within the same hand. The
-// 10s window is owned by `state.showdownWindow` (single-slot
+// 20s window is owned by `state.showdownWindow` (single-slot
 // object) so a re-render after the timer fires does NOT bring the
 // per-seat banners back.
 function maybeShowShowdown(t) {
@@ -687,7 +687,7 @@ function maybeShowShowdown(t) {
   }
 
   // Re-arm gate: once we've shown the modal for this handNumber,
-  // don't re-show it after the 10s timer fires. The check is keyed
+  // don't re-show it after the 20s timer fires. The check is keyed
   // on handNumber (not just windowActive) so a re-render that arrives
   // AFTER the timer nulls `state.showdownWindow` can't pop a fresh
   // modal and schedule a fresh timer — the slot is now stamped
@@ -716,13 +716,13 @@ function maybeShowShowdown(t) {
   // triggering a fresh show.
   state.showdownWindow = {
     handNumber: t.handNumber,
-    expiresAt: Date.now() + 10000,
+    expiresAt: Date.now() + 20000,
     closed: false,
   };
   showShowdownModal(t);
 
   if (state.showdownModalTimer) clearTimeout(state.showdownModalTimer);
-  // 10-second timer is the ONLY close path for the modal — see the
+  // 20-second timer is the ONLY close path for the modal — see the
   // contract at the top of this section. Players cannot dismiss the
   // showdown modal themselves; it dismisses on this timer alone.
   state.showdownModalTimer = setTimeout(() => {
@@ -746,17 +746,17 @@ function maybeShowShowdown(t) {
         && state.currentTable.id === t.id) {
       renderTable();
     }
-  }, 10000);
+  }, 20000);
 }
 
 function showShowdownModal(t) {
   const modal = $('showdownModal');
   if (!modal) return;
   // Re-populate on every modal show — even for the first time within
-  // the 10s window we want the modal contents to track the latest
+  // the 20s window we want the modal contents to track the latest
   // table_state payload (e.g. holeCards reveal just arrived).
   populateShowdownModal(t);
-  // Contract: the modal is undismissable for the full 10-second
+  // Contract: the modal is undismissable for the full 20-second
   // window. We rely on the CSS default `pointer-events: auto` on the
   // `.modal` element so the dark inset-0 backdrop absorbs every click
   // in the modal area. That blocks click-through to the underlying
@@ -794,7 +794,7 @@ function hideShowdownModal() {
 // leave, and (2) the early-cleanup branch at the top of
 // `maybeShowShowdown` for phase transitions out of hand_over,
 // busted-refund (lastHandResults cleared), or missing-winners defensive
-// cleanup. The 10s post-timer re-render path (timer body in
+// cleanup. The 20s post-timer re-render path (timer body in
 // `maybeShowShowdown`'s setTimeout → `renderTable()` → re-enters
 // `maybeShowShowdown`'s else-branch + `clearSeatBanners`) is
 // intentionally NOT routed here — the two teardown paths differ so a
@@ -811,7 +811,7 @@ function clearShowdown() {
   // Note on what this function owns vs. doesn't:
   //   - This function is the route through which a phase transition /
   //     leave-table / busted-refund tears down the per-seat banner
-  //     state. (The 10s post-timer re-render path also calls
+  //     state. (The 20s post-timer re-render path also calls
   //     clearSeatBanners — via the maybeShowShowdown else-branch on
   //     the next renderTable — but doesn't go through here.)
   //   - Per-seat eligibility filtering (folded / removed /
@@ -822,7 +822,7 @@ function clearShowdown() {
 
 // Strip .seat-banner classes from every seat. Used when the window
 // expires (and we're not in a fold-out) so the per-seat pills don't
-// linger past the end of the undismissable 10-second showdown
+// linger past the end of the undismissable 20-second showdown
 // window.
 function clearSeatBanners() {
   document.querySelectorAll('.seat-banner').forEach((b) => {
