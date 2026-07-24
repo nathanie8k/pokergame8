@@ -816,7 +816,202 @@ input, button { color: inherit; }
   .podium-card .podium-name { font-size: 12px; }
 }
 
-/* ===== Modal ===== */
+/* ===== Showdown modal & per-seat banners ===== */
+
+/* Centered modal that pops up for 5s at the end of a real showdown
+   (full board + multiple players evaluated). Fold-out ('Won by fold')
+   hands deliberately skip this modal — see client.js#maybeShowShowdown
+   for the discrimination rule — and show a lighter per-seat banner
+   only. Emphasis is on the per-player rows: name + 2 hole cards +
+   descriptive hand name + a "YOU WON $X" affordance on the viewer
+   themselves, or a muted "lost" line otherwise. */
+.showdown-content {
+  max-width: 720px;
+  background:
+    radial-gradient(ellipse at top, rgba(255,204,77,0.10), var(--bg-1) 60%);
+  border: 1px solid rgba(255,204,77,0.35);
+  box-shadow:
+    var(--shadow-lg),
+    0 0 0 1px rgba(255,204,77,0.10),
+    0 0 60px rgba(255,204,77,0.15);
+  /* Slide in from above (small parallax feel) on every first-show event;
+     re-renders within the same 5s window don't re-trigger the animation
+     — the .no-pop class guards against that. */
+  animation: showdownIn 280ms ease-out;
+}
+@keyframes showdownIn {
+  from { transform: translateY(-12px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0)     scale(1);    opacity: 1; }
+}
+.showdown-header {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-bottom: 14px;
+}
+.showdown-header h3 {
+  margin: 0; letter-spacing: 0.4px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.showdown-trophy {
+  font-size: 28px; line-height: 1;
+  filter: drop-shadow(0 2px 8px rgba(255,204,77,0.5));
+  animation: trophyBounce 1.4s ease-in-out infinite;
+  /* Offset the bounce half-period so the trophy doesn't lockstep with a
+     browser's vertical font-metrics (which would shift its baseline
+     under the h3). Anchored to the header. */
+}
+@keyframes trophyBounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+.showdown-board {
+  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
+  margin: 16px 0 8px;
+}
+.showdown-rows {
+  display: flex; flex-direction: column;
+  gap: 8px;
+  margin: 6px 0 14px;
+}
+.showdown-row {
+  display: grid;
+  /* Columns: name flex, hole-card-pair small, hand name flex, label flex */
+  grid-template-columns: 1.4fr auto 1.6fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: rgba(0,0,0,0.32);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255,255,255,0.06);
+  font-size: 14px;
+  transition: border-color 150ms, background 150ms;
+  /* Each row slides in slightly delayed so they cascade instead of all
+     snapping on at once. CSS --i is set inline per row from JS. */
+  animation: showdownRowIn 240ms ease-out both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+@keyframes showdownRowIn {
+  from { transform: translateY(6px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+/* Highlight the viewer's own row so they can find themselves instantly
+   even on a busy 6-seat table. */
+.showdown-row.is-self {
+  background: rgba(92,205,255,0.10);
+  border-color: rgba(92,205,255,0.4);
+  box-shadow: 0 0 0 1px rgba(92,205,255,0.15);
+}
+.showdown-row.is-winner {
+  background: linear-gradient(180deg, rgba(255,204,77,0.20), rgba(255,204,77,0.08));
+  border-color: rgba(255,204,77,0.45);
+}
+.showdown-row.is-winner.is-self {
+  background: linear-gradient(180deg, rgba(255,204,77,0.22), rgba(92,205,255,0.08));
+  border-color: rgba(255,204,77,0.55);
+}
+.showdown-row .showdown-name {
+  font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Reused .card and .card-small from above with .fade-in for the deal
+   stagger (existing keyframe). */
+.showdown-row .showdown-cards {
+  display: flex; gap: 4px;
+}
+.showdown-row .showdown-hand {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.showdown-row .showdown-hand.is-winner { color: var(--accent); }
+.showdown-row .showdown-badge {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.showdown-row .showdown-badge.won {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #2a1d00;
+  box-shadow: var(--shadow-sm);
+}
+.showdown-row .showdown-badge.lost {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-mute);
+}
+.showdown-hint {
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+/* Tablet / phone: stack the row columns so cards / labels don't crowd
+   each other. */
+@media (max-width: 720px) {
+  .showdown-row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "name   badge"
+      "cards  hand";
+    gap: 8px;
+  }
+  .showdown-row .showdown-name  { grid-area: name; }
+  .showdown-row .showdown-cards { grid-area: cards; }
+  .showdown-row .showdown-hand  { grid-area: hand; text-align: right; }
+  .showdown-row .showdown-badge { grid-area: badge; }
+}
+@media (max-width: 480px) {
+  .showdown-content { padding: 16px 12px; }
+  .showdown-row     { padding: 10px 10px; gap: 6px; font-size: 13px; }
+}
+
+/* ===== Per-seat showdown banner =====
+   Tiny floating pill anchored above each seat for the same 5-second
+   showdown window. Winners get a gold "WON $X" pill; losers get a
+   muted "lost" pill. Fold-out winners (single live player at
+   preflop-/flop-/turn-fold) get a lighter gold pill reading "WON". */
+.seat-banner {
+  position: absolute;
+  top: -22px; left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 5;
+  box-shadow: var(--shadow-sm);
+  /* Fade-in over 220ms, then waits for the JS clearShowdown() to remove
+     the .show class (which fades it back out over the 200ms "out"
+     keyframe). No auto-hide via CSS so the client owns the timer
+     uniformly with the modal. */
+  transition: opacity 200ms ease, transform 220ms ease;
+}
+.seat-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.seat-banner.won {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #2a1d00;
+}
+.seat-banner.lost {
+  background: rgba(0,0,0,0.62);
+  color: rgba(255,255,255,0.78);
+  border: 1px solid rgba(255,255,255,0.18);
+}
+.seat-banner.fold {
+  background: rgba(255,204,77,0.85);
+  color: #2a1d00;
+}
+
 .modal {
   position: fixed; inset: 0; z-index: 200;
   background: rgba(0,0,0,0.55);

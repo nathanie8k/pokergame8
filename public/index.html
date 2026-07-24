@@ -206,6 +206,30 @@
 
   <div id="toast" class="toast" style="display:none"></div>
 
+  <!-- ===== Showdown modal ===== -->
+  <!-- Pops up whenever the engine transitions the table to phase =
+       hand_over with a real showdown (i.e. lastHandResults is non-null
+       and every winner's handName is NOT "Won by fold"). Visible for 5
+       seconds, then auto-clears; the underlying .hand-result banner
+       stays so a viewer returning to the table still sees the result.
+       Purely client-side timing — the server payload is identical to
+       before, the modal just consumes the existing publicView data
+       (communityCards + every non-folded seat's revealed holeCards +
+       lastHandResults.winners[] with their handName + share). Fold-out
+       hands (no full board) deliberately skip this modal and show a
+       lighter-fold per-seat banner only. -->
+  <div class="modal showdown-modal" id="showdownModal" aria-modal="true" aria-labelledby="showdownTitle" style="display:none">
+    <div class="modal-content showdown-content">
+      <div class="showdown-header">
+        <span class="showdown-trophy" aria-hidden="true">&#127942;</span>
+        <h3 id="showdownTitle">Showdown</h3>
+      </div>
+      <div class="showdown-board" id="showdownBoard"></div>
+      <div class="showdown-rows" id="showdownRows"></div>
+      <div class="showdown-hint muted">Auto-clears in 5 seconds&hellip;</div>
+    </div>
+  </div>
+
   <!-- Leaderboard modal — opened from the top-bar "★ Leaderboard" button.
        Polished casino-style view of the top 50 by points. Top 3 are
        rendered as a podium with gold / silver / bronze accents so the

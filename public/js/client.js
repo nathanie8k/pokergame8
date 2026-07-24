@@ -23,6 +23,22 @@ const state = {
   toastTimer:    null,
   toastType:     null,
   pendingError:  null,
+  // Showdown modal state.
+  // - `showdownWindow`: { handNumber, expiresAt, closed } | null — the
+  //   active 5s showdown window for the current hand. Set when the modal
+  //   first pops; flipped to `closed: true` when the timer fires (so a
+  //   re-render during the same hand doesn't pop a fresh modal); nulled
+  //   only on phase transitions out of hand_over, on leave-table, or on
+  //   busted-refund. applySeatBanners + maybeShowShowdown gate on this
+  //   slot + the samehand check.
+  // - `showdownModalTimer`: setTimeout handle, cancelled on leave /
+  //   clearShowdown.
+  // - `showdownEscapeListener`: keydown handler installed while the
+  //   modal is visible so keyboard users can Escape-dismiss without
+  //   waiting the full 5s.
+  showdownWindow: null,
+  showdownModalTimer: null,
+  showdownEscapeListener: null,
 };
 
 const socket = io({ reconnection: true });
@@ -344,6 +360,13 @@ function renderTable() {
   // can't send — updateChatReadOnly toggles the .read-only class so CSS
   // dims + disables the input + send button.
   updateChatReadOnly();
+  // Showdown UI: pop the centered modal + light per-seat banners when
+  // the engine reports phase=hand_over with a non-null lastHandResults.
+  // Special-cases a fold-out (every winner's handName === 'Won by fold')
+  // → skip the modal, keep the lighter per-seat banner only. Called at
+  // the very bottom so it's the last visual layer to settle after every
+  // renderTable invocation. Idempotent across re-renders.
+  maybeShowShowdown(t);
 }
 
 function renderSeat(seat, idx, table, total) {
@@ -391,6 +414,13 @@ function renderSeat(seat, idx, table, total) {
   // buildRing(...ringChildren) call below folds all siblings into one
   // ring so the seat reads as name + status + cards inside one pill.
   wrap.appendChild(buildRing(...ringChildren));
+  // Showdown banner: a floating pill anchored above the seat that lights
+  // up for the 5-second showdown window. Empty by default; `applySeatBanner`
+  // below fills the text + .show class when the engine reports the
+  // hand-over state. We don't gate its construction on hand-over so a
+  // re-render mid-window (chat_update, action ack, etc.) keeps the
+  // element in place — only the classes/text toggle.
+  wrap.appendChild(el('div', { class: 'seat-banner', 'data-seat-idx': idx }));
   return wrap;
 }
 
@@ -550,6 +580,10 @@ function leaveCurrentTable() {
   socket.emit('leave_table', null, res => {
     if (res && res.ok) {
       state.currentTable = null;
+      // Tear down any in-flight showdown modal + timer so leaving mid-hand
+      // doesn't strand a 5-second timer that would re-render an empty
+      // lobby once it fires.
+      clearShowdown();
       setView('lobby');
     } else {
       showToast(res && res.error ? res.error : 'Could not leave', 'error');
@@ -565,6 +599,316 @@ function sitOut() {
 function sitIn() {
   socket.emit('sit_in', null, res => {
     if (!res || !res.ok) showToast(res && res.error ? res.error : 'Failed', 'error');
+  });
+}
+
+// ---------- Showdown modal + per-seat banners ----------
+//
+// End-of-hand visual flourish that complements the basic .hand-result
+// banner already in renderTable(). When the engine transitions to phase
+// "hand_over" with non-null lastHandResults, we pop a centered modal
+// listing every non-folded seat (board + their 2 hole cards + hand
+// descriptor like "Two Pair, Aces and Kings"), apply a per-seat banner
+// ("WON $120" / "LOST" / fold-out variants) for the same 5-second
+// window, and let the underlying banner still show after we fade out.
+//
+// Distinguishing real showdowns from fold-outs: a fold-out hand has no
+// full board (communityCards.length < 5) AND every lastHandResults
+// winner has handName === 'Won by fold'. In that case we skip the modal
+// (nothing to reveal) and show a smaller fold-out per-seat banner only.
+
+// Driver: called from the bottom of renderTable(). Checks current
+// table state and either: (a) cleans up if no real showdown is in
+// progress, (b) maintains a per-handNumber modal that auto-fades after
+// 5s, or (c) pops + schedules a new modal for a fresh handNumber.
+// Idempotent across re-renders within the same hand. The 5s window is
+// owned by `state.showdownWindow` (single-slot object) so a re-render
+// after the timer fires does NOT bring the per-seat banners back.
+function maybeShowShowdown(t) {
+  // Cleanup early if we're not in a real showdown state. Covers:
+  //   - phasse !== 'hand_over' (next hand started, table empty, etc.)
+  //   - lastHandResults === null (busted-refund hands the engine nulls)
+  //   - lastHandResults.winners empty/missing (defensive)
+  if (!t || t.phase !== 'hand_over' || !t.lastHandResults
+      || !Array.isArray(t.lastHandResults.winners)
+      || t.lastHandResults.winners.length === 0) {
+    clearShowdown();
+    return;
+  }
+
+  // Fold-out distinction: every winner reports handName === 'Won by
+  // fold' (engine sets this when there was no 5-card board to score
+  // against — players were eliminated by fold before the river).
+  // Modal is suppressed (nothing to reveal) but the per-seat fold
+  // banner still lights up.
+  const isFoldout = t.lastHandResults.winners.every(
+    (w) => w.handName === 'Won by fold'
+  );
+
+  // WindowActive: true only while the showdown window is open for
+  // THIS handNumber. Checked on every render so banners stay synced
+  // with the timer — after the timer fires, the next render clears
+  // them (no stale "WON" pill lingering on a fresh WAITING phase).
+  const windowActive = state.showdownWindow
+    && state.showdownWindow.handNumber === t.handNumber
+    && Date.now() < state.showdownWindow.expiresAt;
+
+  if (windowActive) {
+    // Apply or refresh per-seat banners (solely based on the public
+    // payload — no server fetch).
+    applySeatBanners(t);
+  } else {
+    // The window expired / was never armed. If we're in a fold-out,
+    // we still want the per-seat fold banner; otherwise strip them.
+    if (isFoldout) {
+      applySeatBanners(t);
+    } else {
+      clearSeatBanners();
+    }
+  }
+
+  if (isFoldout) {
+    // Skip the centered modal — there's nothing to reveal. The
+    // per-seat banner above already shows the outcome.
+    hideShowdownModal();
+    return;
+  }
+
+  // Re-arm gate: once we've shown the modal for this handNumber,
+  // don't re-show it after the 5s timer fires. The check is keyed
+  // on handNumber (not just windowActive) so a re-render that arrives
+  // AFTER the timer nulls `state.showdownWindow` can't pop a fresh
+  // modal and schedule a fresh timer — the slot is now stamped
+  // `closed: true` rather than nulled, so the gate still fires.
+  const samehand = state.showdownWindow
+    && state.showdownWindow.handNumber === t.handNumber;
+  if (samehand) {
+    // Already processed this hand (active or closed). Leave the
+    // modal/banners in their current state — applySeatBanners above
+    // has already conditionally cleared or applied them.
+    return;
+  }
+
+  // First occurrence for this hand — arm the window + show modal +
+  // schedule the close. `closed: false` marks the active phase. The
+  // timer callback flips it to `closed: true` so the re-arm gate
+  // above recognises the hand as already-processed rather than
+  // triggering a fresh show.
+  state.showdownWindow = {
+    handNumber: t.handNumber,
+    expiresAt: Date.now() + 5000,
+    closed: false,
+  };
+  showShowdownModal(t);
+
+  if (state.showdownModalTimer) clearTimeout(state.showdownModalTimer);
+  state.showdownModalTimer = setTimeout(() => {
+    state.showdownModalTimer = null;
+    // Flip the slot to a closed sentinel: same handNumber, closed=true.
+    // We DO NOT null the slot here; the re-arm gate above keys on
+    // handNumber + this flag so a subsequent re-render can't re-pop
+    // the modal mid-window. Only `clearShowdown()` (called on
+    // next-hand, leave-table, or non-hand-over phase transitions)
+    // nils the slot.
+    if (state.showdownWindow
+        && state.showdownWindow.handNumber === t.handNumber) {
+      state.showdownWindow.closed = true;
+    }
+    hideShowdownModal();
+    // Re-render so the .seat-banner fade-out runs as a CSS transition
+    // (not a snap). Only fire if the user is still on this table to
+    // avoid stirring the renderer from the background.
+    if (state.view === 'table'
+        && state.currentTable
+        && state.currentTable.id === t.id) {
+      renderTable();
+    }
+  }, 5000);
+}
+
+function showShowdownModal(t) {
+  const modal = $('showdownModal');
+  if (!modal) return;
+  // Re-populate on every modal show — even for the first time within
+  // the 5s window we want the modal contents to track the latest
+  // table_state payload (e.g. holeCards reveal just arrived).
+  populateShowdownModal(t);
+  modal.style.display = '';
+  // Install a once-only Escape-to-dismiss listener so keyboard users
+  // can bypass the 5s auto-clear. Removed in hideShowdownModal so it
+  // doesn't fire after the modal is gone (and so subsequent pops
+  // re-register cleanly).
+  if (!state.showdownEscapeListener) {
+    state.showdownEscapeListener = (e) => {
+      if (e.key === 'Escape') hideShowdownModal();
+    };
+    document.addEventListener('keydown', state.showdownEscapeListener);
+  }
+}
+
+function hideShowdownModal() {
+  const modal = $('showdownModal');
+  if (modal) modal.style.display = 'none';
+  // Always remove the Escape listener when the modal goes away —
+  // whether via timer, Escape key, or clearShowdown() — so we don't
+  // leak handlers across hand-over windows.
+  if (state.showdownEscapeListener) {
+    document.removeEventListener('keydown', state.showdownEscapeListener);
+    state.showdownEscapeListener = null;
+  }
+}
+
+// Tear down all showdown UI: modal + banners + window + timer. Called
+// when the table leaves the hand-over state (next hand starts, viewer
+// leaves, or table state reverts to waiting).
+function clearShowdown() {
+  hideShowdownModal();
+  state.showdownWindow = null;
+  if (state.showdownModalTimer) {
+    clearTimeout(state.showdownModalTimer);
+    state.showdownModalTimer = null;
+  }
+  clearSeatBanners();
+}
+
+// Strip .seat-banner classes from every seat. Used when the window
+// expires (and we're not in a fold-out) so the per-seat pills don't
+// linger past the 5s mark.
+function clearSeatBanners() {
+  document.querySelectorAll('.seat-banner').forEach((b) => {
+    b.classList.remove('show', 'won', 'lost', 'fold');
+    b.textContent = '';
+  });
+}
+
+// Populate the showdown modal contents. Reads t.communityCards + each
+// non-folded seat's holeCards + lastHandResults.winners[] directly —
+// publicView already exposes all three in the showdown-reveal window,
+// so this is just rendering. No data fetched from the server.
+function populateShowdownModal(t) {
+  const boardEl = $('showdownBoard');
+  if (boardEl) {
+    boardEl.innerHTML = '';
+    (t.communityCards || []).forEach((c, i) => {
+      boardEl.appendChild(renderCard(c, { delay: i * 80 }));
+    });
+  }
+  const rowsEl = $('showdownRows');
+  if (!rowsEl) return;
+  rowsEl.innerHTML = '';
+  const winnersById = new Set(
+    (t.lastHandResults.winners || []).map((w) => w.id)
+  );
+  let rowIdx = 0;
+  // Iterate non-folded seats in t.seats order so the modal layout
+  // mirrors the order around the table. The `seat.storedHandName` gate
+  // also keeps newly-joined seats OUT of the modal — they weren't
+  // part of the resolved hand.
+  for (const seat of t.seats) {
+    if (!seat || !seat.occupied || seat.removed) continue;
+    if (seat.folded || !seat.storedHandName) continue;
+    const isWinner = winnersById.has(seat.playerId);
+    const winnerEntry = (t.lastHandResults.winners || []).find(
+      (w) => w.id === seat.playerId
+    );
+    // Prefer the per-seat storedHandName (set by resolveShowdown via
+    // the new live showdown.js module) since it's authoritative for
+    // tied / loser hands too. Fall back to winnerEntry.handName only
+    // if storedHandName was somehow nulled.
+    const handDescr = seat.storedHandName
+      || (winnerEntry && winnerEntry.handName)
+      || '';
+    const row = el('div', {
+      class: 'showdown-row'
+        + (isWinner ? ' is-winner' : '')
+        + (seat.isSelf ? ' is-self' : ''),
+    });
+    row.style.setProperty('--i', String(rowIdx));
+    rowIdx += 1;
+    row.appendChild(el('div', { class: 'showdown-name', text: seat.name }));
+    const cardsEl = el('div', { class: 'showdown-cards' });
+    if (seat.holeCards && seat.holeCards.length > 0) {
+      seat.holeCards.forEach((c, i) => {
+        cardsEl.appendChild(renderCard(c, { small: true, delay: i * 80 }));
+      });
+    } else {
+      cardsEl.appendChild(renderCard(null, { small: true, faceDown: true }));
+      cardsEl.appendChild(renderCard(null, { small: true, faceDown: true }));
+    }
+    row.appendChild(cardsEl);
+    row.appendChild(el('div', {
+      class: 'showdown-hand' + (isWinner ? ' is-winner' : ''),
+      text: handDescr || '—',
+    }));
+    row.appendChild(el('div', {
+      class: 'showdown-badge ' + (isWinner ? 'won' : 'lost'),
+      text: isWinner
+        ? 'WON ' + formatNumber(winnerEntry?.share ?? 0)
+        : 'LOST',
+    }));
+    rowsEl.appendChild(row);
+  }
+}
+
+// Apply per-seat banner content + classes for every .seat-banner element
+// currently in the DOM. Reads from t.lastHandResults — winning seats
+// get a gold WON $X pill, losers get a muted LOST pill; fold-out
+// winners get a lighter WON pill (no $ amount since the engine signals
+// "Won by fold" without a hand description). Called by maybeShowShowdown.
+// CRITICAL: only seats with a non-null `storedHandName` (set by
+// resolveShowdown for every non-folded participant) are eligible for
+// a banner. New joins mid-window, mid-hand re-entries, or future
+// hands' seats all have storedHandName=null and stay clear.
+function applySeatBanners(t) {
+  if (!t.lastHandResults || !Array.isArray(t.lastHandResults.winners)) {
+    clearSeatBanners();
+    return;
+  }
+  const winnersById = new Set(t.lastHandResults.winners.map((w) => w.id));
+  const isFoldout = t.lastHandResults.winners.every(
+    (w) => w.handName === 'Won by fold'
+  );
+  document.querySelectorAll('.seat-banner').forEach((b) => {
+    const idx = parseInt(b.getAttribute('data-seat-idx'), 10);
+    const seat = !isNaN(idx) ? t.seats[idx] : null;
+    if (!seat || !seat.occupied || seat.removed || seat.folded) {
+      b.classList.remove('show', 'won', 'lost', 'fold');
+      b.textContent = '';
+      return;
+    }
+    const winnerEntry = t.lastHandResults.winners.find(
+      (w) => w.id === seat.playerId
+    );
+    const isWinner = winnersById.has(seat.playerId);
+    if (isFoldout) {
+      // Fold-out: `resolveShowdown` never runs for this path (the
+      // engine's advancePhase calls awardPot directly), so the
+      // surviving winner's `storedHandName` stays null. Show the
+      // lighter fold-banner pill for the winner unconditionally;
+      // losers (folded) were already cleared above.
+      b.classList.add('show', 'fold');
+      b.classList.remove('won', 'lost');
+      b.textContent = isWinner ? 'WON' : '';
+      return;
+    }
+    // Real showdown: only show banner on seats that participated
+    // (resolveShowdown set `storedHandName` for every non-folded
+    // seat). New joins mid-window / mid-hand re-entries / future
+    // hands' seats all have storedHandName=null and stay clear.
+    if (!seat.storedHandName) {
+      b.classList.remove('show', 'won', 'lost', 'fold');
+      b.textContent = '';
+      return;
+    }
+    b.classList.add('show');
+    b.classList.remove('won', 'lost', 'fold');
+    if (isWinner) {
+      b.classList.add('won');
+      b.textContent = 'WON ' + formatNumber(winnerEntry?.share ?? 0);
+    } else {
+      b.classList.add('lost');
+      b.textContent = 'LOST';
+    }
   });
 }
 

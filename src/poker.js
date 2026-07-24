@@ -6,6 +6,8 @@
 
 'use strict';
 
+const showdown = require('./showdown');
+
 const SUITS = ['s', 'h', 'd', 'c'];
 const RANK_NAMES = {
   14: 'A', 13: 'K', 12: 'Q', 11: 'J',
@@ -48,11 +50,21 @@ function shuffle(deck) {
   return a;
 }
 
-// ----- Hand evaluation -----
+// ----- Hand evaluation (LEGACY: kept for backwards compat with tests) -----
 //
-// Hand rank is a small array compared lexicographically; bigger wins.
-// Categories: 9 SF, 8 quads, 7 full house, 6 flush, 5 straight,
-//             4 trips, 3 two pair, 2 pair, 1 high card.
+// These helpers (`evaluate5`, `evaluate7`, `compareHands`, `handRankName`,
+// `determineWinners`, `rankCounts`, `combinations`) are no longer on the
+// live showdown critical path — `resolveShowdown` now delegates to
+// `src/showdown.js` (which uses the `pokersolver` npm package). They're
+// still exported so the existing engine tests can poke at the legacy
+// implementation while we transition the suite; the public surface these
+// helpers rely on is stable enough that nothing in tests/ has needed to
+// change. New code should use `showdown.determineShowdown` from
+// `src/showdown.js` instead.
+//
+// Categories originally returned by `evaluate5`: 9 SF, 8 quads, 7 full
+// house, 6 flush, 5 straight, 4 trips, 3 two pair, 2 pair, 1 high card.
+// `compareHands(a, b)` compares two rank tuples lexicographically.
 
 function compareHands(a, b) {
   const len = Math.max(a.length, b.length);
@@ -705,6 +717,15 @@ function awardPot(table, winnerSeats, amounts) {
 
 function resolveShowdown(table) {
   // Determine per-player hand info, find winners, award.
+  //
+  // Live evaluation path: `src/showdown.js` (pokersolver-backed). The
+  // engine previously ran its own `evaluate7` over every seat's 7 cards;
+  // that helper is now kept only as a legacy fallback (see the LEGACY
+  // comment near `evaluate5` above). The new module gives us proper
+  // straight/flush recognition out of the box and returns a descriptive
+  // hand name (e.g. "Straight, Nine High", "Two Pair, Aces and Kings")
+  // that we attach to each seat's `storedHandName` so the client HUD
+  // and showdown modal can render it verbatim.
   const live = table.seats.filter(s => s && !s.removed && !s.folded);
   if (live.length === 0) {
     table.phase = PHASE.HAND_OVER;
@@ -712,38 +733,56 @@ function resolveShowdown(table) {
     return;
   }
   if (live.length === 1) {
-    // Single live player at showdown: we have full board. Evaluate their hand
-    // for the result banner; only call evaluate7 when we have all 7 cards.
+    // Single live player at showdown (rare turn/river run-out that left
+    // everyone else all-in-then-folded, or heads-up where both went
+    // all-in and only one remains active for showdown purposes). Evaluate
+    // their hand for the result banner via the new module; only call when
+    // we have all 7 cards in scope.
     const winner = live[0];
     if (table.communityCards.length === 5 && winner.holeCards.length === 2) {
-      winner.storedHandName = handRankName(evaluate7(winner.holeCards.concat(table.communityCards)));
+      winner.storedHandName = showdown.solvePlayerHand(
+        winner.holeCards,
+        table.communityCards
+      ).descr;
     }
     awardPot(table, [winner], [table.pot]);
     table.phase = PHASE.HAND_OVER;
     table.currentPlayerIndex = -1;
     return;
   }
+  // Multi-way showdown: delegate winner determination + per-seat hand-descr
+  // to the live module. `winningHoleIds` is the array of winning player
+  // ids in evaluation order; ties yield multiple winners (split pot).
+  // `evaluations` covers every non-folded seat (winners AND losers) so
+  // the client can render every player's best-hand name on the showdown
+  // modal even if they lost.
   const players = live.map(s => ({
-    seat: s,
-    rank: evaluate7(s.holeCards.concat(table.communityCards)),
+    id: s.playerId,
+    holeCards: s.holeCards,
   }));
-  let bestRank = players[0].rank;
-  for (let i = 1; i < players.length; i++) {
-    if (compareHands(players[i].rank, bestRank) > 0) bestRank = players[i].rank;
+  const { evaluations, winningHoleIds } = showdown.determineShowdown(
+    players, table.communityCards
+  );
+  // Attach display name onto every seat (winners + losers) before
+  // awarding, so the client modal has them ready via publicView's
+  // `storedHandName` field.
+  for (const e of evaluations) {
+    const seat = live.find(s => s.playerId === e.id);
+    if (seat) seat.storedHandName = e.handDescr;
   }
-  const winners = players.filter(p => compareHands(p.rank, bestRank) === 0);
-  const share = Math.floor(table.pot / winners.length);
-  const amounts = winners.map(() => share);
-  // Award any remainder (uneven split) to the first winner (closest left of
-  // the button wins odd chips in standard rules).
-  const remainder = table.pot - share * winners.length;
+  const winnerSeats = winningHoleIds
+    .map(id => live.find(s => s.playerId === id))
+    .filter(Boolean);
+  const share = Math.floor(table.pot / winnerSeats.length);
+  const amounts = winnerSeats.map(() => share);
+  // Award any remainder (uneven split) to the first winner (closest
+  // left of the button wins odd chips in standard rules).
+  const remainder = table.pot - share * winnerSeats.length;
   if (remainder > 0) amounts[0] += remainder;
-  // Attach handName for display before awarding.
-  for (const w of winners) w.seat.storedHandName = handRankName(w.rank);
-  awardPot(table, winners.map(w => w.seat), amounts);
-  table.winners = winners.map(w => w.seat.playerId);
-  table.winnerNames = winners.map(w => w.seat.name);
-  table.winnerHandNames = winners.map(w => handRankName(w.rank));
+  awardPot(table, winnerSeats, amounts);
+  table.winners = winnerSeats.map(s => s.playerId);
+  table.winnerNames = winnerSeats.map(s => s.name);
+  table.winnerHandNames = winnerSeats.map(s => s.storedHandName || '');
   table.phase = PHASE.HAND_OVER;
   table.currentPlayerIndex = -1;
   table.showdownShown = true;
