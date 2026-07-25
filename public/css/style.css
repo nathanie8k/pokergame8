@@ -286,34 +286,9 @@ input, button { color: inherit; }
   gap: 8px;
 }
 
-/* Demo-only modifier for `.ghost-btn.demo-btn`: visually distinct from
    the game-affecting buttons (Sit out / Sit in / Leave) so users don't
    mistake it for a real action. Dashed border + small amber leading
    dot convey "preview / not a real game effect". */
-.demo-btn {
-  border: 1px dashed rgba(250, 204, 21, 0.55);
-  color: var(--text-dim);
-}
-.demo-btn:hover {
-  border-color: rgba(250, 204, 21, 0.85);
-  color: var(--text);
-}
-.demo-btn::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #facc15;
-  margin-right: 6px;
-  vertical-align: middle;
-  box-shadow: 0 0 6px rgba(250, 204, 21, 0.7);
-  animation: demoBtnPulse 2s ease-in-out infinite;
-}
-@keyframes demoBtnPulse {
-  0%, 100% { opacity: 0.55; }
-  50%      { opacity: 1; }
-}
 
 /* ===== Legacy shared-password admin modal ===== */
 .admin-modal-content {

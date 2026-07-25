@@ -760,66 +760,6 @@ function sitIn() {
   });
 }
 
-// Random card picker for the demo deal preview. Allow duplicates — this is
-// a visual preview only, so two seats sharing a card isn't a bug. The shape
-// {rank, suit} matches what the server's publicView emits, so renderCard()
-// consumes it without any further translation.
-function randomCard() {
-  return {
-    rank: 2 + Math.floor(Math.random() * 13),
-    suit: ['s', 'h', 'd', 'c'][Math.floor(Math.random() * 4)],
-  };
-}
-
-// Visual-only "preview a deal" action. Mutates state.currentTable.seats[i]
-// for every occupied (non-removed, non-disconnected) seat and triggers a
-// re-render. No socket emit, no server-side change. The next
-// `table_state` broadcast from the server overwrites these demo cards
-// with the engine's real holeCards, so there's no manual clear path — the
-// button is just a transient visual flourisher.
-function dealDemo() {
-  const t = state.currentTable;
-  if (!t) return;
-  let dealt = 0;
-  for (const seat of t.seats) {
-    if (!seat || !seat.occupied || seat.removed || seat.disconnected) continue;
-    seat.holeCards = [randomCard(), randomCard()];
-    dealt++;
-  }
-  if (dealt === 0) { showToast('No occupied seats to deal to', 'info'); return; }
-  renderTable();
-}
-
-// ---------- Showdown modal + per-seat banners ----------
-//
-// End-of-hand visual flourish that complements the basic .hand-result
-// banner already in renderTable(). When the engine transitions to phase
-// "hand_over" with non-null lastHandResults, we pop a centered modal
-// listing every non-folded seat (board + their 2 hole cards + hand
-// descriptor like "Two Pair, Aces and Kings"), apply a per-seat banner
-// ("WON $120" / "LOST" / fold-out variants) for the same 20-second
-// window, and let the underlying banner still show after we fade out.
-//
-// Contract: the showdown modal is undismissable by the player. The
-// timer is the ONLY close path — no Escape handler, no close button,
-// no click-outside-to-close on the modal backdrop. Players have to
-// wait the full 20 seconds before play resumes. The per-seat fold
-// banner (lighter, no modal) also follows the same undismissable
-// timer contract.
-//
-// Distinguishing real showdowns from fold-outs: a fold-out hand has no
-// full board (communityCards.length < 5) AND every lastHandResults
-// winner has handName === 'Won by fold'. In that case we skip the
-// modal (nothing to reveal) and show a smaller fold-out per-seat
-// banner only — still on the same 20-second timer.
-
-// Driver: called from the bottom of renderTable(). Checks current
-// table state and either: (a) cleans up if no real showdown is in
-// progress, (b) maintains a per-handNumber modal that auto-fades
-// after 20s, or (c) pops + schedules a new modal for a fresh
-// handNumber. Idempotent across re-renders within the same hand. The
-// 20s window is owned by `state.showdownWindow` (single-slot
-// object) so a re-render after the timer fires does NOT bring the
 // per-seat banners back.
 function maybeShowShowdown(t) {
   // Cleanup early if we're not in a real showdown state. Covers:
@@ -1908,10 +1848,6 @@ document.addEventListener('DOMContentLoaded', () => {
   $('createTableBtn').addEventListener('click', createTable);
   $('leaveTableBtn').addEventListener('click', leaveCurrentTable);
   $('sitOutBtn').addEventListener('click', sitOut);
-  $('sitInBtn').addEventListener('click', sitIn);
-  // Preview Deal: visual-only, no socket emit; see dealDemo() above.
-  $('dealDemoBtn').addEventListener('click', dealDemo);
-
   // Chat panel: Enter submits, clicking Send submits. The HTML maxlength=200
   // caps paste length natively so the server-side slice(0,200) is just
   // defense-in-depth.
