@@ -178,11 +178,20 @@ function testPokerRakeFullHandConservation() {
   eq(startTotal, 2000, 'R7: pre-hand total = 2000');
 
   t.pot = 200;
+  // NOTE: the pot was added EXTERNALLY to the test (not from seat
+  // contributions). The pre-hand invariant therefore has to include
+  // the pot so conservation holds: endTotal + housePending must equal
+  // the system's total chips (seats + pot) before awardPot, not just
+  // the seat-stack total. Computing startTotal AFTER setting the pot
+  // makes the invariant `seats_total + pot_total == endTotal + housePending`
+  // — with the 5% rake, 2200 -> 2190 + 10 = 2200, which matches the
+  // real chip conservation guarantee the test is trying to pin.
+  const startTotalWithPot = t.seats.reduce((sum, s) => sum + (s ? s.stack : 0), 0) + t.pot;
   poker.awardPot(t, [t.seats[0], t.seats[1]], [100, 100]);
 
   const endTotal = t.seats.reduce((sum, s) => sum + (s ? s.stack : 0), 0);
   const housePending = poker.collectPendingHouseFees(t);
-  eq(endTotal + housePending, startTotal, 'R7: post-hand total + house pending == pre-hand total');
+  eq(endTotal + housePending, startTotalWithPot, 'R7: post-hand (seats + house pending) == pre-hand (seats + pot) — true conservation');
   eq(poker.collectPendingHouseFees(t), 0, 'R7: collectPendingHouseFees is idempotent');
   eq(t._pendingHouseFees, 0, 'R7: after collect, _pendingHouseFees = 0');
   eq(housePending, 10, 'R7: 5% rake on 200 pot = 10');
@@ -539,7 +548,12 @@ async function main() {
 
   // Auto-advance when every live player is all-in.
   {
-    const t = poker.createTable({ id:'ai', smallBlind:5, bigBlind:10, maxSeats:6 });
+    // houseFeePercent: 0 explicitly — this test asserts that the engine
+    // doesn't deadlock on all-in + auto-runs-out-the-board; the rake is
+    // orthogonal to that invariant. The rake flow has its own dedicated
+    // tests (testPokerRakeBasic / FoldOut / ColdStart) so we keep this
+    // one focused on the state-machine behaviour.
+    const t = poker.createTable({ id:'ai', houseFeePercent:0, smallBlind:5, bigBlind:10, maxSeats:6 });
     t.seats[1] = { playerId:'A', name:'A', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
     t.seats[2] = { playerId:'B', name:'B', stack:1000, holeCards:[], folded:false, allIn:false, removed:false, satOut:false, disconnected:false, contributed:0, acted:false };
     t.buttonIndex = 0;

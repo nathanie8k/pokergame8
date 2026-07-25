@@ -185,7 +185,15 @@ function createTable(opts = {}) {
     // friendly-game feel; the admin panel exposes it as an editable
     // slider / number input. The cap (50%) is enforced both server-side
     // in db.validateTableSettings and at the engine layer below.
-    houseFeePercent: clampPercent(opts.houseFeePercent, 0, 50, 0),
+    // Default 5% per user spec: every settled hand takes a 5% cut from
+    // the pot. Hosts can dial it down to 0 (no rake) or up to 50% via the
+    // admin panel's per-table editor. Without this default, freshly
+    // created custom tables AND the default tables would silently have
+    // a 0% fee on cold boot — meaning `awardPot`'s fast-path branch
+    // fires, `_pendingHouseFees` stays at 0, and `db.creditHousePoints`
+    // is never invoked. The result was a HouseRake doc that never
+    // existed. Matches src/rooms.js#DEFAULT_TABLES (5% across the board).
+    houseFeePercent: clampPercent(opts.houseFeePercent, 0, 50, 5),
     maxSeats: opts.maxSeats || 6,
 
     seats: Array.from({ length: opts.maxSeats || 6 }, () => null),

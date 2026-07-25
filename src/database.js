@@ -38,8 +38,17 @@ const crypto    = require('crypto');
 const mongoose  = require('mongoose');
 
 // Connection string. Tests should set MONGO_URI to an in-process Mongo (via
-// mongodb-memory-server). Production can also override with MONGO_URI.
-const MONGO_URI       = process.env.MONGO_URI || 'mongodb://localhost:27017/friendly-poker';
+// mongodb-memory-server). Production can also override with MONGO_URI.// IMPORTANT: re-read process.env.MONGO_URI on every connect() call
+// rather than capturing it once at module load. Tests using
+// mongodb-memory-server do `await MongoMemoryServer.create(); process.env.MONGO_URI = ...`
+// BEFORE calling db.connect(); if MONGO_URI were captured at module
+// load (above the `await`), the test would lock in 'localhost:27017'
+// and then crash with ECONNREFUSED when connect() tried to use it.
+// The default ('localhost:27017/friendly-poker') is preserved for any
+// non-test caller that boots without setting the env var.
+function currentMongoUri() {
+  return process.env.MONGO_URI || 'mongodb://localhost:27017/friendly-poker';
+}
 // Keep engine selection snappy so a misconfigured deployment fails fast
 // instead of hanging the first DB call.
 const SERVER_SELECTION_TIMEOUT_MS = parseInt(process.env.POKER_MONGO_TIMEOUT_MS || '5000', 10);
@@ -96,7 +105,7 @@ const tableSettingsSchema = new mongoose.Schema({
   bigBlind:        { type: Number, default: 10 },
   smallBlind:      { type: Number, default: 5 },
   startingStack:   { type: Number, default: 1000 },
-  houseFeePercent: { type: Number, default: 0 },
+  houseFeePercent: { type: Number, default: 5 },
   maxSeats:        { type: Number, default: 6 },
   updatedAt:       { type: Number, default: () => Date.now() },
   updatedBy:       { type: String, default: '' },
@@ -150,7 +159,7 @@ async function connect(uri) {
   }
   if (mongoose.connection.readyState === 1) return;
   if (connectPromise) return connectPromise;
-  const targetUri = uri || MONGO_URI;
+  const targetUri = uri || currentMongoUri();
   connectPromise = mongoose.connect(targetUri, {
     serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
   });
@@ -413,6 +422,21 @@ async function setStartingStack(amount) {
 async function getOrCreateHouseAccount() {
   await connect();
   return getOrCreatePlayer(HOUSERAKE_NAME, { points: 0 });
+}
+
+// Read-only lookup for the HouseRake ledger, returning null if the doc
+// has never been created (i.e. rake has never accrued). Used by the
+// admin panel's `admin_get_house_info` socket handler so the host can
+// see the running rake balance in the panel header WITHOUT the
+// admin_remove ambiguity — the HouseRake doc has isAdmin=false and is
+// NOT a player.isAdmin, so the prior getPrimaryAdminPlayer lookup was
+// reporting no_admin false-negatives on fresh installs after the first
+// hand. Returns a plain object (lean doc) so the caller can read .name,
+// .id, .points directly. `null` is a legitimate answer — the admin
+// panel renders a "No rake yet" hint in that case.
+async function getHouseAccount() {
+  await connect();
+  return Player.findOne({ name: HOUSERAKE_NAME }).lean();
 }
 
 // ----- Legacy shared admin password (restored per spec) -----
@@ -683,6 +707,7 @@ module.exports = {
   creditHousePoints,
   // HouseRake-specific
   getOrCreateHouseAccount,
+  getHouseAccount,
   isReservedHouseAccountName,
   HOUSERAKE_NAME,
   // Legacy shared-password helpers (modal uses these)

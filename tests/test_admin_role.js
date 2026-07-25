@@ -113,38 +113,67 @@ async function main() {
   // ====================================================================
   {
     await db.resetForTests();
-    // Pass points:0 explicitly so the meta.startingStack=1000 default
-    // doesn't leak into this section's "balance stays at 0 on invalid
-    // credit" assertion below.
-    await db.getOrCreatePlayer('Admin', { points: 0 });
-    await db.setUserAdmin('Admin', true);
+    // HouseRake doc is auto-created on first credit (cold start at 0
+    // points). The prior 'Admin' fixture is no longer needed for the
+    // creditHousePoints success path because rake is routed to the
+    // dedicated HouseRake ledger, NOT an isAdmin player. We still
+    // create one here so the assertion that no_admin is a dead path
+    // can co-exist with a populated DB in the next block.
     const r = await db.creditHousePoints(50);
-    ok(r.ok === true, 'creditHousePoints: ok=true when admin exists');
+    ok(r.ok === true,
+       'creditHousePoints: ok=true (rake routes to HouseRake ledger, no admin user required)');
     eq(r.credited, 50, 'creditHousePoints: credited=50');
-    eq(r.adminName, 'Admin', 'creditHousePoints: adminName=Admin');
+    eq(r.adminName, 'HouseRake',
+       'creditHousePoints: adminName=HouseRake (rake is routed to the dedicated ledger, NOT an isAdmin player)');
     eq(r.newBalance, 50,
-       'creditHousePoints: newBalance = 0 + 50 = 50 (admin started at 0)');
-    const admin = await db.getPrimaryAdminPlayer();
-    ok(admin && admin.points === 50,
-       'creditHousePoints: admin Player.points was atomically incremented');
-  }
-
-  {
-    await db.resetForTests();
-    // No admin -> drops credits silently (logs in production).
-    const r = await db.creditHousePoints(50);
-    ok(r.ok === false && r.reason === 'no_admin',
-       'creditHousePoints: returns {ok:false, reason:"no_admin"} when no admin');
-    eq(r.credited, 0, 'creditHousePoints: credits = 0 on no_admin');
-  }
-
-  {
-    await db.resetForTests();
-    // Set isAdmin+points at creation time so we don't depend on the
-    // setUserAdmin findOneAndUpdate path (which is a separate writing
-    // op and historically had a race against getPrimaryAdminPlayer
-    // reads after resetForTests).
+       'creditHousePoints: newBalance = 0 + 50 = 50 (HouseRake cold-started at 0)');
+    const house = await db.getHouseAccount();
+    ok(house && house.points === 50,
+       'creditHousePoints: HouseRake Player.points was atomically incremented (ledger, not admin)');
+    // Lock in the new invariant: an isAdmin user (if present) is
+    // UNTOUCHED by the credit — credits go ONLY to HouseRake.
     await db.getOrCreatePlayer('Admin', { isAdmin: true, points: 0 });
+    await db.creditHousePoints(20);
+    const admin = await db.getPrimaryAdminPlayer();
+    ok(admin && admin.points === 0,
+       'creditHousePoints: an isAdmin user is NEVER credited (rake flows to HouseRake only)');
+    const houseAfter = await db.getHouseAccount();
+    eq(houseAfter && houseAfter.points, 70,
+       'creditHousePoints: HouseRake accumulates 50 + 20 = 70 across two calls');
+  }
+
+  {
+    // DEPRECATED no_admin path. The previous admin-routing looked up
+    // a player with isAdmin:true and returned `{ok:false, reason:
+    // 'no_admin'}` when none existed. After the HouseRake refactor,
+    // credits flow to a dedicated HouseRake doc that is auto-created
+    // on first credit, so the no_admin path is dead — creditHousePoints
+    // succeeds regardless of admin presence. This test block is kept
+    // as a documented marker; a regression to "admin-required" would
+    // need to reintroduce the no_admin return value AND break the
+    // success-block assertion above ('ok=true even without admin').
+    await db.resetForTests();
+    const r = await db.creditHousePoints(50);
+    ok(r.ok === true,
+       'creditHousePoints (legacy no_admin path): now SUCCEEDS without any admin — HouseRake is auto-created');
+    eq(r.credited, 50, 'creditHousePoints: credited=50 (rake goes to HouseRake, not dropped)');
+    eq(r.adminName, 'HouseRake',
+       'creditHousePoints: adminName=HouseRake (replaces the old Admin fixture)');
+    const house = await db.getHouseAccount();
+    eq(house && house.points, 50,
+       'creditHousePoints (legacy no_admin): HouseRake doc auto-created on first credit');
+  }
+
+  {
+    await db.resetForTests();
+    // Pre-create HouseRake at 0 so the invalid-amount block tests the
+    // HouseRake balance staying at 0 (not "no doc at all").
+    await db.creditHousePoints(0); // no-op + may not create the doc since 0 is rejected
+    // The above call returns invalid_amount, so HouseRake doc may not
+    // exist yet. To pin "invalid amount leaves HouseRake balance alone"
+    // we use a positive starting credit then attempt the invalid set.
+    const houseBefore = await db.getHouseAccount();
+    const startingPoints = (houseBefore && houseBefore.points) || 0;
     const r0   = await db.creditHousePoints(0);
     ok(r0.ok === false && r0.reason === 'invalid_amount',
        'creditHousePoints: 0 is invalid');
@@ -157,22 +186,28 @@ async function main() {
     const rInf = await db.creditHousePoints(Infinity);
     ok(rInf.ok === false && rInf.reason === 'invalid_amount',
        'creditHousePoints: Infinity is invalid');
-    const admin = await db.getPrimaryAdminPlayer();
-    ok(admin && admin.points === 0,
-       'creditHousePoints: invalid amount leaves admin balance alone (started=0)');
+    // HouseRake doc is auto-created on FIRST VALID credit. After this
+    // block, we run one positive credit to verify invalid amounts
+    // didn't sneak through (e.g. as 'Infinity' flooring to a huge int).
+    const rPos = await db.creditHousePoints(100);
+    ok(rPos.ok === true,
+       'creditHousePoints: a positive credit (after invalid attempts) still succeeds');
+    const houseAfter = await db.getHouseAccount();
+    eq(houseAfter && houseAfter.points, startingPoints + 100,
+       'creditHousePoints: invalid amounts left HouseRake balance alone; only the valid +100 landed');
   }
 
   {
     // Atomic concurrent credits: ten parallel creditHousePoints calls
-    // accumulate without lost updates (Mongo per-document serialization).
+    // accumulate without lost updates on the HouseRake doc (Mongo
+    // per-document serialization on the upsert).
     await db.resetForTests();
-    await db.getOrCreatePlayer('Admin', { isAdmin: true, points: 0 });
     const racers = [];
     for (let i = 0; i < 10; i++) racers.push(db.creditHousePoints(7));
     await Promise.all(racers);
-    const admin = await db.getPrimaryAdminPlayer();
-    eq((admin && admin.points) || -1, 70,
-       'creditHousePoints: 10 concurrent calls accumulate 70 chips (started=0, +70 = 70)');
+    const house = await db.getHouseAccount();
+    eq((house && house.points) || -1, 70,
+       'creditHousePoints: 10 concurrent calls accumulate 70 chips on HouseRake (started=0, +70 = 70)');
   }
 
   // ====================================================================
@@ -490,8 +525,12 @@ async function main() {
   //    sequence side effects)
   // ====================================================================
   {
+    // End-to-end: drive the exact path server.js#scheduleNextHand
+    // uses (engine awardPot -> collectPendingHouseFees ->
+    // db.creditHousePoints). Verify the HouseRake doc accumulates
+    // exactly the rake amount — not the admin user, who never gets
+    // touched by creditHousePoints in the post-refactor world.
     await db.resetForTests();
-    await db.getOrCreatePlayer('Admin', { isAdmin: true, points: 0 });
     const t = P.createTable({ id: 'e2e', bigBlind: 10, smallBlind: 5 });
     t.seats[0] = {
       playerId: 'P0', name: 'P0', stack: 1000,
@@ -503,13 +542,23 @@ async function main() {
     P.awardPot(t, [t.seats[0]], [200]);
     const pending = P.collectPendingHouseFees(t);
     eq(pending, 20, 'e2e: 10% of 200 = 20 collected');
-    // Mirror server.js#scheduleNextHand: credit the admin with the
-    // collected amount.
+    // Mirror server.js#scheduleNextHand: credit the HouseRake ledger
+    // with the collected amount.
     const r = await db.creditHousePoints(pending);
     ok(r.ok, 'e2e: creditHousePoints succeeded');
-    const admin = await db.getPrimaryAdminPlayer();
-    eq((admin && admin.points) || -1, 20,
-       'e2e: admin user balance = 20 after the routing');
+    const house = await db.getHouseAccount();
+    eq((house && house.points) || -1, 20,
+       'e2e: HouseRake balance = 20 after the routing (NOT admin user)');
+    // And getAllPlayers surfaces the HouseRake doc — so the admin panel
+    // sees it. Without this, the panel would always report a missing
+    // rake balance even after a full hand. Note: the rendering layer
+    // (client.js#renderAdminPlayers) tags the row with the
+    // `is-house-account` CSS class so the host sees the system-account
+    // label.
+    const all = await db.getAllPlayers();
+    const names = all.map((p) => p.name);
+    ok(names.includes('HouseRake'),
+       'e2e: getAllPlayers surfaces HouseRake so the admin panel can render it');
   }
 
   // ====================================================================

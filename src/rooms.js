@@ -7,21 +7,34 @@
 'use strict';
 
 const poker = require('./poker');
+// Lazy-required so unit tests that mock out the engine can still load
+// rooms.js without forcing a Mongo connection. The defensive check
+// below only fires on the seatPlayer path; tests that DON'T call
+// seatPlayer never trigger the require.
+let _db = null;
+function getDb() {
+  if (!_db) _db = require('./database');
+  return _db;
+}
 
 // ----- Default tables -----
 //
 // Five permanent tables with increasing stakes. Created on server startup
 // (see `ensureDefaultTables`) and excluded from auto-deletion so the lobby
 // always has at least one entry at every stakes tier — even when empty.
-// `houseFeePercent: 0` per default — the admin panel's editable field
-// can introduce a non-zero rake on any specific table; defaults stay at
-// zero so the friendly-game baseline has no fees.
+// `houseFeePercent: 5` per user spec: every settled hand takes a 5% cut
+// from the pot and routes it to the dedicated HouseRake ledger account.
+// The admin panel exposes this as an editable field (slider / number
+// input) per table, so hosts can dial it down to 0 for casual tables
+// or up to 50% for high-stakes rake tables. The 5% default means rake
+// fires end-to-end on the very first completed hand — no admin
+// configuration required — which is the user-observable invariant.
 const DEFAULT_TABLES = [
-  { name: 'Beginners Table', smallBlind: 5,   bigBlind: 10,  startingStack: 1000, houseFeePercent: 0 },
-  { name: 'Low Stakes',      smallBlind: 25,  bigBlind: 50,  startingStack: 1000, houseFeePercent: 0 },
-  { name: 'Medium Stakes',   smallBlind: 50,  bigBlind: 100, startingStack: 1000, houseFeePercent: 0 },
-  { name: 'High Stakes',     smallBlind: 100, bigBlind: 200, startingStack: 1000, houseFeePercent: 0 },
-  { name: 'VIP',             smallBlind: 250, bigBlind: 500, startingStack: 1000, houseFeePercent: 0 },
+  { name: 'Beginners Table', smallBlind: 5,   bigBlind: 10,  startingStack: 1000, houseFeePercent: 5 },
+  { name: 'Low Stakes',      smallBlind: 25,  bigBlind: 50,  startingStack: 1000, houseFeePercent: 5 },
+  { name: 'Medium Stakes',   smallBlind: 50,  bigBlind: 100, startingStack: 1000, houseFeePercent: 5 },
+  { name: 'High Stakes',     smallBlind: 100, bigBlind: 200, startingStack: 1000, houseFeePercent: 5 },
+  { name: 'VIP',             smallBlind: 250, bigBlind: 500, startingStack: 1000, houseFeePercent: 5 },
 ];
 
 // ----- Persisted-settings cache -----
@@ -99,7 +112,7 @@ class RoomManager {
     const finalBB     = persisted?.bigBlind       ?? bigBlind       ?? 10;
     const finalMS     = persisted?.maxSeats       ?? maxSeats       ?? 6;
     const finalStack  = persisted?.startingStack  ?? startingStack  ?? 1000;
-    const finalFee    = persisted?.houseFeePercent ?? houseFeePercent ?? 0;
+    const finalFee    = persisted?.houseFeePercent ?? houseFeePercent ?? 5;
     const table = poker.createTable({
       id,
       name: name || ('Table ' + id),
@@ -309,6 +322,22 @@ class RoomManager {
     const t = this.tables.get(tableId);
     if (!t) return { ok: false, error: 'No such table' };
     if (seatIdx < 0 || seatIdx >= t.seats.length) return { ok: false, error: 'Bad seat' };
+    // Final belt-and-braces: the join_table socket handler in server.js
+    // already rejects HouseRake-as-player-identity, and the register
+    // handler rejects HouseRake-as-name at login time. This last-mile
+    // check guards against future callers — admin tooling, migration
+    // scripts, test fixtures — that might hand-build a player object
+    // and bypass those entry points. Without this, a single missed
+    // check elsewhere would let HouseRake sit at a table and overlap
+    // the engine's chip accounting. Uses the same predicate the rest
+    // of the codebase (db.isReservedHouseAccountName) so the
+    // reservation rule lives in one place — adding new reserved names
+    // (e.g. 'Admin', 'System') is one edit, not N. The db module is
+    // lazy-required so unit tests that load rooms.js without mongo
+    // don't crash at import time.
+    if (player && getDb().isReservedHouseAccountName(player.name)) {
+      return { ok: false, error: 'HouseRake is a system account and cannot be seated' };
+    }
     // Removed seats are reclaimable: they linger as non-null after a mid-hand
     // disconnect leaves the table mid-hand, or after endHand flags a busted
     // player's seat removed=true. findEmptySeat already considers them empty,

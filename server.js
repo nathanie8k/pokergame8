@@ -164,6 +164,12 @@ const NOUNS = [
 
 function generateNames(n) {
   const out = [];
+  // Used to filter the random name through isReservedHouseAccountName.
+  // The current ADJ+NOUN+digits template never produces 'HouseRake', but
+  // the predicate is the canonical defence-in-depth check so any future
+  // literal-vs-template divergence (e.g. a reserved admin name like
+  // 'Admin', 'House', 'System') flows through the same gate without a
+  // one-off string comparison here.
   const seen = new Set();
   let tries = 0;
   while (out.length < n && tries < n * 20) {
@@ -171,6 +177,7 @@ function generateNames(n) {
     const name = ADJ[Math.floor(Math.random() * ADJ.length)]
                + NOUNS[Math.floor(Math.random() * NOUNS.length)]
                + String(Math.floor(Math.random() * 90 + 10));
+    if (db.isReservedHouseAccountName(name)) continue; // never offer HouseRake as a login suggestion
     if (!seen.has(name)) { seen.add(name); out.push(name); }
   }
   return out;
@@ -349,19 +356,39 @@ async function scheduleNextHand(tableId) {
   // amount; we then call `db.creditHousePoints` which looks up the
   // admin user by isAdmin=true. If no admin exists, log a warning and
   // move on — the credits simply sit in an uncredited state.
+  // House-fee routing: spend the in-memory `_pendingHouseFees` accumulator
+  // and forward it to the HouseRake ledger. MUST run AFTER saveStacksToDB
+  // (so the players' chip counts reflect the post-awardPot state) and
+  // BEFORE poker.endHand (which doesn't touch _pendingHouseFees but
+  // conceptually belongs to "this hand is settled"). Busted-refund clears
+  // any pending fees inside checkBustedRefund, so a refunded hand never
+  // pays the house.
+  //
+  // We AWAIT the credit even though it isn't strictly required for
+  // correctness — keep it observed via the scheduleNextHand Promise so
+  // (a) a slow Mongo write doesn't race the lobby broadcast that follows
+  // (the admin panel could read STALE data from `getAllPlayers` before
+  // the upsert lands; the awaiting fixes that race), (b) a failed upsert
+  // is logged with full context (no swallowed .then() rejection), and
+  // (c) the in-memory `_pendingHouseFees` accumulator is no longer
+  // sitting in limbo if the upsert fails (collectPendingHouseFees already
+  // zeroed it above so the engine state is correct regardless).
   const houseFees = poker.collectPendingHouseFees(t);
   if (houseFees > 0) {
-    db.creditHousePoints(houseFees)
-      .then((r) => {
-        if (r.ok) {
-          console.log('House fee: +' + r.credited + ' to HouseRake (balance ' + r.newBalance + ')');
-        } else if (r.reason === 'houserake_update_failed') {
-          console.warn('House fee: ' + houseFees + ' credits dropped — HouseRake upsert failed.');
-        } else {
-          console.warn('House fee: credit failed (' + r.reason + ') for ' + houseFees + ' chips.');
-        }
-      })
-      .catch((err) => console.error('House fee credit error:', err));
+    try {
+      const r = await db.creditHousePoints(houseFees);
+      if (r.ok) {
+        console.log('House fee: +' + r.credited + ' to HouseRake (balance ' + r.newBalance + ')');
+      } else {
+        console.warn('House fee: ' + houseFees + ' credits dropped — creditHousePoints returned ' +
+                     (r.reason || 'unknown') + '.');
+      }
+    } catch (err) {
+      // Visible error path: log the full error + drop context so an
+      // admin debugging "why isn't the rake accumulating?" can find the
+      // cause without re-running the server with more verbose logging.
+      console.error('House fee credit error for ' + houseFees + ' chips:', err && err.message ? err.message : err);
+    }
   }
   poker.endHand(t);
   // Cleanup removed seats (disconnect / leave / busted).
@@ -483,11 +510,26 @@ io.on('connection', (socket) => {
   socket.on('create_table', ({ name, smallBlind, bigBlind, maxSeats }, cb) => {
     if (!socket.data.player) return cb && cb({ ok: false, error: 'Not logged in' });
     if (!socket.data.isTableCreator) socket.data.isTableCreator = true;
+    // Defence-in-depth: refuse a table whose display name COLLIDES
+    // with the reserved HouseRake identity. Without this, a host
+    // could create a table literally named "HouseRake" and it would
+    // render confusingly in the lobby (every chip-count readout, the
+    // rake credits, etc. would visually appear to come from a
+    // "table HouseRake" alongside the real HouseRake ledger row).
+    // The check is on the visible name only — internal ids (t1/t2/...)
+    // are opaque, so no second check is needed there. The same
+    // predicate the rest of the codebase uses; reserved-name list is
+    // centralised in db.isReservedHouseAccountName so a future rename
+    // is one place to update.
+    const trimmedName = (name || '').trim();
+    if (db.isReservedHouseAccountName(trimmedName)) {
+      return cb && cb({ ok: false, error: 'Name reserved' });
+    }
     const sb = clampInt(smallBlind, 1, 1000, 5);
     const bb = clampInt(bigBlind, sb + 1, sb * 100, 10);
     const ms = clampInt(maxSeats, 2, 9, 6);
     const table = rooms.createTable({
-      name: (name || '').trim() || ('Table ' + socket.data.player.name),
+      name: trimmedName || ('Table ' + socket.data.player.name),
       smallBlind: sb,
       bigBlind: bb,
       maxSeats: ms,
@@ -499,6 +541,18 @@ io.on('connection', (socket) => {
   socket.on('join_table', ({ tableId, seatIdx }, cb) => {
     const player = socket.data.player;
     if (!player) return cb && cb({ ok: false, error: 'Not logged in' });
+    // Defence-in-depth: register already rejects HouseRake-as-name, but a
+    // future code path that hand-builds a socket.data.player (e.g. an
+    // admin override, a fixture, or a handcrafted test socket) could
+    // still try to seat the HouseRake ledger as a player. Block here so
+    // HouseRake is NEVER seatable, anywhere, regardless of how the
+    // player object arrived at this handler. Without this guard + the
+    // register handler above, a single missed check would let HouseRake
+    // sit at a table, gamble with the house's rake chips, and overlap
+    // the engine's chip accounting.
+    if (db.isReservedHouseAccountName(player.name)) {
+      return cb && cb({ ok: false, error: 'HouseRake is a system account and cannot be seated' });
+    }
     const t = rooms.get(tableId);
     if (!t) return cb && cb({ ok: false, error: 'No such table' });
     if (socket.data.tableId && socket.data.tableId !== tableId) {
@@ -926,21 +980,38 @@ io.on('connection', (socket) => {
     cb && cb({ ok: true, settings: applied.settings });
   });
 
-  // Returns the host's admin player doc + balance. The admin panel
-  // shows "House: <name> • <balance> pts" in its header; this is the
-  // endpoint that populates it. If no admin exists, returns
-  // `{ ok: false, reason: 'no_admin' }` so the panel renders a
-  // "Configure admin in MongoDB" hint instead of crashing.
+  // Returns the HouseRake ledger account + balance for the admin panel
+  // header. The header reads "House: HouseRake • <balance> pts" so the
+  // host can see the running rake total AT A GLANCE — without this
+  // endpoint they'd have to scroll the player list. Until the FIRST
+  // rake ever credits, the HouseRake doc doesn't exist in MongoDB; in
+  // that case the endpoint returns `{ ok: false, reason: 'no_rake_yet' }`
+  // and the panel renders a "No rake accrued yet" hint. After the
+  // first credit, db.getHouseAccount() reads the doc back as a normal
+  // Player doc — the admin can then adjust its points via the same
+  // admin_set_points / admin_add_points controls used for regular
+  // players, and admin_remove is BLOCKED by isReservedHouseAccountName
+  // (with the same reason as the delete guard).
+  //
+  // The previous implementation pointed this endpoint at
+  // `getPrimaryAdminPlayer()` (the lexicographically-first
+  // `isAdmin: true` player). That was wrong on two counts: (a) the
+  // rake never went to admin players (db.creditHousePoints routes to
+  // the HouseRake doc), and (b) the admin-header readout would have
+  // showed a 'no_admin' error on a fresh install where no user is
+  // flipped to isAdmin — even if HouseRake had already accrued rake.
+  // Routed to HouseRake so the header reflects the actual rake sink.
   socket.on('admin_get_house_info', async (_, cb) => {
     if (!requireAdmin(cb)) return;
-    const admin = await db.getPrimaryAdminPlayer();
-    if (!admin) return cb && cb({ ok: false, reason: 'no_admin' });
+    const house = await db.getHouseAccount();
+    if (!house) return cb && cb({ ok: false, reason: 'no_rake_yet' });
     cb && cb({
       ok: true,
       admin: {
-        name: admin.name,
-        id: admin.id,
-        points: admin.points,
+        name: house.name,
+        id: house.id,
+        points: house.points,
+        isHouseAccount: true,
       },
     });
   });
