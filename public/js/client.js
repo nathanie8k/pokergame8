@@ -432,14 +432,30 @@ function renderTable() {
   hr.innerHTML = '';
   if (t.phase === 'hand_over' && t.lastHandResults) {
     hr.style.display = '';
-    const winners = t.lastHandResults.winners || [];
-    if (winners.length === 1) {
-      const w = winners[0];
-      hr.textContent = `${w.name} wins ${formatNumber(w.share)} with ${w.handName}`;
-    } else {
-      const names = winners.map(w => `${w.name} (${w.handName})`).join(', ');
-      hr.textContent = `Split pot: ${names}`;
-    }
+    const winners = t.lastHandResults.winners || [];        if (winners.length === 1) {
+          const w = winners[0];
+          hr.textContent = `${w.name} wins ${formatNumber(w.share)} with ${w.handName}`;
+        } else {
+          const names = winners.map(w => `${w.name} (${w.handName})`).join(', ');
+          hr.textContent = `Split pot: ${names}`;
+        }
+        // Rake notice: append a small subdued span right after the
+        // winner text. Local-only (no `window` global) so re-renders
+        // retain a stable DOM ref. The data field
+        // `t.lastHandResults.houseFee` is populated by src/poker.js's
+        // awardPot (NON-ZERO when houseFeePercent > 0 and the hand
+        // actually settled with a winner or via fold-out -- busted-
+        // refund hands are voided and lastHandResults is wiped, so
+        // the notice stays hidden in that case).
+        const _feeNum = t.lastHandResults && typeof t.lastHandResults.houseFee === 'number'
+          ? t.lastHandResults.houseFee : 0;
+        if (_feeNum > 0) {
+          const _rakeSpan = document.createElement('span');
+          _rakeSpan.className = 'rake-notice';
+          _rakeSpan.style.cssText = 'margin-left: 8px; font-size: 11px; opacity: 0.65;';
+          _rakeSpan.textContent = '(house took ' + _feeNum + ' chip' + (_feeNum === 1 ? '' : 's') + ' rake)';
+          hr.appendChild(_rakeSpan);
+        }
   }
 
   // Seats
@@ -1310,12 +1326,33 @@ function renderLeaderboard() {
 
 
 function renderAdminPlayers(players) {
+  // HouseRake -- dedicated non-playing ledger account -- needs an
+  // admin-visible marker so it's never confused with a regular
+  // player. We tag its row with a CSS class and a "(house account)"
+  // suffix, and disable the Delete button on that row (server.js also
+  // blocks admin_remove for HouseRake, but disabling here is a defense-
+  // in-depth UX so admins don't even see a clickable Delete button).
+  const HOUSE_RAKE_NAME = 'HouseRake';
+  const HOUSE_RAKE_DISPLAY = 'HouseRake (house account)';
+
   const tbody = $('adminPlayersTbody');
   if (!tbody) return;
   tbody.innerHTML = '';
   (players || []).forEach(p => {
     const tr = el('tr', { class: p.isAdmin ? 'is-admin-row' : '' });
-    tr.appendChild(el('td', { text: p.name + (p.isAdmin ? ' ★' : '') }));
+    {
+  // HouseRake -- dedicated non-playing ledger account -- gets a
+  // "(house account)" suffix and an `is-house-account` CSS class so
+  // admins never confuse it with a regular player. Same row, with a
+  // conditional text override. The Delete button below is disabled
+  // server-side (server.js admin_remove rejects HouseRake), but the
+  // client also shows a disabled control as defense-in-depth.
+  const _isHR = (p.name === HOUSE_RAKE_NAME);
+  const _nameText = (_isHR ? HOUSE_RAKE_DISPLAY : p.name) + (p.isAdmin ? ' ★' : '');
+  const _nameTd = el('td', { text: _nameText });
+  if (_isHR) _nameTd.classList.add('is-house-account');
+  tr.appendChild(_nameTd);
+}
     tr.appendChild(el('td', { text: formatNumber(p.points) }));
     const addInput = el('input', { type: 'number', value: '' });
     addInput.placeholder = '+/-';

@@ -23,9 +23,14 @@
 // `incrementStats('Alice', { gamesDelta: 1 })` calls accumulate without lost
 // updates — Mongo serializes per-document writes inside the engine.
 //
-// Public surface is identical to the previous JSON-file implementation
-// (`getPlayer`, `getOrCreatePlayer`, `incrementStats`, etc.) so the engine +
-// socket-io handlers + admin routes don't need to change their call sites.
+// HouseRake: a dedicated non-playing ledger account auto-created at 0
+// points the first time rake accrues. Created with `points: 0` (NOT the
+// global starting stack) so a fresh install lands at zero rake. The
+// `isReservedHouseAccountName` predicate below is enforced at register
+// time and at admin_remove time so HouseRake can never be: (a) joined
+// as a player identity, (b) seated at a table, (c) deleted via the
+// admin panel. Source of truth: backend. Defense-in-depth: the random-
+// name generator also skips the literal 'HouseRake'.
 
 'use strict';
 
@@ -113,6 +118,25 @@ const metaSchema = new mongoose.Schema({
   startingStack: { type: Number, default: 1000 },
   adminPassword: { type: String, default: 'admin123' },
 }, { _id: false, versionKey: false });
+
+// ----- HouseRake (rake recipient account) -----
+//
+// Module-private constant. Exposed indirectly through the
+// `isReservedHouseAccountName` predicate so test code (and other
+// modules) doesn't have to spell the magic literal.
+const HOUSERAKE_NAME = 'HouseRake';
+
+// Case-insensitive, trim-tolerant reservation check for the HouseRake
+// name. The register socket handler rejects matching names; the
+// random-name generator skips the literal value (defense-in-depth
+// against future format changes); the admin_remove handler refuses to
+// delete the HouseRake doc. Exposed (alongside HOUSERAKE_NAME) so
+// callers in other modules can reuse the same predicate and tests
+// can assert the rule directly.
+function isReservedHouseAccountName(name) {
+  return typeof name === 'string' && name.trim().toLowerCase() === HOUSERAKE_NAME.toLowerCase();
+}
+
 const Meta = mongoose.model('Meta', metaSchema);
 
 // ----- Connection -----
@@ -309,15 +333,17 @@ async function incrementStats(name, opts) {
 }
 
 // Public leaderboard rows for /api/leaderboard. Filters out entries with
-// no name OR `gamesPlayed === 0` (i.e. never played a hand). Sort order
-// matches the prior JSON version: points DESC, wins DESC, gamesPlayed
-// DESC, name ASC. Caps results at `opts.limit` (1..200, default 50).
+// no name OR `gamesPlayed === 0` (i.e. never played a hand). ALSO filters
+// out the HouseRake ledger so it never appears as a real player
+// (`$nin: [HOUSERAKE_NAME]`). Sort order matches the prior JSON version:
+// points DESC, wins DESC, gamesPlayed DESC, name ASC. Caps results at
+// `opts.limit` (1..200, default 50).
 async function getLeaderboardRows(opts) {
   await connect();
   const opts2 = opts || {};
   const limit = Math.max(1, Math.min(200, opts2.limit || 50));
   const players = await Player.find({
-    name: { $exists: true, $ne: null, $ne: '' },
+    name: { $exists: true, $ne: null, $ne: '', $nin: [HOUSERAKE_NAME] },
     gamesPlayed: { $gt: 0 },
   })
     .sort({ points: -1, wins: -1, gamesPlayed: -1, name: 1 })
@@ -380,6 +406,15 @@ async function setStartingStack(amount) {
   return clean;
 }
 
+// Auto-create the dedicated HouseRake non-playing player doc. Starts at
+// 0 points (NOT the global starting stack) so a fresh deployment lands
+// at a zero-balance house, ready to accumulate rake. Race-safe via
+// getOrCreatePlayer's E11000 catch + re-read.
+async function getOrCreateHouseAccount() {
+  await connect();
+  return getOrCreatePlayer(HOUSERAKE_NAME, { points: 0 });
+}
+
 // ----- Legacy shared admin password (restored per spec) -----
 //
 // The admin modal in `public/index.html` prompts for a single password
@@ -421,8 +456,7 @@ async function setAdminPassword(newPassword) {
 // List all players with isAdmin=true. Returns lean docs with the minimum
 // shape the admin panel needs (`name`, `id`, `isAdmin`, `points`). If no
 // admin exists, returns an empty array — callers should treat this as the
-// "no house = no fee sink" case and route fees to a logger or skip them
-// entirely.
+// "no house = no fee sink" case.
 async function getAdminPlayers() {
   await connect();
   return Player.find({ isAdmin: true })
@@ -431,11 +465,10 @@ async function getAdminPlayers() {
     .lean();
 }
 
-// Single-row lookup for callers that only need the primary admin (e.g.
-// the server's house-points routing in scheduleNextHand). Picks the
-// lexicographically-first admin name to make the choice deterministic
-// across calls (Mongo doesn't guarantee a stable order on a filtered
-// find without a sort + tie-breaker).
+// Single-row lookup for legacy callers. Note: creditHousePoints no longer
+// uses this (HouseRake is the new sink) but external admin tooling can
+// still find the primary admin via this helper. Picks the
+// lexicographically-first admin name to make the choice deterministic.
 async function getPrimaryAdminPlayer() {
   await connect();
   return Player.findOne({ isAdmin: true })
@@ -464,22 +497,21 @@ async function setUserAdmin(name, isAdmin) {
   return updated ? updated.toObject() : null;
 }
 
-// Credit "house points" to whichever player has isAdmin=true. Used by
-// server.js#scheduleNextHand to route rake / fee receipts to the host,
-// and by future "house-leak" code paths (integer-division remainder, if
-// it ever arises). Atomic `$add` on the admin's `points` field so two
-// concurrent settlements can't lose updates.
+// Credit "house points" (rake) to the dedicated HouseRake account — NOT
+// to a player.isAdmin account. Called by server.js#scheduleNextHand after
+// the per-hand engine settlement flushes `table._pendingHouseFees`.
+//
+// Implementation: SINGLE atomic `findOneAndUpdate` with `upsert: true`
+// against `name: HOUSERAKE_NAME`. Document fields are populated via
+// `$setOnInsert` (cold-start create) and `points` is `$max` clamped to
+// 0+ with the integer delta (concurrent settlements don't lose
+// updates). No two-call get-then-update race window — the upsert
+// either succeeds or returns the existing doc atomically.
 //
 // Returns:
-//   { ok: true,  credited, adminName, adminId, newBalance }
-//   { ok: false, reason: 'no_admin' | 'admin_disappeared' | 'invalid_amount',
+//   { ok: true,  credited, adminName, adminId, houseAccount, newBalance }
+//   { ok: false, reason: 'invalid_amount' | 'houserake_update_failed',
 //     credited: 0 }
-//
-// Importantly: if no admin exists yet (fresh install before the user flips
-// their own flag), the call returns `no_admin` and credits NOTHING rather
-// than crashing. This is the spec's "points should automatically be
-// credited to whichever user has is_admin" — if there is no such user,
-// the points simply don't go anywhere. Callers should log a warning.
 async function creditHousePoints(amount) {
   if (typeof amount !== 'number' || !isFinite(amount) || amount <= 0) {
     return { ok: false, reason: 'invalid_amount', credited: 0 };
@@ -489,24 +521,44 @@ async function creditHousePoints(amount) {
   if (integerAmount <= 0) {
     return { ok: false, reason: 'invalid_amount', credited: 0 };
   }
-  const admin = await getPrimaryAdminPlayer();
-  if (!admin) return { ok: false, reason: 'no_admin', credited: 0 };
+  // Compose a slug for the new doc's `id` field (matches the convention
+  // getOrCreatePlayer uses). Deterministic so re-creating HouseRake after
+  // a manual `db.deletePlayer({ name: 'HouseRake' })` (which the admin
+  // path now BLOCKS, but that's irrelevant here -- the constant matters
+  // because the doc only ever exists with this fixed id).
+  const fixedId = HOUSERAKE_NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-rake';
+  const now = Date.now();
+  // The single atomic upsert. On first call (cold start) this CREATES
+  // the doc with points: integerAmount AND points=0 fallback for any
+  // race losers; on subsequent calls it bumps existing.points by delta.
+  // Using $max ensures the points field never drops below 0 even if
+  // someone manually zeroed the doc via Mongo directly.
   const updated = await Player.findOneAndUpdate(
-    { _id: admin._id, isAdmin: true },
+    { name: HOUSERAKE_NAME },
     [{
       $set: {
-        points: { $add: [{ $ifNull: ['$points', 0] }, integerAmount] },
-        updated: Date.now(),
+        // Cold-start fields (no-ops if doc already exists).
+        name:        HOUSERAKE_NAME,
+        id:          { $ifNull: ['$id', fixedId] },
+        gamesPlayed: { $ifNull: ['$gamesPlayed', 0] },
+        wins:        { $ifNull: ['$wins', 0] },
+        lastSeenAt:  { $ifNull: ['$lastSeenAt', 0] },
+        isAdmin:     { $ifNull: ['$isAdmin', false] },
+        created:     { $ifNull: ['$created', now] },
+        // Hot path: clamped increase.
+        points:      { $max: [0, { $add: [{ $ifNull: ['$points', 0] }, integerAmount] }] },
+        updated:     now,
       },
     }],
-    { new: true, updatePipeline: true }
+    { new: true, upsert: true, updatePipeline: true, setDefaultsOnInsert: true }
   );
-  if (!updated) return { ok: false, reason: 'admin_disappeared', credited: 0 };
+  if (!updated) return { ok: false, reason: 'houserake_update_failed', credited: 0 };
   return {
     ok: true,
     credited: integerAmount,
-    adminName: updated.name,
+    adminName: updated.name,    // keep key stable for callers (logs)
     adminId: updated.id,
+    houseAccount: true,
     newBalance: updated.points,
   };
 }
@@ -629,6 +681,10 @@ module.exports = {
   getPrimaryAdminPlayer,
   setUserAdmin,
   creditHousePoints,
+  // HouseRake-specific
+  getOrCreateHouseAccount,
+  isReservedHouseAccountName,
+  HOUSERAKE_NAME,
   // Legacy shared-password helpers (modal uses these)
   getAdminPassword,
   setAdminPassword,

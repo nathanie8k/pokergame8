@@ -723,43 +723,63 @@ function applyAction(table, seatIdx, action, amountParam) {
 }
 
 function awardPot(table, winnerSeats, amounts) {
-  // Split each winner's pay into a "house fee" portion (siphoned to
-  // *_pendingHouseFees*) and a "payout" portion (credited to the seat).
-  // Math.floor avoids ceiling-rounding leaking chips into thin air;
-  // the un-rounded remainder stays with the players, never sent to
-  // the house. This keeps total chips conserved across all seats PLUS
-  // the house accumulator, preserving the pre-rake invariant that the
-  // test suite asserts in a few places (see tests/test_poker.js's
-  // totalChips checks).
+  // Split the pot between the winner(s) and the house fee accumulator.
+  // Two implementations are possible and we previously had the PER-WINNER
+  // flavour; we now use TOTAL-FIRST per user spec ("rake should be
+  // calculated once from the total pot before the remaining amount is
+  // split among tied winners -- don't take 5% of each winner's share
+  // separately").
+  //
+  //   PER-WINNER:  rake = sum(floor(share_i * feePercent / 100)) for each
+  //                winner. UNDER-COLLECTS in N-way ties because the
+  //                floor-discarded remainder bits across winners add up.
+  //                Unfit for the user spec. Replaced.
+  //   TOTAL-FIRST: rake = floor(sum(share_i) * feePercent / 100). Matches
+  //                the spec verbatim. Chip conservation:
+  //                  sum(payouts) + totalRake === sum(amounts)
+  //                holds exactly under integer arithmetic.
   //
   // Connectivity to scheduleNextHand: that handler reads
   // _pendingHouseFees AFTER awardPot (and AFTER checkBustedRefund
-  // zeroes it), then calls db.creditHousePoints to credit the admin
-  // user. So the engine doesn't take a hard dep on the DB layer; the
-  // accumulator simply accumulates across awardPot calls within a
-  // session.
+  // zeroes it), then calls db.creditHousePoints to credit the HouseRake
+  // doc. HouseRake is a dedicated non-playing ledger account --
+  // register/admin_remove reject the name as a player identity. The
+  // engine doesn't take a hard dep on the DB layer; the accumulator
+  // simply accumulates across awardPot calls within a session.
   const feePercent = table.houseFeePercent || 0;
   let totalFees = 0;
   const payouts = new Array(winnerSeats.length);
   if (feePercent <= 0) {
-    // Fast path: no fee, every cent goes to the winner. Awards are
-    // unchanged from the pre-rake behavior so existing tests pass
-    // without modification.
+    // Fast path: no fee. Re-distribute any uneven caller-supplied
+    // amounts[] evenly among winners (last un-rounded chip goes to the
+    // first winner, matching the standard odd-chip convention) so
+    // chip conservation holds for 0% too.
+    const totalPot = amounts.reduce((a, b) => a + b, 0);
+    const baseShare = Math.floor(totalPot / winnerSeats.length);
+    const remainder = totalPot - baseShare * winnerSeats.length;
     for (let i = 0; i < winnerSeats.length; i++) {
-      winnerSeats[i].stack += amounts[i];
-      payouts[i] = amounts[i];
+      payouts[i] = baseShare + (i === 0 ? remainder : 0);
+      winnerSeats[i].stack += payouts[i];
     }
   } else {
+    // Spec-compliant total-first rake. We IGNORE the caller's amounts[]
+    // partition and re-distribute the post-rake remainder evenly.
+    const totalPot = amounts.reduce((a, b) => a + b, 0);
+    const totalRake = Math.floor(totalPot * feePercent / 100);
+    const remaining = totalPot - totalRake;
+    const baseShare = Math.floor(remaining / winnerSeats.length);
+    const remainder = remaining - baseShare * winnerSeats.length;
     for (let i = 0; i < winnerSeats.length; i++) {
-      const fee = Math.floor(amounts[i] * feePercent / 100);
-      const payout = amounts[i] - fee;
-      winnerSeats[i].stack += payout;
-      payouts[i] = payout;
-      totalFees += fee;
+      // First winner absorbs the leftover remainder (matches the
+      // odd-chip convention elsewhere in this engine, incl.
+      // resolveShowdown's pre-rake distribution).
+      payouts[i] = baseShare + (i === 0 ? remainder : 0);
+      winnerSeats[i].stack += payouts[i];
     }
-    if (totalFees > 0) {
-      table._pendingHouseFees = (table._pendingHouseFees || 0) + totalFees;
+    if (totalRake > 0) {
+      table._pendingHouseFees = (table._pendingHouseFees || 0) + totalRake;
     }
+    totalFees = totalRake;
   }
   // Resolve display hand name + the share each winner actually receives
   // (post-fee). If a storedHandName has been precomputed (multi-way

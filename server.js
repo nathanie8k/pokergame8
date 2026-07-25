@@ -354,9 +354,9 @@ async function scheduleNextHand(tableId) {
     db.creditHousePoints(houseFees)
       .then((r) => {
         if (r.ok) {
-          console.log('House fee: +' + r.credited + ' to ' + r.adminName + ' (balance ' + r.newBalance + ')');
-        } else if (r.reason === 'no_admin') {
-          console.warn('House fee: ' + houseFees + ' credits dropped — no player has isAdmin=true.');
+          console.log('House fee: +' + r.credited + ' to HouseRake (balance ' + r.newBalance + ')');
+        } else if (r.reason === 'houserake_update_failed') {
+          console.warn('House fee: ' + houseFees + ' credits dropped — HouseRake upsert failed.');
         } else {
           console.warn('House fee: credit failed (' + r.reason + ') for ' + houseFees + ' chips.');
         }
@@ -433,6 +433,17 @@ io.on('connection', (socket) => {
       if (trimmed.length < 2) return cb && cb({ ok: false, error: 'Name too short' });
       // Disallow chars that confuse logs.
       if (!/^[\w .'\-]+$/.test(trimmed)) return cb && cb({ ok: false, error: 'Invalid characters' });
+
+      // Reject HouseRake as a player name (case-insensitive, trim-tolerant).
+      // HouseRake is a dedicated non-playing ledger doc auto-created by
+      // the engine when rake accumulates. Login-able players must NEVER
+      // be able to claim that name -- they would either (a) sit at a
+      // table with chips that overlap the rake accumulator, or (b)
+      // inflate/deflate house balances via the admin panel. db.isReserved
+      // HouseAccountName is the shared predicate; test asserts all casings.
+      if (db.isReservedHouseAccountName(trimmed)) {
+        return cb && cb({ ok: false, error: 'Name reserved' });
+      }
 
       const points = await db.getStartingStack();
       const player = await db.getOrCreatePlayer(trimmed, { points });
@@ -763,6 +774,14 @@ io.on('connection', (socket) => {
 
   socket.on('admin_remove', async ({ name }, cb) => {
     if (!requireAdmin(cb)) return;
+    // Block deletion of the HouseRake ledger: it's the persistent
+    // record of every rake credit ever issued. Deleting it would wipe
+    // rake history (no admin-facing surface to recover it) and the
+    // engine would auto-recreate a fresh 0-balance doc on the next
+    // hand via getOrCreatePlayer, silently losing the audit trail.
+    if (db.isReservedHouseAccountName(name)) {
+      return cb && cb({ ok: false, error: 'HouseRake is a system account and cannot be removed' });
+    }
     await db.deletePlayer(name);
     // Also clear from any seat.
     for (const t of rooms.tables.values()) {
