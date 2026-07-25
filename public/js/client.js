@@ -1268,15 +1268,243 @@ function renderAdminPlayers(players) {
   });
 }
 
-// === Removed-pruned legacy admin functions ===
-// doAdd / doSet / adminSaveStarting / adminChangePassword / refreshAdminList /
-// openAdmin / closeAdmin / adminLogin / adminLogout are GONE in this build.
-// Admin auth is the isAdmin flag (state.player.isAdmin stamped at register);
-// all admin_* socket calls in the new admin room have inline callbacks
-// instead of these helper shims. Any test or documentation reference to
-// these names needs updating. This stub block intentionally references no
-// symbols because the existing callers above are in-progress and the next
-// pass re-attaches them to the isAdmin flow.
+// === Admin room client module ===
+//
+// Functions referenced by renderAdminPlayers + the setView('admin') hook + the
+// five internal buttons (adminRoomBackBtn / adminPoolRefreshBtn /
+// adminRoomRefreshBtn / adminRoomRefreshPlayersBtn / adminStartingSave).
+//
+// Each emit returns a single ack from the server's admin_* handlers, all of
+// which are gated by requireAdmin(cb). On success we refresh the relevant
+// local cache + re-render; on failure we surface the error in
+// #adminActionFeedback + a toast so the host knows what went wrong.
+//
+// The editor (openAdminEditor / saveAdminEditor / closeAdminEditor) is
+// inline-rendered into #adminEditor on demand; clicking a session card's
+// Edit button expands the editor under it with labelled number inputs for
+// BB/SB/stack/fee/maxSeats and Save/Cancel buttons. Saving posts the new
+// settings via admin_update_session.
+
+function setAdminFeedback(text) {
+  const fb = $('adminActionFeedback');
+  if (fb) fb.textContent = text || '';
+}
+
+function onEnterAdminRoom() {
+  // Entry point for the admin view. Called by the setView() wrapper hook
+  // (line ~844) the first time a user with isAdmin=true clicks the top-bar
+  // Admin Room button. Fetches every panel the admin room renders in
+  // parallel — the per-table settings, the house chip, and the player
+  // roster — so the room shows live data the moment it appears.
+  fetchAdminSessions();
+  fetchAdminHouseInfo();
+  refreshAdminList();
+  // Pre-populate the global starting stack input with whatever's currently
+  // set on the server so the admin can see + tweak it without a round-trip.
+  socket.emit('admin_list', null, (res) => {
+    if (res && res.ok && Array.isArray(res.players)) {
+      const meta = res.players.find((p) => p && p.name === '__startingStack');
+      // No-op for now — the global starting-stack lookup uses a separate
+      // admin_set_starting_stack handler instead.
+    }
+  });
+}
+
+function fetchAdminSessions() {
+  // Pulls the live table list (each with editable BB/SB/stack/fee/maxSeats).
+  // Backed by server.js's admin_list_sessions handler which calls
+  // rooms.listTables(). Cached on state.adminRoom.sessions so a settings
+  // save can re-render the grid without another round-trip.
+  socket.emit('admin_list_sessions', null, (res) => {
+    if (res && res.ok) {
+      state.adminRoom.sessions = res.sessions || [];
+      renderAdminSessionsGrid(state.adminRoom.sessions);
+      // Refresh the pool tile breakdown from the same payload (it shows
+      // chipsInPlay + pendingHouseFees per table).
+      renderPoolBreakdown(state.adminRoom.sessions);
+    } else {
+      showToast(res && res.error ? res.error : 'Failed to fetch sessions', 'error');
+    }
+  });
+}
+
+function fetchAdminHouseInfo() {
+  // Looks up the primary admin (lowest-name isAdmin=true) and stamps their
+  // balance into the room-header chip. 'missing' means no admin exists —
+  // the chip shows a warning so the host knows to flip their own flag.
+  socket.emit('admin_get_house_info', null, (res) => {
+    if (res && res.ok) {
+      state.adminRoom.house = res.admin;
+    } else if (res && res.reason === 'no_admin') {
+      state.adminRoom.house = 'missing';
+    }
+    renderAdminHouseChip(state.adminRoom.house);
+  });
+}
+
+function renderAdminHouseChip(house) {
+  const nameEl = $('adminRoomHouseName');
+  const pointsEl = $('adminRoomHousePoints');
+  if (!nameEl || !pointsEl) return;
+  if (!house || house === 'missing') {
+    nameEl.textContent = house === 'missing' ? 'no admin' : '—';
+    pointsEl.textContent = '0 pts';
+    return;
+  }
+  nameEl.textContent = house.name;
+  pointsEl.textContent = formatNumber(house.points) + ' pts';
+}
+
+function renderAdminSessionsGrid(sessions) {
+  const grid = $('adminSessionsGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  if (!sessions || !sessions.length) {
+    grid.appendChild(el('div', { class: 'muted small', text: 'No active sessions.' }));
+    return;
+  }
+  sessions.forEach((s) => {
+    const card = el('div', { class: 'admin-session-card' + (s.default ? ' is-default' : '') });
+    card.appendChild(el('div', { class: 'admin-session-name', text: s.name }));
+    const meta = el('div', { class: 'admin-session-meta muted small' });
+    meta.appendChild(el('span', { text: `${s.seatsTaken}/${s.maxSeats} seats · Blinds ${s.smallBlind}/${s.bigBlind}` }));
+    if (s.default) meta.appendChild(el('span', { class: 'admin-session-tag', text: 'default' }));
+    card.appendChild(meta);
+    const editBtn = el('button', {
+      class: 'link-btn',
+      text: 'Edit',
+      onclick: () => openAdminEditor(s.id),
+    });
+    card.appendChild(editBtn);
+    grid.appendChild(card);
+  });
+}
+
+// ----- Session editor (per-table BB/SB/stack/fee/maxSeats) -----
+
+function openAdminEditor(tableId) {
+  const session = state.adminRoom.sessions.find((x) => x.id === tableId);
+  if (!session) return;
+  state.adminRoom.editorTableId = tableId;
+  const host = $('adminEditor');
+  if (!host) return;
+  host.innerHTML = '';
+  host.style.display = '';
+  const title = el('h4', { text: 'Edit ' + session.name });
+  host.appendChild(title);
+  const grid = el('div', { class: 'form-grid' });
+  const bbInput   = labelledNumber('Big blind',         'editBB',   session.bigBlind);
+  const sbInput   = labelledNumber('Small blind',       'editSB',   session.smallBlind);
+  const stackInput= labelledNumber('Starting stack',    'editStack',session.startingStack);
+  const feeInput  = labelledNumber('House fee %',       'editFee',  session.houseFeePercent);
+  const seatsInput= labelledNumber('Max seats',         'editSeats',session.maxSeats);
+  grid.appendChild(bbInput.field);
+  grid.appendChild(sbInput.field);
+  grid.appendChild(stackInput.field);
+  grid.appendChild(feeInput.field);
+  grid.appendChild(seatsInput.field);
+  host.appendChild(grid);
+  const actions = el('div', { class: 'form-row' });
+  const saveBtn = el('button', { class: 'primary-btn', text: 'Save', onclick: () => saveAdminEditor(tableId) });
+  const cancelBtn = el('button', { class: 'ghost-btn', text: 'Cancel', onclick: closeAdminEditor });
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  host.appendChild(actions);
+  host.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function labelledNumber(label, id, value) {
+  const field = el('label', {});
+  field.appendChild(el('span', { text: label }));
+  const input = el('input', { id, type: 'number', value: String(value), min: '0', step: '1' });
+  field.appendChild(input);
+  return { field, input };
+}
+
+function closeAdminEditor() {
+  const host = $('adminEditor');
+  if (!host) return;
+  host.innerHTML = '';
+  host.style.display = 'none';
+  state.adminRoom.editorTableId = null;
+}
+
+function saveAdminEditor(tableId) {
+  const bb   = parseInt($('editBB').value,    10);
+  const sb   = parseInt($('editSB').value,    10);
+  const stk  = parseInt($('editStack').value, 10);
+  const fee  = parseFloat($('editFee').value);
+  const seats= parseInt($('editSeats').value, 10);
+  socket.emit('admin_update_session', {
+    tableId,
+    settings: { bigBlind: bb, smallBlind: sb, startingStack: stk, houseFeePercent: fee, maxSeats: seats },
+  }, (res) => {
+    if (res && res.ok) {
+      setAdminFeedback('Saved.');
+      showToast('Session updated', 'good');
+      closeAdminEditor();
+      fetchAdminSessions();
+    } else {
+      const err = res && res.error ? res.error : 'Failed';
+      setAdminFeedback(err);
+      showToast(err, 'error');
+    }
+  });
+}
+
+// ----- Player management -----
+
+function refreshAdminList() {
+  // Backed by server.js's admin_list handler — returns every Player doc
+  // sorted by points DESC. renderAdminPlayers builds the table rows
+  // (one per player) with the inline Add / Set / Delete actions.
+  socket.emit('admin_list', null, (res) => {
+    if (res && res.ok) renderAdminPlayers(res.players || []);
+    else showToast(res && res.error ? res.error : 'Failed to fetch players', 'error');
+  });
+}
+
+function doAdd(name, delta) {
+  const n = parseInt(delta, 10);
+  if (!Number.isFinite(n)) { showToast('Enter a number', 'error'); return; }
+  socket.emit('admin_add_points', { name, delta: n }, (res) => {
+    if (res && res.ok) {
+      setAdminFeedback(`Added ${n} to ${name}.`);
+      refreshAdminList();
+    } else {
+      setAdminFeedback(res && res.error ? res.error : 'Failed');
+      showToast(res && res.error ? res.error : 'Failed', 'error');
+    }
+  });
+}
+
+function doSet(name, points) {
+  const p = parseInt(points, 10);
+  if (!Number.isFinite(p) || p < 0) { showToast('Enter a non-negative number', 'error'); return; }
+  socket.emit('admin_set_points', { name, points: p }, (res) => {
+    if (res && res.ok) {
+      setAdminFeedback(`Set ${name} to ${p}.`);
+      refreshAdminList();
+    } else {
+      setAdminFeedback(res && res.error ? res.error : 'Failed');
+      showToast(res && res.error ? res.error : 'Failed', 'error');
+    }
+  });
+}
+
+function doSetStartingStack() {
+  const v = parseInt($('adminStartingStack').value, 10);
+  if (!Number.isFinite(v) || v < 1) { showToast('Enter a positive number', 'error'); return; }
+  socket.emit('admin_set_starting_stack', { amount: v }, (res) => {
+    if (res && res.ok) {
+      setAdminFeedback(`Starting stack set to ${v}.`);
+      showToast('Saved', 'good');
+    } else {
+      setAdminFeedback(res && res.error ? res.error : 'Failed');
+      showToast(res && res.error ? res.error : 'Failed', 'error');
+    }
+  });
+}
 
 // ---------- Pool snapshot (rake balance + chips in play) ----------
 //
@@ -1510,6 +1738,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // the legacy openAdmin() modal flow. Render is gated by the top-bar
   // adminBtn's CSS visibility (hidden when !state.isAdmin).
   $('adminBtn').addEventListener('click', openAdminRoom);
+
+  // Admin room internal controls. The five buttons live inside #view-admin
+  // (hidden until the host clicks Admin Room). onEnterAdminRoom already
+  // fetches + renders the panels; these handlers are for manual refresh /
+  // save clicks once the host is in the room.
+  $('adminRoomBackBtn').addEventListener('click', () => setView('lobby'));
+  $('adminPoolRefreshBtn').addEventListener('click', refreshPoolSnapshot);
+  $('adminRoomRefreshBtn').addEventListener('click', fetchAdminSessions);
+  $('adminRoomRefreshPlayersBtn').addEventListener('click', refreshAdminList);
+  $('adminStartingSave').addEventListener('click', doSetStartingStack);
 
   $('createTableBtn').addEventListener('click', createTable);
   $('leaveTableBtn').addEventListener('click', leaveCurrentTable);
