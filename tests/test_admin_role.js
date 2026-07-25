@@ -552,9 +552,16 @@ async function main() {
     // Default tables: the 5 permanent ones shipped with the server.
     // shouldDeleteAfterHand must return false even when empty + WAITING
     // — they're permanent lobby entry points so the user always sees
-    // at least one table at every stakes tier.
+    // at least one table at every stakes tier. We look up by NAME
+    // (not by idCounter-derived id like 't1') because the section's
+    // earlier `rooms.createTable({...})` call incremented idCounter,
+    // so the default tables land at 't2'..'t6' instead of 't1'..'t5'.
+    // Name-based lookup is also closer to how the lobby UI addresses
+    // tables (admin_list_sessions and admin_update_session both key on
+    // name in the persisted cache).
     rooms.ensureDefaultTables();
-    const beginner = rooms.tables.get('t1');
+    const beginner = rooms.listTables().find((x) => x.name === 'Beginners Table');
+    ok(beginner, 'leave-table: default Beginners Table exists post-ensureDefaultTables');
     beginner.phase = P.PHASE.WAITING;
     ok(beginner.default === true,
        'leave-table: default table is flagged default=true');
