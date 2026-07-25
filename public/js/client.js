@@ -53,6 +53,16 @@ const state = {
   //   per the design contract.
   showdownWindow: null,
   showdownModalTimer: null,
+  // Admin-login reentrancy state. `adminLoginPending` gates rapid
+  // click/Enter repeats of admin_login (the button's disabled UI
+  // state doesn't help when Enter is pressed on the password input).
+  // `adminLoginTimer` is a 5s safety fallback that clears the pending
+  // flag if the socket disconnects mid-request / the server never
+  // replies — prevents the user being locked out of the admin modal
+  // until page reload. Cleared normally by the emit callback; the
+  // fallback only matters when the callback never arrives.
+  adminLoginPending: false,
+  adminLoginTimer: null,
 };
 
 const socket = io({ reconnection: true });
@@ -171,18 +181,130 @@ async function doLogin() {
   });
 }
 
-// Top-bar Admin button only renders for users whose Player doc has
-// isAdmin=true. The server stamps the flag at register time so a
-// non-admin's button is permanently hidden — no client-side lie can
-// re-show it because the server rejects every admin_* event without
-// the flag on the underlying socket.
+// Top-bar Admin button is visible for EVERYONE (not gated on
+// state.isAdmin) so every host can attempt the shared-password login.
+// Per-user Player.isAdmin still works as a parallel gate: those users
+// get socket.data.isAdmin=true at register time and skip the modal.
+// Server rejects every admin_* event unless socket.data.isAdmin is set,
+// so showing the button to everyone is purely a UX gate.
 function syncAdminButtonVisibility() {
   const btn = $('adminBtn');
   if (!btn) return;
-  btn.style.display = state.isAdmin ? '' : 'none';
-  btn.title = state.isAdmin
-    ? 'Open the admin panel'
-    : 'Admin (requires isAdmin=true on your Player)';
+  btn.style.display = '';
+  btn.title = 'Open the admin panel';
+}
+
+// ----- Legacy shared-password admin modal -----
+//
+// Clicking the top-bar Admin button opens #adminModal with a password
+// input. The form posts the password to socket.emit('admin_login',
+// { password }, cb). On success the login section is hidden and
+// #adminContent (player table + change-password + starting stack) is
+// revealed; the existing refreshAdminList / doAdd / doSet / doRemove
+// helpers drive the player table. Close dismisses the modal without
+// un-setting socket.data.isAdmin (the admin session stays active for
+// the lifetime of the socket).
+function openAdminModal() {
+  const modal = $('adminModal');
+  if (!modal) return;
+  // Reset both halves so a stale "fail" message doesn't leak across
+  // opens. Login section visible, content hidden.
+  $('adminLoginSection').style.display = '';
+  $('adminContent').style.display = 'none';
+  const err = $('adminLoginError');
+  if (err) { err.style.display = 'none'; err.textContent = ''; }
+  if ($('adminPasswordInput')) $('adminPasswordInput').value = '';
+  modal.style.display = '';
+  setTimeout(() => $('adminPasswordInput').focus(), 0);
+}
+
+function closeAdminModal() {
+  const modal = $('adminModal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  if ($('adminOldPassword'))  $('adminOldPassword').value = '';
+  if ($('adminNewPassword'))  $('adminNewPassword').value = '';
+  $('adminActionFeedback').textContent = '';
+}
+
+// JS-level pending flag so the Enter-key handler can also honour
+// the reentrancy guard (the button's disabled UI state doesn't help
+// when the user presses Enter on the password input). Stored on
+// `state` to match the convention used by every other mutable in
+// this file (state.player, state.isAdmin, state.currentTable, etc.)
+// and reset by a 5s timeout fallback so a mid-request socket
+// disconnect / server-side timeout can't leave the user locked out.
+function submitAdminPassword() {
+  if (state.adminLoginPending) return;
+  const input = $('adminPasswordInput');
+  const password = input ? input.value : '';
+  const errEl = $('adminLoginError');
+  const loginBtn = $('adminLoginBtn');
+  // Reentrancy guard: disable the button while the request is in
+  // flight so rapid clicks / Enter presses don't fire multiple
+  // admin_login emits. Server-side is idempotent (sets
+  // socket.data.isAdmin=true on every match), but the UI flicker +
+  // multiple round-trips would be ugly.
+  if (loginBtn) loginBtn.disabled = true;
+  state.adminLoginPending = true;
+  // Safety fallback: if the server never replies (socket disconnect,
+  // server crash, network blip) the callback below would never fire
+  // and the user would be locked out of the admin modal until page
+  // reload. Clear the flag after 5s so the next attempt can proceed.
+  // Cleared normally by the emit callback below; the fallback only
+  // matters if the callback never arrives.
+  state.adminLoginTimer = setTimeout(() => {
+    state.adminLoginPending = false;
+    state.adminLoginTimer = null;
+    if (loginBtn) loginBtn.disabled = false;
+  }, 5000);
+  socket.emit('admin_login', { password }, res => {
+    if (loginBtn) loginBtn.disabled = false;
+    state.adminLoginPending = false;
+    if (state.adminLoginTimer) {
+      clearTimeout(state.adminLoginTimer);
+      state.adminLoginTimer = null;
+    }
+    if (res && res.ok) {
+      // Promote the client mirror so renderAdminPlayers' isAdmin
+      // badges (informational) read as truth. Server is the gate;
+      // this only affects local UX.
+      state.isAdmin = true;
+      $('adminLoginSection').style.display = 'none';
+      $('adminContent').style.display = '';
+      setAdminFeedback('Unlocked. Manage players below.');
+      refreshAdminList();
+      // Pre-populate the global starting-stack input with the server's
+      // current value so the host can see + tweak it without guessing.
+      const startingInput = $('adminStartingStack');
+      if (startingInput && typeof res.startingStack === 'number') {
+        startingInput.value = String(res.startingStack);
+      }
+    } else {
+      if (errEl) {
+        errEl.textContent = (res && res.error) ? res.error : 'Login failed';
+        errEl.style.display = '';
+      }
+    }
+  });
+}
+
+function submitChangePassword() {
+  const oldPwd = $('adminOldPassword').value;
+  const newPwd = $('adminNewPassword').value;
+  if (!oldPwd || !newPwd) {
+    setAdminFeedback('Fill both password fields.');
+    return;
+  }
+  socket.emit('admin_change_password', { oldPassword: oldPwd, newPassword: newPwd }, res => {
+    if (res && res.ok) {
+      $('adminOldPassword').value = '';
+      $('adminNewPassword').value = '';
+      setAdminFeedback('Password changed.');
+    } else {
+      setAdminFeedback((res && res.error) ? res.error : 'Failed to change password');
+    }
+  });
 }
 
 // Account switching is intentionally disabled: once a device registers, the
@@ -865,20 +987,6 @@ function hideShowdownModal() {
 // intentionally NOT routed here — the two teardown paths differ so a
 // mid-window leave doesn't tear down state the same way as a clean
 // post-timer expiry.
-// Hook into setView so entering the admin room triggers both the
-// session list + the player-management fetch. Done as a small post-
-// setView hook rather than by editing every setView call site.
-const _origSetView = setView;
-// IMPORTANT: strict-mode-safe reassignment of `setView`, NOT a second
-// `function setView(v) {...}` declaration. client.js has `'use strict'`
-// at the top, and strict mode rejects two function declarations with
-// the same name in the same scope at parse time. Wrapping by
-// reassigning to an existing declaration's name throws SyntaxError
-// without this change (BLOCKING finding from the code-review pass).
-setView = function(v) {
-  _origSetView(v);
-  if (v === 'admin') onEnterAdminRoom();
-};
 
 // ---------- Init ----------
 
@@ -1769,17 +1877,32 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Admin entry point wires to openAdminRoom (defined above) instead of
-  // the legacy openAdmin() modal flow. Render is gated by the top-bar
-  // adminBtn's CSS visibility (hidden when !state.isAdmin).
-  $('adminBtn').addEventListener('click', openAdminRoom);
+  // Admin entry point: opens the legacy shared-password modal.
+  // The modal itself performs admin_login; once ack'd, the modal
+  // reassembles the panel from local-state. The previous
+  // openAdminRoom/view-admin path is retired (see #adminModal in
+  // public/index.html).
+  $('adminBtn').addEventListener('click', openAdminModal);
 
-  // Admin room internal controls. The five buttons live inside #view-admin
-  // (hidden until the host clicks Admin Room). onEnterAdminRoom already
-  // fetches + renders the panels; these handlers are for manual refresh /
-  // save clicks once the host is in the room.
-  $('adminRoomBackBtn').addEventListener('click', () => setView('lobby'));
-  $('adminPoolRefreshBtn').addEventListener('click', refreshPoolSnapshot);
-  $('adminRoomRefreshBtn').addEventListener('click', fetchAdminSessions);
+  // Legacy shared-password modal controls.
+  $('adminModalCloseBtn').addEventListener('click', closeAdminModal);
+  $('adminLoginBtn').addEventListener('click', submitAdminPassword);
+  $('adminPasswordInput').addEventListener('keydown', e => {
+    // Enter-key reentrancy: submitAdminPassword has its own pending
+    // flag so rapid Enter presses can't fire the same emit twice.
+    if (e.key === 'Enter') submitAdminPassword();
+  });
+  $('adminModalRefreshPlayersBtn').addEventListener('click', refreshAdminList);
+  $('adminChangePasswordBtn').addEventListener('click', submitChangePassword);
+  // Click on the dark backdrop closes (same pattern as the
+  // leaderboard modal). Inner content has stopPropagation via the
+  // .modal-content wrapper to keep clicks inside the panel.
+  $('adminModal').addEventListener('click', (e) => {
+    if (e.target === $('adminModal')) closeAdminModal();
+  });
+  // Click-outside-to-close for the admin modal — kept consistent with
+  // the leaderboard modal. Only the backdrop element is the close
+  // trigger; clicks inside .modal-content stay inside.
   $('adminRoomRefreshPlayersBtn').addEventListener('click', refreshAdminList);
   $('adminStartingSave').addEventListener('click', doSetStartingStack);
 

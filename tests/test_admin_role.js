@@ -608,6 +608,52 @@ async function main() {
        'leave-table: finishPendingUnseats nulls the queued seat at HAND_OVER');
   }
 
+  // ====================================================================
+  // 11. Legacy shared admin password (admin_login + admin_change_password
+  //     backend wiring). Tests the DB helpers + the validation gates the
+  //     server applies. The socket handlers themselves are exercised
+  //     manually via the in-app modal — socket.io-client isn't a
+  //     top-level dep so we don't add a live e2e here.
+  // ====================================================================
+  {
+    await db.resetForTests();
+    const pwd = await db.getAdminPassword();
+    ok(pwd === 'admin123',
+       'getAdminPassword: defaults to "admin123" on a fresh singleton');
+
+    // Round-trip: set then get returns the new value.
+    const newPwd = 's3cret-PASS';
+    const wrote = await db.setAdminPassword(newPwd);
+    ok(wrote === newPwd, 'setAdminPassword returns the new value');
+    ok(await db.getAdminPassword() === newPwd,
+       'getAdminPassword reads back the persisted override');
+
+    // Length validation: too short / too long both throw.
+    let shortErr = null;
+    try { await db.setAdminPassword('ab'); } catch (e) { shortErr = e; }
+    ok(shortErr && /3\.\.200 chars/.test(shortErr.message),
+       'setAdminPassword: 2-char password rejected with length hint');
+    let longErr = null;
+    try { await db.setAdminPassword('x'.repeat(201)); } catch (e) { longErr = e; }
+    ok(longErr && /3\.\.200 chars/.test(longErr.message),
+       'setAdminPassword: 201-char password rejected with length hint');
+
+    // Type validation: non-string throws.
+    let typeErr = null;
+    try { await db.setAdminPassword(12345); } catch (e) { typeErr = e; }
+    ok(typeErr && /string/.test(typeErr.message),
+       'setAdminPassword: non-string password rejected');
+
+    // Original ('admin123') wasn't mutated by the rejections above.
+    ok(await db.getAdminPassword() === newPwd,
+       'rejected setAdminPassword calls leave the stored value intact');
+
+    // Reset to 'admin123' for downstream tests / fresh dev starts.
+    await db.setAdminPassword('admin123');
+    ok(await db.getAdminPassword() === 'admin123',
+       'setAdminPassword("admin123") restores the default');
+  }
+
   await db.disconnect();
   await mongoServer.stop();
 

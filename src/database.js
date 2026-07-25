@@ -99,16 +99,19 @@ const tableSettingsSchema = new mongoose.Schema({
 
 const TableSettings = mongoose.model('TableSettings', tableSettingsSchema);
 
-// `metas` singleton keeps ONLY the global starting stack (default for
-// brand-new players). The previous `adminPassword`/`setAdminPassword`
-// admin auth flow is gone — admin powers are now derived from
-// `Player.isAdmin`, so the shared-password field is no longer needed
-// and is dropped from the schema. Existing deployments with a custom
-// `adminPassword` set will lose it on first save (no migration path;
-// admin flag is the new authority).
+// `metas` singleton keeps the global starting stack (default for
+// brand-new players) AND the legacy shared admin password (restored
+// per user spec). Both fields are co-located on the singleton doc so
+// the admin modal can read/write them via two helpers
+// (`getAdminPassword`/`setAdminPassword`) without scanning the
+// collection. New deployments land on `admin123` by default; the
+// in-admin "Change password" form lets the host rotate once logged in.
+// Production deployments should set MONGO once and call
+// setAdminPassword on first boot.
 const metaSchema = new mongoose.Schema({
   _id:           { type: String, default: 'singleton' },
   startingStack: { type: Number, default: 1000 },
+  adminPassword: { type: String, default: 'admin123' },
 }, { _id: false, versionKey: false });
 const Meta = mongoose.model('Meta', metaSchema);
 
@@ -181,14 +184,11 @@ async function getMeta() {
       }
     }
   }
-  // Backward-compat: if an existing meta doc still carries a leftover
-  // `adminPassword` field from the pre-isAdmin schema (no longer in the
-  // schema definition), strip it so admin auth doesn't accidentally
-  // re-derive from a stale value. Strict removes rather than defaulting
-  // to "" so the absence is detectable by readers.
-  if (meta && meta.adminPassword != null) {
-    meta.adminPassword = undefined;
-  }
+  // Note: `adminPassword` is read AS-IS — we no longer strip it. The
+  // legacy shared-password admin flow was reinstated per user spec and
+  // getAdminPassword() / setAdminPassword() rely on this field existing
+  // on the singleton doc. New singleton docs (no explicit insert) get
+  // the schema default ('admin123') from the field declaration above.
   return meta;
 }
 
@@ -378,6 +378,36 @@ async function setStartingStack(amount) {
   meta.startingStack = clean;
   await meta.save();
   return clean;
+}
+
+// ----- Legacy shared admin password (restored per spec) -----
+//
+// The admin modal in `public/index.html` prompts for a single password
+// shared across all hosts. The password unlocks the modal contents.
+// Default 'admin123' on first boot; the in-modal "Change password"
+// form calls `setAdminPassword` to rotate. Reads return the literal
+// stored value with a safe fallback in case the singleton doc was
+// inserted before the schema carried the field.
+async function getAdminPassword() {
+  await connect();
+  const meta = await getMeta();
+  return (typeof meta.adminPassword === 'string' && meta.adminPassword)
+    ? meta.adminPassword
+    : 'admin123';
+}
+
+async function setAdminPassword(newPassword) {
+  if (typeof newPassword !== 'string') {
+    throw new Error('setAdminPassword: newPassword must be a string');
+  }
+  if (newPassword.length < 3 || newPassword.length > 200) {
+    throw new Error('setAdminPassword: password length must be 3..200 chars');
+  }
+  await connect();
+  const meta = await getMeta();
+  meta.adminPassword = newPassword;
+  await meta.save();
+  return newPassword;
 }
 
 // ----- Admin / house-points helpers -----
@@ -599,6 +629,9 @@ module.exports = {
   getPrimaryAdminPlayer,
   setUserAdmin,
   creditHousePoints,
+  // Legacy shared-password helpers (modal uses these)
+  getAdminPassword,
+  setAdminPassword,
   // Table-settings persistence
   getTableSettings,
   upsertTableSettings,

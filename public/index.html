@@ -166,127 +166,107 @@
       <div class="hand-log" id="handLog"></div>
     </section>
 
-    <!-- ===== Admin room =====
-         Dedicated, full-page view for the user with isAdmin=true. The
-         legacy shared-password admin modal that lived here is
-         retired alongside admin_login / admin_change_password (see
-         src/database.js + server.js). Auth is now derived at register
-         time from state.player.isAdmin; this view is only reachable
-         when that flag is true and only the top-bar Admin button can
-         navigate into it.
-         Layout: header (with house balance + back-home) → active
-         sessions card grid → expandable editor per session → player
-         management table (carried over from the prior admin modal). -->
-    <section id="view-admin" class="view admin-room" style="display:none">
-      <header class="admin-room-header">
-        <div class="admin-room-title">
-          <span class="admin-room-icon" aria-hidden="true">♠</span>
-          <div>
-            <h2>Admin panel</h2>
-            <p class="muted small" id="adminRoomSubtitle">Manage sessions, points, the house account.</p>
+    <!-- ===== Legacy shared-password admin modal =====
+         Restored per current spec. Clicking the top-bar "Admin" button
+         opens a password modal (default admin123, stored on the meta
+         singleton). On success the modal shows the player list with
+         add/set/subtract/remove controls, a change-password form, and
+         the global default starting-stack editor. The legacy
+         per-Player isAdmin flag still works as an alternative gate
+         (the register handler sets socket.data.isAdmin=true for those
+         users), but the modal is the canonical entry point. -->
+    <div id="adminModal" class="modal admin" role="dialog" aria-modal="true" aria-labelledby="adminModalTitle" style="display:none">
+      <div class="modal-content admin-modal-content">
+        <header class="admin-modal-header">
+          <div class="admin-modal-title">
+            <span class="admin-modal-icon" aria-hidden="true">♠</span>
+            <h3 id="adminModalTitle">Admin panel</h3>
           </div>
-        </div>
-        <div class="admin-room-meta" id="adminRoomMeta">
-          <span class="admin-room-chip" id="adminRoomHouseChip">
-            <span class="admin-room-chip-label">House</span>
-            <span class="admin-room-chip-value" id="adminRoomHouseName">—</span>
-            <span class="admin-room-chip-points" id="adminRoomHousePoints">0 pts</span>
-          </span>
-          <button class="ghost-btn" id="adminRoomBackBtn" title="Back to lobby">← Back to lobby</button>
-        </div>
-      </header>
-
-      <!-- Pool snapshot — read-only card sitting at the top of the
-           admin room so the host can see the rake balance + total chips
-           in play at a glance, plus a per-table breakdown so they can
-           spot a table that's leaking chips for some reason. Pulls
-           from `state.adminRoom.sessions` (which already carries
-           chipsInPlay + pendingHouseFees per table via
-           rooms.listTables()) and `state.adminRoom.house` (which
-           already carries admin.points via admin_get_house_info). No new
-           socket events needed — both halves are already on the
-           onEnterAdminRoom fetch chain. The card auto-refreshes
-           whenever the admin clicks the section's [↻ Refresh] button,
-           which re-fetches sessions + house and re-renders the pool. -->
-      <section class="admin-pool" aria-labelledby="adminPoolHeading">
-        <header class="admin-section-header">
-          <h3 id="adminPoolHeading">Pool snapshot</h3>
-          <button class="link-btn" id="adminPoolRefreshBtn" title="Refresh pool totals">↻ Refresh</button>
+          <button class="close-btn" id="adminModalCloseBtn" title="Close">×</button>
         </header>
-        <div class="admin-pool-totals">
-          <div class="admin-pool-tile admin-pool-tile-rake">
-            <div class="admin-pool-tile-label">Rake Balance</div>
-            <div class="admin-pool-tile-value" id="adminPoolRakeValue">—</div>
-            <div class="admin-pool-tile-sub muted small">house wallet</div>
+
+        <!-- Login form (the very first thing every host sees).
+             Submits to server's admin_login handler which compares the
+             input against db.getAdminPassword() (default 'admin123').
+             On success, this row is hidden and #adminContent shown. -->
+        <section id="adminLoginSection" class="admin-login-section">
+          <p class="muted small">Enter the admin password to unlock the panel.</p>
+          <div class="form-row admin-login-row">
+            <input id="adminPasswordInput" type="password" placeholder="Admin password" autocomplete="off" />
+            <button id="adminLoginBtn" class="primary-btn">Unlock</button>
           </div>
-          <div class="admin-pool-tile">
-            <div class="admin-pool-tile-label">Total Chips in Play</div>
-            <div class="admin-pool-tile-value" id="adminPoolTotalValue">—</div>
-            <div class="admin-pool-tile-sub muted small">across all tables</div>
-          </div>
-          <div class="admin-pool-tile admin-pool-tile-pending">
-            <div class="admin-pool-tile-label">Pending House Fees</div>
-            <div class="admin-pool-tile-value" id="adminPoolPendingValue">0</div>
-            <div class="admin-pool-tile-sub muted small">awaiting credit</div>
-          </div>
-        </div>
-        <div class="admin-pool-breakdown" id="adminPoolBreakdown"></div>
-      </section>
+          <div id="adminLoginError" class="admin-error-line" style="display:none"></div>
+          <p class="muted small admin-default-hint">Default: <code>admin123</code> (change it after first login).</p>
+        </section>
 
-      <!-- Active sessions: card grid with each table + a [Edit] button.
-           Editor shows underneath the clicked card. -->
-      <section class="admin-sessions" aria-labelledby="adminSessionsHeading">
-        <header class="admin-section-header">
-          <h3 id="adminSessionsHeading">Active sessions</h3>
-          <button class="link-btn" id="adminRoomRefreshBtn" title="Refresh list">↻ Refresh</button>
-        </header>
-        <div class="admin-sessions-grid" id="adminSessionsGrid"></div>
-        <div class="admin-editor" id="adminEditor" style="display:none"></div>
-      </section>
+        <!-- Authenticated contents (player list + change-password +
+             starting-stack). Revealed only after admin_login succeeds. -->
+        <section id="adminContent" class="admin-content" style="display:none">
 
-      <hr class="admin-divider" />
+          <!-- Player management. Carried over from the prior admin
+               surface. Each row exposes Add (+/-), Set (overwrite),
+               Remove buttons. The 'Admin' column is informational only
+               (read-only); the legacy per-user isAdmin flag is set
+               out-of-band in MongoDB. -->
+          <section class="admin-section">
+            <header class="admin-section-header">
+              <h4>Player management</h4>
+              <button class="link-btn" id="adminModalRefreshPlayersBtn" title="Refresh players">↻ Refresh</button>
+            </header>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Points</th>
+                    <th>Add</th>
+                    <th>Set</th>
+                    <th>Admin</th>
+                    <th>Remove</th>
+                  </tr>
+                </thead>
+                <tbody id="adminPlayersTbody"></tbody>
+              </table>
+            </div>
+          </section>
 
-      <!-- Player management table (carried over from the prior shared-
-           password admin modal). Add/subtract points and remove players,
-           with the changes visible in the running tables immediately. -->
-      <section class="admin-players" aria-labelledby="adminPlayersHeading">
-        <header class="admin-section-header">
-          <h3 id="adminPlayersHeading">Player management</h3>
-          <button class="link-btn" id="adminRoomRefreshPlayersBtn" title="Refresh players">↻ Refresh</button>
-        </header>
-        <div class="admin-table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Points</th>
-                <th>Add</th>
-                <th>Set</th>
-                <th>Admin</th>
-                <th>Remove</th>
-              </tr>
-            </thead>
-            <tbody id="adminPlayersTbody"></tbody>
-          </table>
-        </div>
-      </section>
+          <!-- Global defaults: starting points for new players. -->
+          <section class="admin-section">
+            <header class="admin-section-header"><h4>Global defaults</h4></header>
+            <div class="form-row">
+              <label class="inline-label">
+                <span>Starting points for new players:</span>
+                <input id="adminStartingStack" type="number" min="1" />
+              </label>
+              <button id="adminStartingSave" class="primary-btn">Save</button>
+            </div>
+          </section>
 
-      <!-- Settings: global default starting stack for brand-new players.
-           Kept as a dedicated row (different from per-table startingStack
-           which lives on each session card). -->
-      <section class="admin-global" aria-labelledby="adminGlobalHeading">
-        <h3 id="adminGlobalHeading">Global defaults</h3>
-        <div class="form-row">
-          <label class="inline-label">
-            <span>Starting points for new players:</span>
-            <input id="adminStartingStack" type="number" min="1" />
-          </label>
-          <button id="adminStartingSave" class="primary-btn">Save</button>
-        </div>
-      </section>
+          <!-- Change password: requires a successful admin_login first
+               (so we always have a known-correct OLD password to
+               compare against). The server validates old, then
+               persists the new value via db.setAdminPassword(). -->
+          <section class="admin-section">
+            <header class="admin-section-header"><h4>Change admin password</h4></header>
+            <div class="form-row">
+              <label class="inline-label">
+                <span>Current password:</span>
+                <input id="adminOldPassword" type="password" autocomplete="off" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label class="inline-label">
+                <span>New password (3–200 chars):</span>
+                <input id="adminNewPassword" type="password" autocomplete="off" />
+              </label>
+              <button id="adminChangePasswordBtn" class="primary-btn">Change</button>
+            </div>
+          </section>
 
-      <div id="adminActionFeedback" class="muted small admin-feedback"></div>
-    </section>
+          <div id="adminActionFeedback" class="muted small admin-feedback"></div>
+        </section>
+      </div>
+    </div>
   </main>
 
   <div id="toast" class="toast" style="display:none"></div>    <!-- Backwards-compat: the prior admin modal HTML is removed; the

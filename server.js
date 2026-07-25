@@ -786,6 +786,63 @@ io.on('connection', (socket) => {
 
   // ----- New admin endpoints (per-user isAdmin flow) -----
 
+  // ----- Legacy shared-password admin auth (restored per user spec) -----
+  //
+  // The admin modal in public/index.html asks the host for a shared
+  // password (default 'admin123', stored on the meta singleton) and
+  // unlocks every gated admin_* handler below. The flow coexists with
+  // the per-Player `isAdmin` flag set at register time — both paths
+  // simply set `socket.data.isAdmin = true` so the existing
+  // requireAdmin() gate works without changes.
+  //
+  // Server returns no distinguishing info on a wrong password — just
+  // `{ ok: false, error: 'Wrong password' }` — so a brute-force
+  // guesser can't tell wrong-password from an internal fault.
+  socket.on('admin_login', async ({ password }, cb) => {
+    try {
+      const expected = await db.getAdminPassword();
+      if (typeof password !== 'string' || password !== expected) {
+        return cb && cb({ ok: false, error: 'Wrong password' });
+      }
+      socket.data.isAdmin = true;
+      // Include the current global starting stack + admin password hint
+      // in the ack so the modal can pre-populate the input on first
+      // open without a separate round-trip. (Avoids the "blank input"
+      // UX bug where the host had to type blind.)
+      const startingStack = await db.getStartingStack();
+      return cb && cb({ ok: true, startingStack });
+    } catch (err) {
+      console.error('admin_login error:', err);
+      return cb && cb({ ok: false, error: 'Server error' });
+    }
+  });
+
+  // Change the shared admin password. Requires active admin session on
+  // this socket (set via admin_login OR via the register-time isAdmin
+  // gate). The old password is verified BEFORE the new one is
+  // persisted — a typo in the user's CURRENT password leaves the
+  // stored value untouched.
+  socket.on('admin_change_password', async ({ oldPassword, newPassword }, cb) => {
+    if (!requireAdmin(cb)) return;
+    if (typeof oldPassword !== 'string' || typeof newPassword !== 'string') {
+      return cb && cb({ ok: false, error: 'Bad payload' });
+    }
+    if (newPassword.length < 3 || newPassword.length > 200) {
+      return cb && cb({ ok: false, error: 'Password must be 3–200 characters' });
+    }
+    try {
+      const current = await db.getAdminPassword();
+      if (oldPassword !== current) {
+        return cb && cb({ ok: false, error: 'Current password is wrong' });
+      }
+      await db.setAdminPassword(newPassword);
+      return cb && cb({ ok: true });
+    } catch (err) {
+      console.error('admin_change_password error:', err);
+      return cb && cb({ ok: false, error: 'Server error' });
+    }
+  });
+
   // Bulk list every active table + its editable settings in one
   // payload. The admin panel uses this to populate its session-list
   // card grid; subsequent edits target a single tableId via
