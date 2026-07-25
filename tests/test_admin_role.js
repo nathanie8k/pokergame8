@@ -512,6 +512,93 @@ async function main() {
        'e2e: admin user balance = 20 after the routing');
   }
 
+  // ====================================================================
+  // 10. Leave-table behaviors (server.js#leave_table): the user's
+  //     "Fix Leave Table" request asks for (a) real-time broadcast
+  //     [covered by broadcastTable/broadcastLobby in server.js], and
+  //     (b) last player leaves → table marked closed/inactive. The
+  //     latter is now wired in server.js via rooms.shouldDeleteAfterHand
+  //     + rooms.remove after unseat — pin the RoomManager-level
+  //     primitives so a future refactor of the handler doesn't
+  //     silently drop the empty-table cleanup.
+  //
+  //     Also pin the mid-hand unseat primitive: when the leaving
+  //     player is mid-action, server.js mirrors the disconnect path
+  //     and calls poker.applyAction(t, sidx, 'fold') BEFORE
+  //     rooms.unseat so the betting round's currentPlayerIndex
+  //     rotation can advance. rooms.unseat itself then marks
+  //     `folded+removed` and queues the seat for HAND_OVER cleanup.
+  // ====================================================================
+  {
+    const rooms = new RoomManager();
+
+    // Non-default table empty + WAITING phase → shouldDeleteAfterHand
+    // returns true so server.js's leave_table can auto-delete it.
+    const custom = rooms.createTable({
+      name: 'Lone Wolves', smallBlind: 5, bigBlind: 10,
+      maxSeats: 6, startingStack: 1000, houseFeePercent: 0,
+    });
+    custom.default = false; // emulate user-created lifecycle
+    custom.phase = P.PHASE.WAITING;
+    rooms.seatPlayer(custom.id, 0, { id: 'lone', name: 'lone', points: 500 });
+    rooms.unseat(custom.id, 0);
+    ok(rooms.shouldDeleteAfterHand(custom) === true,
+       'leave-table: empty non-default table in WAITING is deletable');
+    // And the actual removal lands it in the lobby list:
+    rooms.remove(custom.id);
+    ok(!rooms.has(custom.id),
+       'leave-table: rooms.remove actually drops the empty non-default table');
+
+    // Default tables: the 5 permanent ones shipped with the server.
+    // shouldDeleteAfterHand must return false even when empty + WAITING
+    // — they're permanent lobby entry points so the user always sees
+    // at least one table at every stakes tier.
+    rooms.ensureDefaultTables();
+    const beginner = rooms.tables.get('t1');
+    beginner.phase = P.PHASE.WAITING;
+    ok(beginner.default === true,
+       'leave-table: default table is flagged default=true');
+    beginner.seats.forEach((s, i) => {
+      if (s && !s.removed) rooms.unseat(beginner.id, i);
+    });
+    ok(rooms.shouldDeleteAfterHand(beginner) === false,
+       'leave-table: shouldDeleteAfterHand exempts default tables even when empty');
+
+    // Mid-hand unseat: rooms.unseat marks folded + removed + queues
+    // `_pendingUnseat`. Server.js's leave_table mirrors the disconnect
+    // path by calling poker.applyAction(t, sidx, 'fold') first so
+    // the engine rotates the actor; the unseat primitive is the
+    // follow-up cleanup that doesn't touch betting rotation.
+    const live = rooms.createTable({
+      name: 'Live One', smallBlind: 5, bigBlind: 10,
+      maxSeats: 6, startingStack: 1000, houseFeePercent: 0,
+    });
+    live.default = false;
+    live.phase = P.PHASE.FLOP;
+    live.seats[0] = {
+      playerId: 'p0', name: 'p0', stack: 1000,
+      holeCards: [], folded: false, allIn: false, removed: false,
+      satOut: false, disconnected: false, contributed: 0, acted: true,
+    };
+    live.seats[1] = {
+      playerId: 'p1', name: 'p1', stack: 1000,
+      holeCards: [], folded: false, allIn: false, removed: false,
+      satOut: false, disconnected: false, contributed: 0, acted: true,
+    };
+    live.currentPlayerIndex = 0;
+    rooms.unseat(live.id, 0);
+    ok(live.seats[0] && live.seats[0].folded === true,
+       'leave-table: mid-hand unseat leaves seat folded=true');
+    ok(live.seats[0] && live.seats[0].removed === true,
+       'leave-table: mid-hand unseat leaves seat removed=true');
+    ok(Array.isArray(live._pendingUnseat) && live._pendingUnseat.indexOf(0) !== -1,
+       'leave-table: mid-hand unseat queues seat index for HAND_OVER cleanup');
+    // And the cleanup primitive nulls the queued seat at HAND_OVER.
+    rooms.finishPendingUnseats(live);
+    ok(live.seats[0] === null,
+       'leave-table: finishPendingUnseats nulls the queued seat at HAND_OVER');
+  }
+
   await db.disconnect();
   await mongoServer.stop();
 

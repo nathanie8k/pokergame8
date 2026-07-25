@@ -530,12 +530,35 @@ io.on('connection', (socket) => {
     if (!tid || sidx == null) return cb && cb({ ok: false, error: 'Not at a table' });
     const t = rooms.get(tid);
     if (!t) return cb && cb({ ok: false, error: 'No such table' });
-    // If mid-hand, save stack back before unseat.
+    // If mid-hand, save stack back + (if leaving player is the current
+    // actor) run the same `fold + applyAction` the disconnect handler
+    // does. Without this mirror, bettingRoundComplete would still point
+    // at a removed-but-not-folded seat and the rotation wouldn't advance
+    // — freezing the hand. The fold via the engine also lets fold-out
+    // resolve cleanly (awardPot in advancePhase) and triggers the
+    // busted-refund hook if the seat ended the hand at stack===0.
     if (t.phase !== poker.PHASE.WAITING && t.phase !== poker.PHASE.HAND_OVER) {
       if (t.seats[sidx]) {
         const seatName = t.seats[sidx].name;
         const stack = t.seats[sidx].stack;
         db.setPoints(seatName, stack).catch(err => console.error('save on leave:', err));
+        if (t.currentPlayerIndex === sidx) {
+          const result = poker.applyAction(t, sidx, 'fold');
+          if (result && result.ok) {
+            // The fold may have resolved the hand (fold-out → awardPot
+            // grew another seat's stack). Persist every seat so a server
+            // crash here doesn't revert pre-fold snapshots.
+            saveStacksToDB(t).catch((err) => console.error('save stacks on leave fold:', err));
+            // The busted-refund hook mirrors the disconnect path: if any
+            // seat ended the hand at stack===0, emit the system chat so
+            // other players see why the engine just reset balances.
+            if (t.phase === poker.PHASE.HAND_OVER) {
+              rooms.emitBustedRefundIfAny(tid);
+              broadcastChat(tid);
+              scheduleNextHand(tid);
+            }
+          }
+        }
       }
     }
     rooms.unseat(tid, sidx);
@@ -546,6 +569,23 @@ io.on('connection', (socket) => {
     socket.leave('table_' + tid);
     socket.data.tableId = null;
     socket.data.seatIdx = null;
+    // Auto-delete empty NON-DEFAULT tables that have no live seats AT
+    // THE MOMENT OF LEAVE (rather than waiting for the next
+    // scheduleNextHand to fire shouldDeleteAfterHand at HAND_OVER).
+    // A non-default table whose creator sat alone + then left should
+    // vanish from the lobby immediately rather than ghosting on with
+    // 0/6 seats and confusing everyone. Default tables (the 5
+    // permanent ones shipped with the server) are exempt — see
+    // shouldDeleteAfterHand's `if (table.default) return false`.
+    if (rooms.shouldDeleteAfterHand(t)) {
+      rooms.remove(tid);
+      // Skip per-table broadcasts — the table is gone. Just refresh
+      // the lobby so the deleted card disappears for every connected
+      // client.
+      broadcastLobby();
+      cb && cb({ ok: true });
+      return;
+    }
     broadcastTable(tid);
     broadcastLobby();
     tryStartHand(tid);

@@ -23,8 +23,12 @@
            navigates to #view-admin (the dedicated admin room). The
            shared-password login modal that used to live in #adminModal
            is retired — admin auth is now derived from
-           state.player.isAdmin at register time. -->
-      <button class="ghost-btn" id="adminBtn" title="Open admin panel" style="display:none">♠ Admin</button>
+           state.player.isAdmin at register time. Label is "Admin Room"
+           per spec: visible only to the isAdmin=true user; non-admins
+           never see this button (client hides via syncAdminButtonVisibility,
+           server rejects every admin_* event without the flag on the
+           underlying socket). -->
+      <button class="ghost-btn" id="adminBtn" title="Open the Admin Room (isAdmin=true)" style="display:none">Admin Room</button>
     </div>
   </header>
 
