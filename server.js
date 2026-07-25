@@ -13,7 +13,7 @@ const { Server } = require('socket.io');
 
 const poker  = require('./src/poker');
 const db     = require('./src/database');
-const { RoomManager } = require('./src/rooms');
+const { RoomManager, loadPersistedSettingsIntoCache, getCachedSettingsFor } = require('./src/rooms');
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -46,7 +46,7 @@ async function primePersistedSettings() {
   try {
     await db.connect();
     const rows = await db.loadAllTableSettings();
-    const loaded = rooms.loadPersistedSettingsIntoCache(rows);
+    const loaded = loadPersistedSettingsIntoCache(rows);
     console.log('Loaded ' + loaded + ' persisted table setting(s) from MongoDB.');
   } catch (err) {
     console.error('Persistence prime failed (continuing with in-memory defaults):', err.message);
@@ -73,7 +73,7 @@ primePersistedSettings().then(() => {
   let applied = 0;
   for (const t of rooms.tables.values()) {
     if (!t.default) continue;
-    const cached = rooms.getCachedSettingsFor(t.name);
+    const cached = getCachedSettingsFor(t.name);
     if (!cached) continue;
     const result = rooms.updateTableSettings(t.id, {
       smallBlind:     cached.smallBlind,

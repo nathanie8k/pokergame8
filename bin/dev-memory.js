@@ -61,14 +61,41 @@ async function main() {
   // Graceful shutdown — stop mongod first so a Ctrl+C in the dev
   // terminal doesn't leave a dangling in-process mongod eating a
   // port. SIGINT is what Ctrl+C delivers on Windows + POSIX.
+  //
+  // Implementation: we use `process.exit(0)` instead of just letting
+  // the process die naturally because on Windows the bash subshell
+  // receiving Ctrl+C does NOT reliably propagate SIGINT down to child
+  // node processes, and even when it does, an in-process mongod that
+  // didn't get its stop() called will linger on port 27000-something
+  // past process exit. Calling process.exit(0) AFTER awaiting stop()
+  // guarantees the OS reaps the in-memory mongod AND frees port 3000
+  // cleanly on the next boot. (IMPORTANT finding from the code-review
+  // pass; without the timeout fallback, an engaged mongod could hang
+  // the boot forever.)
+  let stopping = false;
   const shutdown = async (signal) => {
+    if (stopping) return;
+    stopping = true;
     console.log(`\n[dev-memory] ${signal} received, shutting down…`);
-    try { await mongod.stop(); } catch (_) {}
+    try {
+      // 5s hard timeout so a stuck mongod can't block the exit. The
+      // OS will reap the process either way; this is just so the user
+      // gets a fresh prompt quickly even if stop() hangs.
+      await Promise.race([
+        mongod.stop(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('mongod stop timed out (5s)')), 5000)),
+      ]);
+    } catch (err) {
+      // Don't let a stop error block the exit — the OS still reaps
+      // us regardless, and logging before exit gives the user a clue
+      // if a future boot complains about a lock file.
+      console.error('[dev-memory] mongod stop error (ignored, exiting anyway):', err.message || err);
+    }
     process.exit(0);
   };
   process.on('SIGINT',  () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
-}
+  process.on('SIGHUP',  () => shutdown('SIGHUP'));
 
 main().catch((err) => {
   console.error('[dev-memory] fatal:', err);
