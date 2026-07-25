@@ -34,7 +34,7 @@ const state = {
     house: null,         // { name, id, points } | null | 'missing'
   },
   leaderboardData: null,     // last /api/leaderboard payload, used for re-renders
-  view:          'login',    // 'login' | 'lobby' | 'table'
+  view:          'login',    // 'login' | 'lobby' | 'table' | 'admin'
   toastTimer:    null,
   toastType:     null,
   pendingError:  null,
@@ -102,7 +102,11 @@ function rankLabel(rank) { return RANK_NAMES[rank] || String(rank); }
 
 function setView(v) {
   state.view = v;
-  ['view-login', 'view-lobby', 'view-table'].forEach(id => {
+  // Include view-admin here so the Admin Room button's setView('admin')
+  // call actually un-hides the section. Without this entry the forEach
+  // loop iterates only the public-game views and never touches
+  // #view-admin, which stays at its HTML default of display:none.
+  ['view-login', 'view-lobby', 'view-table', 'view-admin'].forEach(id => {
     const node = $(id);
     if (node) node.style.display = (id === 'view-' + v) ? '' : 'none';
   });
@@ -632,6 +636,36 @@ function sitIn() {
   socket.emit('sit_in', null, res => {
     if (!res || !res.ok) showToast(res && res.error ? res.error : 'Failed', 'error');
   });
+}
+
+// Random card picker for the demo deal preview. Allow duplicates — this is
+// a visual preview only, so two seats sharing a card isn't a bug. The shape
+// {rank, suit} matches what the server's publicView emits, so renderCard()
+// consumes it without any further translation.
+function randomCard() {
+  return {
+    rank: 2 + Math.floor(Math.random() * 13),
+    suit: ['s', 'h', 'd', 'c'][Math.floor(Math.random() * 4)],
+  };
+}
+
+// Visual-only "preview a deal" action. Mutates state.currentTable.seats[i]
+// for every occupied (non-removed, non-disconnected) seat and triggers a
+// re-render. No socket emit, no server-side change. The next
+// `table_state` broadcast from the server overwrites these demo cards
+// with the engine's real holeCards, so there's no manual clear path — the
+// button is just a transient visual flourisher.
+function dealDemo() {
+  const t = state.currentTable;
+  if (!t) return;
+  let dealt = 0;
+  for (const seat of t.seats) {
+    if (!seat || !seat.occupied || seat.removed || seat.disconnected) continue;
+    seat.holeCards = [randomCard(), randomCard()];
+    dealt++;
+  }
+  if (dealt === 0) { showToast('No occupied seats to deal to', 'info'); return; }
+  renderTable();
 }
 
 // ---------- Showdown modal + per-seat banners ----------
@@ -1753,6 +1787,8 @@ document.addEventListener('DOMContentLoaded', () => {
   $('leaveTableBtn').addEventListener('click', leaveCurrentTable);
   $('sitOutBtn').addEventListener('click', sitOut);
   $('sitInBtn').addEventListener('click', sitIn);
+  // Preview Deal: visual-only, no socket emit; see dealDemo() above.
+  $('dealDemoBtn').addEventListener('click', dealDemo);
 
   // Chat panel: Enter submits, clicking Send submits. The HTML maxlength=200
   // caps paste length natively so the server-side slice(0,200) is just

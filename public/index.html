@@ -104,6 +104,12 @@
           <span class="muted small" id="handInfo"></span>
         </div>
         <div class="table-actions">
+          <!-- Demo-only button: deals random cards to every occupied seat
+               (visual preview; no game effect, no socket emit). Tagged with
+               class `demo-btn` so CSS can render it as a non-game action
+               (dashed border + leading dot). Next server push overwrites
+               the demo cards with real hand-state. -->
+          <button id="dealDemoBtn" class="ghost-btn demo-btn" title="Deal random cards to all occupied seats (visual preview only, no game effect)">🎴 Preview Deal</button>
           <button id="sitOutBtn" class="ghost-btn" style="display:none">Sit out</button>
           <button id="sitInBtn"  class="ghost-btn" style="display:none">Sit in</button>
           <button id="leaveTableBtn" class="ghost-btn">Leave table</button>

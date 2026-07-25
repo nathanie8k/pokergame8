@@ -96,6 +96,7 @@ async function main() {
   process.on('SIGINT',  () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGHUP',  () => shutdown('SIGHUP'));
+}
 
 main().catch((err) => {
   console.error('[dev-memory] fatal:', err);
