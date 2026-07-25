@@ -1903,7 +1903,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Click-outside-to-close for the admin modal — kept consistent with
   // the leaderboard modal. Only the backdrop element is the close
   // trigger; clicks inside .modal-content stay inside.
-  $('adminRoomRefreshPlayersBtn').addEventListener('click', refreshAdminList);
   $('adminStartingSave').addEventListener('click', doSetStartingStack);
 
   $('createTableBtn').addEventListener('click', createTable);
