@@ -5,10 +5,11 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/test_poker.js && node tests/test_showdown.js && node --test tests/test_betting_round.js",
+    "test": "node tests/test_poker.js && node tests/test_showdown.js && node --test tests/test_betting_round.js && node tests/test_admin_role.js",
     "test:poker": "node tests/test_poker.js",
     "test:showdown": "node tests/test_showdown.js",
-    "test:betting": "node --test tests/test_betting_round.js"
+    "test:betting": "node --test tests/test_betting_round.js",
+    "test:admin": "node tests/test_admin_role.js"
   },
   "dependencies": {
     "express": "^4.19.2",

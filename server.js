@@ -26,14 +26,83 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = new RoomManager();
+
+// ----- Boot-time persistence priming -----
+//
+// Connect to Mongo and load any persisted table settings BEFORE the
+// default tables are created, so ensureDefaultTables() sees the
+// settings cache populated. Without this priming, an admin who set
+// "Beginners Table" to 25/50 would lose their changes on every restart
+// because createTable defaults to 5/10 from DEFAULT_TABLES.
+//
+// All three steps are awaited sequentially: connect() must succeed
+// before loadAllTableSettings() can read; the cache prime must
+// complete before ensureDefaultTables() consults it.
+//
+// If the DB connection fails or returns no rows, we proceed with an
+// empty cache — the defaults still apply so the lobby isn't empty.
+// Persistence isn't a hard prerequisite for boot.
+async function primePersistedSettings() {
+  try {
+    await db.connect();
+    const rows = await db.loadAllTableSettings();
+    const loaded = rooms.loadPersistedSettingsIntoCache(rows);
+    console.log('Loaded ' + loaded + ' persisted table setting(s) from MongoDB.');
+  } catch (err) {
+    console.error('Persistence prime failed (continuing with in-memory defaults):', err.message);
+  }
+}
+
+// Fire-and-log; the server.listen() call below is intentionally not
+// chained to primePersistedSettings() so the HTTP listener can accept
+// connections immediately (lobby pages load fine while the unprimed
+// defaults are in place). ensureDefaultTables() runs synchronously and
+// uses what's in the cache at THIS moment — which is an empty Map at
+// boot. To apply persisted overrides on restart, after the prime
+// resolves we look at `rooms.getCachedSettingsFor(t.name)` and route
+// any cached override through `rooms.updateTableSettings`. Reading
+// from the cache (NOT from `t.smallBlind` etc.) is the bit that
+// actually loads the persisted values — those fields on `t` are still
+// the in-memory defaults (`ensureDefaultTables` ran with an empty
+// cache), so reading from `t` would just re-write the defaults back
+// into the table and to the cache. (Initial draft read from `t` and
+// was a silent no-op; the BLOCKING boot-reapply bug from the
+// code-review pass.) Skip rows that have no cache entry — those
+// tables genuinely are configured at their defaults.
+primePersistedSettings().then(() => {
+  let applied = 0;
+  for (const t of rooms.tables.values()) {
+    if (!t.default) continue;
+    const cached = rooms.getCachedSettingsFor(t.name);
+    if (!cached) continue;
+    const result = rooms.updateTableSettings(t.id, {
+      smallBlind:     cached.smallBlind,
+      bigBlind:       cached.bigBlind,
+      startingStack:  cached.startingStack,
+      houseFeePercent: cached.houseFeePercent,
+      maxSeats:       cached.maxSeats,
+    }, '(boot)');
+    if (result.ok) applied += 1;
+  }
+  if (applied > 0) console.log('Applied ' + applied + ' persisted table setting(s) on boot.');
+  broadcastLobby();
+}).catch((err) => console.error('Post-prime settings application failed:', err));
+
 // Create the 5 permanent default tables immediately so the lobby is never
 // empty — even on a fresh server start with zero connected players.
+// (Runs synchronously with an empty settingsCache; the post-prime
+// block above re-applies any overrides once Mongo responds.)
 rooms.ensureDefaultTables();
 
-// Session tracking
+// Session tracking. `socketToAdmin` is gone: admin powers are now
+// derived from `socket.data.player.isAdmin` (lookup performed at
+// register time) instead of a separate, password-gated set. Every
+// admin_* handler below reads `socket.data.isAdmin` from the same
+// property the server stamped on the socket during `register`, so a
+// re-socket (reconnect) picks up the latest flag without a separate
+// admin_login round trip.
 const playerSockets   = new Map(); // playerName -> Set<socketId>
 const socketToPlayer  = new Map(); // socketId -> playerName
-const socketToAdmin   = new Set(); // socketIds currently in admin mode
 const lobbyBroadcastInterval = setInterval(broadcastLobby, 1500);
 
 // AFK kick — every 5s scan every table for seats whose currentActor
@@ -268,6 +337,32 @@ async function scheduleNextHand(tableId) {
   // hands already null-ed their winners inside checkBustedRefund, so the
   // filter below correctly skips them.
   recordHandOutcomes(t);
+  // House-fee routing: spend the in-memory `_pendingHouseFees` accumulator
+  // and forward it to the primary admin user. MUST run AFTER saveStacksToDB
+  // (so the players' chip counts reflect the post-awardPot state) and
+  // BEFORE poker.endHand (which doesn't touch _pendingHouseFees but
+  // conceptually belongs to "this hand is settled"). Busted-refund clear
+  // any pending fees inside checkBustedRefund, so a refunded hand never
+  // pays the house.
+  //
+  // `collectPendingHouseFees` zeroes the accumulator and returns the
+  // amount; we then call `db.creditHousePoints` which looks up the
+  // admin user by isAdmin=true. If no admin exists, log a warning and
+  // move on — the credits simply sit in an uncredited state.
+  const houseFees = poker.collectPendingHouseFees(t);
+  if (houseFees > 0) {
+    db.creditHousePoints(houseFees)
+      .then((r) => {
+        if (r.ok) {
+          console.log('House fee: +' + r.credited + ' to ' + r.adminName + ' (balance ' + r.newBalance + ')');
+        } else if (r.reason === 'no_admin') {
+          console.warn('House fee: ' + houseFees + ' credits dropped — no player has isAdmin=true.');
+        } else {
+          console.warn('House fee: credit failed (' + r.reason + ') for ' + houseFees + ' chips.');
+        }
+      })
+      .catch((err) => console.error('House fee credit error:', err));
+  }
   poker.endHand(t);
   // Cleanup removed seats (disconnect / leave / busted).
   for (let i = 0; i < t.seats.length; i++) {
@@ -292,10 +387,12 @@ async function scheduleNextHand(tableId) {
 }
 
 // ----- HTTP routes -----
-
-app.get('/admin', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
+//
+// The legacy static `admin.html` page was removed when admin auth
+// migrated from a shared password to per-user isAdmin (see the
+// `register` handler below). Admin functionality now lives inside the
+// main SPA at /view-admin, gated by socket.data.player.isAdmin on
+// both client and server sides.
 
 app.get('/api/random-names', (_req, res) => {
   res.json({ names: generateNames(8) });
@@ -341,6 +438,15 @@ io.on('connection', (socket) => {
       const player = await db.getOrCreatePlayer(trimmed, { points });
       socket.data.playerName = player.name;
       socket.data.player = player;
+      // Admin flag is now derived from the persisted Player doc — no
+      // separate `admin_login` round-trip required. The flag is
+      // captured at socket-connect time so admin_* handlers can
+      // consult socket.data.isAdmin without an extra DB round trip on
+      // every request. A subsequent isAdmin flip in MongoDB won't
+      // promote/downgrade this socket until it reconnects; that's an
+      // intentional trade-off — see the spec note "no in-app
+      // assignment logic needed".
+      socket.data.isAdmin = player.isAdmin === true;
 
       if (!playerSockets.has(player.name)) playerSockets.set(player.name, new Set());
       playerSockets.get(player.name).add(socket.id);
@@ -571,34 +677,36 @@ io.on('connection', (socket) => {
   });
 
   // ----- Admin handlers -----
-
-  socket.on('admin_login', async ({ password }, cb) => {
-    try {
-      const ok = await db.checkAdminPassword(password);
-      if (!ok) return cb && cb({ ok: false, error: 'Wrong password' });
-      socketToAdmin.add(socket.id);
-      socket.data.isAdmin = true;
-      cb && cb({ ok: true });
-    } catch (err) {
-      cb && cb({ ok: false, error: 'Server error' });
+  //
+  // Every admin_* socket below reads `socket.data.isAdmin`, which is
+  // stamped from `player.isAdmin` during `register`. There is no
+  // password step — per the spec, admin provisioning happens entirely
+  // out-of-band (manual Mongo update + isAdmin=true on the host's
+  // own player doc). All admin endpoints (including the legacy ones
+  // for player point management inherited from the prior shared-
+  // password flow) therefore reject with `{ ok: false, error:
+  // 'Not admin' }` if the requesting socket isn't flagged.
+  //
+  // Helper so every handler's auth line stays identical + greppable
+  // for audits. Tests cover each handler with both an admin and a
+  // non-admin socket to lock down the rejection path.
+  function requireAdmin(cb) {
+    if (!socket.data.isAdmin) {
+      if (cb) cb({ ok: false, error: 'Not admin' });
+      return false;
     }
-  });
-
-  socket.on('admin_logout', (_, cb) => {
-    socketToAdmin.delete(socket.id);
-    socket.data.isAdmin = false;
-    cb && cb({ ok: true });
-  });
+    return true;
+  }
 
   socket.on('admin_list', async (_, cb) => {
-    if (!socket.data.isAdmin) return cb && cb({ ok: false, error: 'Not admin' });
+    if (!requireAdmin(cb)) return;
     const players = (await db.getAllPlayers())
       .sort((a, b) => b.points - a.points);
     cb && cb({ ok: true, players });
   });
 
   socket.on('admin_set_points', async ({ name, points }, cb) => {
-    if (!socket.data.isAdmin) return cb && cb({ ok: false, error: 'Not admin' });
+    if (!requireAdmin(cb)) return;
     const p = await db.setPoints(name, points);
     if (!p) return cb && cb({ ok: false, error: 'No such player' });
     await applyAdminPointsChangeToSeats(name, p.points);
@@ -606,7 +714,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('admin_add_points', async ({ name, delta }, cb) => {
-    if (!socket.data.isAdmin) return cb && cb({ ok: false, error: 'Not admin' });
+    if (!requireAdmin(cb)) return;
     const p = await db.addPoints(name, delta);
     if (!p) return cb && cb({ ok: false, error: 'No such player' });
     await applyAdminPointsChangeToSeats(name, p.points);
@@ -614,7 +722,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('admin_remove', async ({ name }, cb) => {
-    if (!socket.data.isAdmin) return cb && cb({ ok: false, error: 'Not admin' });
+    if (!requireAdmin(cb)) return;
     await db.deletePlayer(name);
     // Also clear from any seat.
     for (const t of rooms.tables.values()) {
@@ -626,20 +734,99 @@ io.on('connection', (socket) => {
     cb && cb({ ok: true });
   });
 
-  socket.on('admin_change_password', async ({ newPassword }, cb) => {
-    if (!socket.data.isAdmin) return cb && cb({ ok: false, error: 'Not admin' });
-    try {
-      await db.setAdminPassword(newPassword);
-      cb && cb({ ok: true });
-    } catch (err) {
-      cb && cb({ ok: false, error: err.message });
-    }
-  });
-
+  // Global starting stack (sets the default for brand-new players in
+  // meta.startingStack). Kept as an admin endpoint separate from the
+  // per-table `startingStack` editable in admin_update_session —
+  // they're different surfaces with different scopes.
   socket.on('admin_set_starting_stack', async ({ amount }, cb) => {
-    if (!socket.data.isAdmin) return cb && cb({ ok: false, error: 'Not admin' });
+    if (!requireAdmin(cb)) return;
     await db.setStartingStack(amount);
     cb && cb({ ok: true });
+  });
+
+  // ----- New admin endpoints (per-user isAdmin flow) -----
+
+  // Bulk list every active table + its editable settings in one
+  // payload. The admin panel uses this to populate its session-list
+  // card grid; subsequent edits target a single tableId via
+  // admin_update_session. Read-only — no auth-gated mutation paths
+  // are exposed on this endpoint.
+  socket.on('admin_list_sessions', (_, cb) => {
+    if (!requireAdmin(cb)) return;
+    cb && cb({ ok: true, sessions: rooms.listTables() });
+  });
+
+  // Single-table settings edit. Server runs the requested fields
+  // through `db.validateTableSettings` (clamping + smallBlind < bigBlind
+  // invariant) BEFORE applying, and `rooms.updateTableSettings` (which
+  // itself rejects mid-hand edits). Persistence is the second half of
+  // the write — if the upsert fails, we roll the in-memory values back
+  // from the supplied `previous` snapshot so the client can detect the
+  // divergence on its next admin_list_sessions poll.
+  socket.on('admin_update_session', async ({ tableId, settings }, cb) => {
+    if (!requireAdmin(cb)) return;
+    const t = rooms.get(tableId);
+    if (!t) return cb && cb({ ok: false, error: 'No such table' });
+    // Snapshot the previous in-memory values so we can roll back on
+    // upsert failure. The admin panel's optimistic UI flips first;
+    // this keep-then-revert sequence hides any disk-write latency.
+    const previous = {
+      bigBlind: t.bigBlind,
+      smallBlind: t.smallBlind,
+      startingStack: t.startingStack,
+      houseFeePercent: t.houseFeePercent,
+      maxSeats: t.maxSeats,
+    };
+    // Validate + apply in-memory.
+    const validated = db.validateTableSettings(
+      Object.assign({}, previous, settings || {}),
+      previous
+    );
+    const applied = rooms.updateTableSettings(tableId, validated, socket.data.player.name);
+    if (!applied.ok) {
+      return cb && cb({ ok: false, error: applied.error });
+    }
+    // Persist to MongoDB keyed by table NAME (see database.js for why
+    // name > tableId). Fire-and-confirm: we await the upsert so the
+    // callback can reflect success/failure, but we don't block the
+    // broadcast on this — broadcastTable below runs eagerly so the
+    // admin + every viewer sees the new settings immediately.
+    try {
+      await db.upsertTableSettings(t.name, applied.settings, socket.data.player.name);
+    } catch (err) {
+      // Roll back the in-memory change. The cache row we just wrote
+      // via updateTableSettings also needs to flip back so a restart
+      // doesn't restore the unpersisted values.
+      rooms.updateTableSettings(tableId, previous, socket.data.player.name)
+        .catch(() => {}); // best-effort
+      return cb && cb({ ok: false, error: 'Persist failed: ' + err.message });
+    }
+    // Live broadcast: the in-memory state has already mutated, so a
+    // broadcastTable loop lets every viewer (including the admin's
+    // own socket) see the updated blinds in the lobby card + the
+    // active table view.
+    broadcastTable(tableId);
+    broadcastLobby();
+    cb && cb({ ok: true, settings: applied.settings });
+  });
+
+  // Returns the host's admin player doc + balance. The admin panel
+  // shows "House: <name> • <balance> pts" in its header; this is the
+  // endpoint that populates it. If no admin exists, returns
+  // `{ ok: false, reason: 'no_admin' }` so the panel renders a
+  // "Configure admin in MongoDB" hint instead of crashing.
+  socket.on('admin_get_house_info', async (_, cb) => {
+    if (!requireAdmin(cb)) return;
+    const admin = await db.getPrimaryAdminPlayer();
+    if (!admin) return cb && cb({ ok: false, reason: 'no_admin' });
+    cb && cb({
+      ok: true,
+      admin: {
+        name: admin.name,
+        id: admin.id,
+        points: admin.points,
+      },
+    });
   });
 
   socket.on('disconnect', () => {
@@ -652,7 +839,6 @@ io.on('connection', (socket) => {
       }
     }
     socketToPlayer.delete(socket.id);
-    socketToAdmin.delete(socket.id);
 
     const tid = socket.data.tableId;
     const sidx = socket.data.seatIdx;
@@ -697,7 +883,8 @@ server.listen(PORT, HOST, () => {
   console.log('=================================================');
   console.log('  Friendly Poker server is up!');
   console.log('  Open: http://localhost:' + PORT);
-  console.log('  Admin password: admin123 (change via admin panel)');
+  console.log('  Admin: set is_admin=true on the Player doc in MongoDB.');
+  console.log('  No shared admin password — isAdmin flag is the only gate.');
   console.log('=================================================');
 });
 

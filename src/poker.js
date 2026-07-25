@@ -178,6 +178,14 @@ function createTable(opts = {}) {
     smallBlind: opts.smallBlind || 5,
     bigBlind: opts.bigBlind || 10,
     startingStack: opts.startingStack || 1000,
+    // Per-table "house fee" — a percentage (0..100) of every paid-out
+    // pot that the engine siphons off into `table._pendingHouseFees`.
+    // The server's scheduleNextHand flushes that accumulator to the
+    // admin user via `db.creditHousePoints`. Default 0 keeps the
+    // friendly-game feel; the admin panel exposes it as an editable
+    // slider / number input. The cap (50%) is enforced both server-side
+    // in db.validateTableSettings and at the engine layer below.
+    houseFeePercent: clampPercent(opts.houseFeePercent, 0, 50, 0),
     maxSeats: opts.maxSeats || 6,
 
     seats: Array.from({ length: opts.maxSeats || 6 }, () => null),
@@ -204,7 +212,24 @@ function createTable(opts = {}) {
     handNumber: 0,
     handLog: [],
     lastHandResults: null, // { winners: [{ id, name, handName, share }] }
+    // Accumulator that `awardPot` adds to on every settled hand and
+    // `scheduleNextHand` flushes via `db.creditHousePoints`. Stay on the
+    // table object (not a global) so multi-table house-routing serialises
+    // cleanly per-table — admin sees a per-table `pendingHouseFees`
+    // value via the admin panel too.
+    _pendingHouseFees: 0,
   };
+}
+
+// Local helper: clamp `value` into [lo, hi] as a half-open range,
+// defaulting to `fallback` when value is non-finite. Mirrors
+// `db.clampInt/clampFloat` semantically without taking a hard dep on
+// the database module (the engine has to stay callable without mongo
+// in unit tests).
+function clampPercent(value, lo, hi, fallback) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(lo, Math.min(hi, n));
 }
 
 function getSeatedPlayers(table) {
@@ -698,21 +723,74 @@ function applyAction(table, seatIdx, action, amountParam) {
 }
 
 function awardPot(table, winnerSeats, amounts) {
-  for (let i = 0; i < winnerSeats.length; i++) {
-    const seat = winnerSeats[i];
-    seat.stack += amounts[i];
+  // Split each winner's pay into a "house fee" portion (siphoned to
+  // *_pendingHouseFees*) and a "payout" portion (credited to the seat).
+  // Math.floor avoids ceiling-rounding leaking chips into thin air;
+  // the un-rounded remainder stays with the players, never sent to
+  // the house. This keeps total chips conserved across all seats PLUS
+  // the house accumulator, preserving the pre-rake invariant that the
+  // test suite asserts in a few places (see tests/test_poker.js's
+  // totalChips checks).
+  //
+  // Connectivity to scheduleNextHand: that handler reads
+  // _pendingHouseFees AFTER awardPot (and AFTER checkBustedRefund
+  // zeroes it), then calls db.creditHousePoints to credit the admin
+  // user. So the engine doesn't take a hard dep on the DB layer; the
+  // accumulator simply accumulates across awardPot calls within a
+  // session.
+  const feePercent = table.houseFeePercent || 0;
+  let totalFees = 0;
+  const payouts = new Array(winnerSeats.length);
+  if (feePercent <= 0) {
+    // Fast path: no fee, every cent goes to the winner. Awards are
+    // unchanged from the pre-rake behavior so existing tests pass
+    // without modification.
+    for (let i = 0; i < winnerSeats.length; i++) {
+      winnerSeats[i].stack += amounts[i];
+      payouts[i] = amounts[i];
+    }
+  } else {
+    for (let i = 0; i < winnerSeats.length; i++) {
+      const fee = Math.floor(amounts[i] * feePercent / 100);
+      const payout = amounts[i] - fee;
+      winnerSeats[i].stack += payout;
+      payouts[i] = payout;
+      totalFees += fee;
+    }
+    if (totalFees > 0) {
+      table._pendingHouseFees = (table._pendingHouseFees || 0) + totalFees;
+    }
   }
-  // Resolve display hand name. If a storedHandName has been precomputed
-  // (multi-way showdown or single-winner post-river), use it. Otherwise the
-  // winner took the pot by fold-out and we have an unknown hand - just say so.
+  // Resolve display hand name + the share each winner actually receives
+  // (post-fee). If a storedHandName has been precomputed (multi-way
+  // showdown or single-winner post-river), use it. Otherwise the winner
+  // took the pot by fold-out and we have an unknown hand - just say so.
   table.lastHandResults = {
     winners: winnerSeats.map((s, i) => ({
       id: s.playerId,
       name: s.name,
       handName: s.storedHandName || 'Won by fold',
-      share: amounts[i],
+      share: payouts[i],
     })),
+    // Exposed so the admin panel can show "this hand paid X to the
+    // house" without needing to peek at table._pendingHouseFees (which
+    // is a server-only field).
+    houseFee: totalFees,
   };
+}
+
+// Engine-level helper: read + reset the table's pending house fees.
+// Called from server.js#scheduleNextHand after the per-hand
+// saveStacksToDB so the house-fee routing doesn't race with the
+// stacks-to-DB write on the same hand. Returns the fees that
+// accumulated this hand (could be 0 for a no-fee table or a folded
+// hand); the table's accumulator is reset to 0 unconditionally so
+// the next hand starts from a clean slate.
+function collectPendingHouseFees(table) {
+  if (!table) return 0;
+  const pending = table._pendingHouseFees || 0;
+  table._pendingHouseFees = 0;
+  return pending;
 }
 
 function resolveShowdown(table) {
@@ -830,6 +908,14 @@ function checkBustedRefund(table) {
   table.currentPlayerIndex = -1;
   table.lastHandResults = null;
   table._bustedRefundThisHand = liveWithZeroStack.map((s) => s.name);
+  // Busted-refund also zeros out any pending house credit: paying the
+  // house a fee for a hand the engine just voided would defeat the
+  // fairness invariant. Without this line, awardPot's `_pendingHouseFees`
+  // accumulator would still hold the freshly-routed fees whose source
+  // hand is now refunded, and scheduleNextHand would still credit
+  // them to the admin user. The fairness rule is "if the hand is
+  // voided, no one's chip count moves" — including the house's.
+  table._pendingHouseFees = 0;
   return true;
 }
 
@@ -867,6 +953,9 @@ function addChipsToSeat(table, seatIdx, amount) {
   return true;
 }
 
+// Single canonical exports. checkBustedRefund is exported so the test suite
+// can drive busted-refund side effects on _pendingHouseFees without running
+// a full hand.
 module.exports = {
   RANK_NAMES,
   SUITS,
@@ -895,4 +984,6 @@ module.exports = {
   addChipsToSeat,
   awardPot,
   advancePhase,
+  checkBustedRefund,
+  collectPendingHouseFees,
 };

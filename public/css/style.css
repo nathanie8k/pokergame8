@@ -1073,7 +1073,488 @@ input, button { color: inherit; }
   outline: none;
 }
 
-/* ===== Toast ===== */
+/* ===== Admin room ===== */
+/*
+   Dedicated, full-page view for the user with isAdmin=true. Replaces
+   the legacy shared-password admin modal (#adminModal in the
+   pre-isAdmin flow). The design goal here is "polished, scannable,
+   hard to mis-click" — admin actions are destructive-ish, so the
+   visual rhythm is calm-but-explicit:
+     - Header chip showing house balance so it's always visible what
+       the host owns.
+     - Sessions card grid with per-card [Edit] CTAs that fold out an
+       editor underneath (single-editor-at-a-time flow so two sessions
+       can't be in flight simultaneously).
+     - Player management table with confirm-on-remove affordance.
+   Color treatment reuses the existing palette (--accent gold for
+   highlight, --info cyan for "read-only / observation", --danger
+   red for destructive actions). Hover/focus states preserve the
+   existing 80ms feel so the admin panel doesn't feel "different" from
+   the lobby/table views.
+*/
+
+.admin-room {
+  padding: 24px 28px 64px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header — title-left + house chip + back-to-lobby right. Stacks on
+   narrow viewports so the action button doesn't crowd the title. */
+.admin-room-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.admin-room-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.admin-room-icon {
+  font-size: 26px;
+  color: var(--accent);
+  background: rgba(255,204,77,0.10);
+  border: 1px solid rgba(255,204,77,0.35);
+  border-radius: 12px;
+  padding: 10px 12px;
+  text-shadow: 0 2px 6px rgba(255,204,77,0.4);
+}
+.admin-room-title h2 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: 0.4px;
+}
+.admin-room-title .admin-room-subtitle { margin: 2px 0 0; }
+.admin-room-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.admin-room-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-1);
+  border: 1px solid rgba(255,204,77,0.25);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+.admin-room-chip-label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+/* Sections (sessions, players, global) — share an h3 + meta-row layout */
+.admin-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 12px;
+}
+.admin-section-header h3 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0.4px;
+  color: var(--text);
+}
+
+/* Sessions card grid — auto-fill minmax so 1-3 cards per row depending
+   on viewport width. Each card is clickable to open the editor. */
+.admin-sessions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.admin-session-card {
+  background: var(--bg-1);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 100ms ease, border-color 100ms ease, box-shadow 100ms ease;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+}
+.admin-session-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255,204,77,0.40);
+  box-shadow: var(--shadow-md);
+}
+.admin-session-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255,204,77,0.10), var(--shadow-md);
+}
+.admin-session-card .asc-name {
+  font-weight: 700;
+  font-size: 16px;
+}
+.admin-session-card .asc-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.admin-session-card .asc-stat {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  background: var(--bg-2);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.admin-session-card .asc-stat.blind {
+  background: rgba(255,204,77,0.10);
+  color: var(--accent);
+  border-color: rgba(255,204,77,0.25);
+  font-weight: 700;
+}
+.admin-session-card .asc-stat.live {
+  background: rgba(92,217,122,0.15);
+  color: var(--good);
+  border-color: rgba(92,217,122,0.30);
+}
+.admin-session-card .asc-stat.fee {
+  background: rgba(92,205,255,0.10);
+  color: var(--info);
+  border-color: rgba(92,205,255,0.25);
+}
+.admin-session-card .asc-edit-row {
+  margin-top: 4px;
+  display: flex;
+  justify-content: flex-end;
+}
+/* Editor — slides in UNDER the cards. Single-editor-at-a-time so
+   two sessions can't be in flight simultaneously; the parent
+   .admin-sessions grid stays put while this block opens. */
+.admin-editor {
+  background: var(--bg-1);
+  border: 1px solid rgba(255,204,77,0.30);
+  border-radius: var(--radius-lg);
+  padding: 18px 22px;
+  box-shadow: var(--shadow-md);
+  margin-bottom: 16px;
+  animation: editorIn 220ms ease-out;
+}
+@keyframes editorIn {
+  from { transform: translateY(-6px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.admin-editor-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.admin-editor-header h4 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--accent);
+}
+.admin-editor-status {
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(92,217,122,0.12);
+  color: var(--good);
+  border: 1px solid rgba(92,217,122,0.30);
+  font-weight: 700;
+}
+.admin-editor-status.locked {
+  background: rgba(255,92,92,0.12);
+  color: var(--danger);
+  border-color: rgba(255,92,92,0.30);
+}
+.admin-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.admin-editor-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.admin-editor-grid input {
+  background: var(--bg-2);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  color: var(--text);
+  outline: none;
+  font-size: 15px;
+  font-weight: 700;
+  transition: border-color 80ms, background 80ms;
+}
+.admin-editor-grid input:focus {
+  border-color: var(--accent);
+  background: var(--bg-3);
+}
+.admin-editor-grid input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.admin-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.admin-editor-feedback {
+  font-size: 12px;
+  min-height: 18px;
+  margin-right: auto;
+  align-self: center;
+  color: var(--text-dim);
+}
+.admin-editor-feedback.ok    { color: var(--good); }
+.admin-editor-feedback.error { color: var(--danger); }
+
+.admin-divider {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  margin: 28px 0;
+}
+
+/* Pool snapshot — focused, scannable host dashboard. The rake tile is the
+   visual headline (gold gradient matching the winner badge from the
+   showdown modal so the colour language stays consistent across views).
+   The two flanking tiles are quieter info tiles so the rake stays dominant.
+   The breakdown grid is a compact per-table strip so the host can verify
+   each table's chips-in-play + pending house fee without scrolling. */
+.admin-pool {
+  background: var(--bg-1);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg);
+  padding: 18px 22px;
+  margin-bottom: 22px;
+  box-shadow: var(--shadow-sm);
+  animation: poolIn 260ms ease-out;
+}
+@keyframes poolIn {
+  from { transform: translateY(-4px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.admin-pool-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.admin-pool-tile {
+  background: var(--bg-2);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: transform 100ms ease, border-color 100ms ease, box-shadow 100ms ease;
+  position: relative;
+  overflow: hidden;
+}
+.admin-pool-tile:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255,255,255,0.18);
+  box-shadow: var(--shadow-sm);
+}
+.admin-pool-tile-label {
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+.admin-pool-tile-value {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  /* Subtle fade-in on value update so the host's eye notices the change
+     without a jarring flash. */
+  transition: color 200ms ease, transform 200ms ease;
+}
+.admin-pool-tile-value.is-flash {
+  animation: poolFlash 700ms ease-out;
+}
+@keyframes poolFlash {
+  0%   { color: var(--accent); transform: scale(1.04); }
+  60%  { color: var(--accent); transform: scale(1); }
+  100% { color: inherit; }
+}
+.admin-pool-tile-sub {
+  font-size: 11px;
+  letter-spacing: 0.4px;
+}
+/* Rake tile — gold-accented so the host's rake balance reads as the
+   "profit" headline of the snapshot card. Matches the same gold gradient
+   used on the showdown modal winner badge for cross-view consistency. */
+.admin-pool-tile-rake {
+  background: linear-gradient(180deg, rgba(255,204,77,0.16), var(--bg-2));
+  border-color: rgba(255,204,77,0.40);
+}
+.admin-pool-tile-rake .admin-pool-tile-value { color: var(--accent); }
+.admin-pool-tile-rake .admin-pool-tile-label { color: var(--accent); }
+/* Pending tile — info-cyan accent so the "in-flight" balance is visually
+   distinct from both the rake tile (already credited) and the in-play
+   tile (still owned by players). */
+.admin-pool-tile-pending {
+  background: linear-gradient(180deg, rgba(92,205,255,0.10), var(--bg-2));
+  border-color: rgba(92,205,255,0.30);
+}
+.admin-pool-tile-pending .admin-pool-tile-value { color: var(--info); }
+.admin-pool-tile-pending .admin-pool-tile-label { color: var(--info); }
+
+/* Breakdown — compact table-style strip listing each live table's
+   chips-in-play + pending house fee. Compact (single-row per table,
+   no card chrome) so it doesn't compete with the sessions card grid
+   below. */
+.admin-pool-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+.admin-pool-breakdown-row {
+  display: grid;
+  grid-template-columns: 1.5fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.admin-pool-breakdown-row:last-child { border-bottom: none; }
+.admin-pool-breakdown-row .apb-name {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-pool-breakdown-row .apb-stat {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.admin-pool-breakdown-row .apb-stat.live { color: var(--good); }
+.admin-pool-breakdown-row .apb-stat.fee  { color: var(--info); }
+.admin-pool-breakdown-row .apb-empty {
+  color: var(--text-mute);
+  font-style: italic;
+  text-align: center;
+  padding: 8px 4px;
+}
+.admin-pool-rake-empty {
+  color: var(--text-mute);
+  font-style: italic;
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .admin-pool { padding: 14px 16px; }
+  .admin-pool-tile-value { font-size: 22px; }
+  .admin-pool-breakdown-row {
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .admin-pool-breakdown-row .apb-stat:nth-child(4) { display: none; }
+}
+@media (max-width: 480px) {
+  .admin-pool-totals { grid-template-columns: 1fr; }
+  .admin-pool-breakdown-row { grid-template-columns: 1fr auto; }
+  .admin-pool-breakdown-row .apb-stat:nth-child(3) { display: none; }
+}
+
+/* Player management table carried over from the prior admin modal —
+   tighten the cell widths + IS-Admin column so it reads as an
+   admin surface (gold border for isAdmin=true rows). */
+.admin-table-wrap { overflow-x: auto; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin-table th, .admin-table td {
+  padding: 8px 10px; text-align: left;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.admin-table th {
+  color: var(--text-dim); font-weight: 600;
+  text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;
+}
+.admin-table input[type=number] {
+  width: 80px;
+  background: var(--bg-2);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  color: var(--text);
+  outline: none;
+}
+.admin-table button {
+  background: var(--bg-3);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 80ms, color 80ms, border-color 80ms;
+}
+.admin-table button:hover { background: var(--accent); color: #2a1d00; border-color: transparent; }
+.admin-table button.danger:hover { background: var(--danger); color: #fff; }
+.admin-table tr.is-admin-row {
+  background: linear-gradient(90deg, rgba(255,204,77,0.10), transparent);
+  border-left: 2px solid var(--accent);
+}
+.admin-table tr.is-admin-row td:first-child { color: var(--accent); font-weight: 700; }
+
+.admin-feedback { margin-top: 16px; min-height: 18px; }
+.admin-feedback.ok    { color: var(--good); }
+.admin-feedback.error { color: var(--danger); }
+
+@media (max-width: 720px) {
+  .admin-room { padding: 16px 12px 48px; }
+  .admin-room-header { gap: 10px; }
+  .admin-room-title h2 { font-size: 18px; }
+  .admin-sessions-grid { grid-template-columns: 1fr; }
+  .admin-editor-grid { grid-template-columns: 1fr 1fr; }
+  .admin-editor-actions { justify-content: stretch; }
+  .admin-editor-actions .primary-btn,
+  .admin-editor-actions .ghost-btn { flex: 1 1 calc(50% - 5px); }
+}
+@media (max-width: 480px) {
+  .admin-editor-grid { grid-template-columns: 1fr; }
+  .admin-editor-actions .primary-btn,
+  .admin-editor-actions .ghost-btn { flex: 1 1 100%; }
+  .admin-room-icon { font-size: 22px; padding: 8px 10px; }
+}
+
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   background: var(--bg-1);

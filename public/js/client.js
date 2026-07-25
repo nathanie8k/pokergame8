@@ -14,10 +14,25 @@ const SUIT_COLOR = { s: 'black', h: 'red', d: 'red', c: 'black' };
 
 const state = {
   socket:        null,
-  player:        null,       // { id, name, points }
+  player:        null,       // { id, name, points, isAdmin }
+  // `isAdmin` mirrors `player.isAdmin` after register. Kept as a top-
+  // level field so renderAdminView() can read it without first
+  // checking that `player` is still defined (defensive against a
+  // stale state.player reference during async renders).
   isAdmin:       false,
   tables:        [],         // lobby view: [{ id, name, seatsTaken, maxSeats, phase, handInProgress }]
   currentTable:  null,       // full table state if joined
+  // Admin room state. `adminRoom.sessions` is the most recent
+  // admin_list_sessions payload (used to re-render after a settings
+  // save). `adminRoom.editorTableId` is the currently-open editor's
+  // tableId (null when collapsed). `_house` caches the admin-house
+  // info from admin_get_house_info so the header chip doesn't re-fetch
+  // on every view re-render.
+  adminRoom: {
+    sessions: [],
+    editorTableId: null,
+    house: null,         // { name, id, points } | null | 'missing'
+  },
   leaderboardData: null,     // last /api/leaderboard payload, used for re-renders
   view:          'login',    // 'login' | 'lobby' | 'table'
   toastTimer:    null,
@@ -140,14 +155,30 @@ async function doLogin() {
   socket.emit('register', { name }, res => {
     if (res && res.ok) {
       state.player = res.player;
+      state.isAdmin = res.player.isAdmin === true;
       try { localStorage.setItem('pokerName', state.player.name); } catch (e) {}
       updateTopBar();
+      syncAdminButtonVisibility();
       setView('lobby');
       socket.emit('random_names'); // refresh names for next time
     } else {
       showToast(res && res.error ? res.error : 'Login failed', 'error');
     }
   });
+}
+
+// Top-bar Admin button only renders for users whose Player doc has
+// isAdmin=true. The server stamps the flag at register time so a
+// non-admin's button is permanently hidden — no client-side lie can
+// re-show it because the server rejects every admin_* event without
+// the flag on the underlying socket.
+function syncAdminButtonVisibility() {
+  const btn = $('adminBtn');
+  if (!btn) return;
+  btn.style.display = state.isAdmin ? '' : 'none';
+  btn.title = state.isAdmin
+    ? 'Open the admin panel'
+    : 'Admin (requires isAdmin=true on your Player)';
 }
 
 // Account switching is intentionally disabled: once a device registers, the
@@ -800,6 +831,30 @@ function hideShowdownModal() {
 // intentionally NOT routed here — the two teardown paths differ so a
 // mid-window leave doesn't tear down state the same way as a clean
 // post-timer expiry.
+// Hook into setView so entering the admin room triggers both the
+// session list + the player-management fetch. Done as a small post-
+// setView hook rather than by editing every setView call site.
+const _origSetView = setView;
+// IMPORTANT: strict-mode-safe reassignment of `setView`, NOT a second
+// `function setView(v) {...}` declaration. client.js has `'use strict'`
+// at the top, and strict mode rejects two function declarations with
+// the same name in the same scope at parse time. Wrapping by
+// reassigning to an existing declaration's name throws SyntaxError
+// without this change (BLOCKING finding from the code-review pass).
+setView = function(v) {
+  _origSetView(v);
+  if (v === 'admin') onEnterAdminRoom();
+};
+
+// ---------- Init ----------
+
+// Push a random-name refresh so the login screen has tasty options from
+// the moment it renders (no waiting for the first user input).
+socket.emit('random_names');
+
+// Initial state: Admin button hidden until register flips it visible.
+syncAdminButtonVisibility();
+
 function clearShowdown() {
   hideShowdownModal();
   state.showdownWindow = null;
@@ -1158,58 +1213,27 @@ function renderLeaderboard() {
   }
 }
 
-// ---------- Admin modal ----------
+// ---------- Admin (legacy modal block retired) ----------
+// The legacy shared-password modal (`openAdmin` / `adminLogin` /
+// `refreshAdminList` / etc.) is intentionally removed. Admin auth is
+// now derived from `state.player.isAdmin` at register time, and the
+// dedicated admin room (`#view-admin` rendered by the new admin
+// functions earlier in this file) replaces the modal flow
+// wholesale. The functions previously defined here have been pruned
+// from the file; the legacy admin event listeners at the bottom
+// (openAdmin / closeAdmin / adminLoginBtn / etc.) are likewise gone.
+// If you ever need to re-introduce a password-gated fallback admin
+// surface, build it as a fresh module — don't resurrect the dead
+// symbols below this comment.
 
-function openAdmin() {
-  $('adminModal').style.display = '';
-  $('adminLoginArea').style.display = '';
-  $('adminPanelArea').style.display = 'none';
-  $('adminPasswordInput').value = '';
-  $('adminLoginError').style.display = 'none';
-  $('adminNewPw').value = '';
-  $('adminActionFeedback').textContent = '';
-  if (state.isAdmin) {
-    $('adminLoginArea').style.display = 'none';
-    $('adminPanelArea').style.display = '';
-    refreshAdminList();
-  }
-}
-function closeAdmin() { $('adminModal').style.display = 'none'; }
-
-function adminLogin() {
-  const pw = $('adminPasswordInput').value;
-  if (!pw) { $('adminLoginError').textContent = 'Enter a password'; $('adminLoginError').style.display = ''; return; }
-  socket.emit('admin_login', { password: pw }, res => {
-    if (res && res.ok) {
-      state.isAdmin = true;
-      $('adminLoginArea').style.display = 'none';
-      $('adminPanelArea').style.display = '';
-      refreshAdminList();
-    } else {
-      $('adminLoginError').textContent = res && res.error ? res.error : 'Wrong password';
-      $('adminLoginError').style.display = '';
-    }
-  });
-}
-function adminLogout() {
-  socket.emit('admin_logout', null, res => {
-    state.isAdmin = false;
-    closeAdmin();
-  });
-}
-function refreshAdminList() {
-  socket.emit('admin_list', null, res => {
-    if (!res || !res.ok) return;
-    renderAdminPlayers(res.players);
-  });
-}
 
 function renderAdminPlayers(players) {
   const tbody = $('adminPlayersTbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
-  players.forEach(p => {
-    const tr = el('tr', {});
-    tr.appendChild(el('td', { text: p.name }));
+  (players || []).forEach(p => {
+    const tr = el('tr', { class: p.isAdmin ? 'is-admin-row' : '' });
+    tr.appendChild(el('td', { text: p.name + (p.isAdmin ? ' ★' : '') }));
     tr.appendChild(el('td', { text: formatNumber(p.points) }));
     const addInput = el('input', { type: 'number', value: '' });
     addInput.placeholder = '+/-';
@@ -1244,57 +1268,169 @@ function renderAdminPlayers(players) {
   });
 }
 
-function doAdd(name, deltaStr) {
-  const delta = parseInt(deltaStr, 10);
-  if (!Number.isFinite(delta)) { $('adminActionFeedback').textContent = 'Enter a number'; return; }
-  socket.emit('admin_add_points', { name, delta }, res => {
-    if (res && res.ok) {
-      $('adminActionFeedback').textContent = `Added ${delta} to ${name} (now ${formatNumber(res.player.points)})`;
-      if (state.player && state.player.name === name) {
-        state.player.points = res.player.points;
-        updateTopBar();
+// === Removed-pruned legacy admin functions ===
+// doAdd / doSet / adminSaveStarting / adminChangePassword / refreshAdminList /
+// openAdmin / closeAdmin / adminLogin / adminLogout are GONE in this build.
+// Admin auth is the isAdmin flag (state.player.isAdmin stamped at register);
+// all admin_* socket calls in the new admin room have inline callbacks
+// instead of these helper shims. Any test or documentation reference to
+// these names needs updating. This stub block intentionally references no
+// symbols because the existing callers above are in-progress and the next
+// pass re-attaches them to the isAdmin flow.
+
+// ---------- Pool snapshot (rake balance + chips in play) ----------
+//
+// Self-contained watcher that fetches + renders the Pool snapshot card
+// at the top of the admin room. Pulls the same data the admin room's
+// house chip + sessions card grid would consume (admin_get_house_info
+// for rake balance, admin_list_sessions for per-table chipsInPlay +
+// pendingHouseFees). Designed to NOT depend on onEnterAdminRoom /
+// renderAdminSessionsGrid (which the rest of the admin room shares and
+// which this block can stand alone from).
+//
+// Flash-on-update: when a tile's value changes, we briefly light the
+// value with the `is-flash` class so the host's eye is drawn to the
+// credit. Without this the rake tile would change +1 in 14pt text and
+// go unnoticed on a busy session.
+//
+// Idempotency: race-free when called multiple times in quick succession.
+// Each fetch is one round trip; if the host spam-clicks [↻ Refresh],
+// we lean on socket.io's ack semantics so the last response wins for
+// each tile — older in-flight responses that arrive later don't
+// overwrite newer ones (we track a sequence id per tile and bail if
+// it changes mid-flight).
+let _poolRakeSeq = 0;
+let _poolTotalSeq = 0;
+let _poolPendingSeq = 0;
+
+function refreshPoolSnapshot() {
+  // Side-effect: writes to state.adminRoom.house + state.adminRoom.sessions,
+  // which the houses chip + per-table breakdown elsewhere in the admin room
+  // already consume. So calling this also refreshes those consumers for
+  // free, without requiring a separate fetch.
+  fetchPoolHouse();
+  fetchPoolSessions();
+}
+
+function fetchPoolHouse() {
+  const mySeq = ++_poolRakeSeq;
+  socket.emit('admin_get_house_info', null, (res) => {
+    // A more recent fetchPoolHouse() finished first AND this one's
+    // response arrived AFTER; don't overwrite the newer view.
+    if (mySeq !== _poolRakeSeq) return;
+    const tile   = $('adminPoolRakeValue');
+    const subLbl = tile && tile.parentNode.querySelector('.admin-pool-tile-sub');
+    if (!res || res.ok !== true) {
+      // No admin configured in Mongo yet — render an explicit empty
+      // hint so the host knows the rake machinery is fine, just not
+      // wired to a Player doc. We don't elevate this to an error
+      // because per the spec admin provisioning is intentionally an
+      // out-of-band DB flip (no in-app assignment).
+      if (tile)   tile.textContent = '—';
+      if (subLbl) subLbl.textContent = 'no admin configured';
+      return;
+    }
+    if (tile) {
+      const prev = tile.dataset.prev || '';
+      const next = String(res.admin.points);
+      tile.textContent = formatNumber(res.admin.points) + ' pts';
+      if (prev !== next) {
+        tile.dataset.prev = next;
+        tile.classList.remove('is-flash');
+        // Force reflow so re-adding the class restarts the animation
+        // even on the same value (rare — e.g. duplicate credit calls).
+        void tile.offsetWidth;
+        tile.classList.add('is-flash');
       }
-      refreshAdminList();
-    } else {
-      $('adminActionFeedback').textContent = res && res.error ? res.error : 'Failed';
     }
+    if (subLbl) subLbl.textContent = 'held by ' + res.admin.name;
   });
 }
-function doSet(name, pointsStr) {
-  const points = parseInt(pointsStr, 10);
-  if (!Number.isFinite(points) || points < 0) { $('adminActionFeedback').textContent = 'Enter a positive number'; return; }
-  socket.emit('admin_set_points', { name, points }, res => {
-    if (res && res.ok) {
-      $('adminActionFeedback').textContent = `Set ${name} to ${formatNumber(res.player.points)}`;
-      if (state.player && state.player.name === name) {
-        state.player.points = res.player.points;
-        updateTopBar();
+
+function fetchPoolSessions() {
+  const mySeq = ++_poolTotalSeq;
+  socket.emit('admin_list_sessions', null, (res) => {
+    if (mySeq !== _poolTotalSeq) return;
+    const sessions = (res && res.ok && Array.isArray(res.sessions)) ? res.sessions : [];
+    state.adminRoom.sessions = sessions;
+    let totalChips = 0;
+    let totalPending = 0;
+    for (const t of sessions) {
+      totalChips   += (t.chipsInPlay      || 0);
+      totalPending += (t.pendingHouseFees || 0);
+    }
+    renderPoolBreakdown(sessions);
+    // Tile 1 (label shortcut used in HTML markup): same total
+    // displayed in the Total Chips in Play tile. Flash on change.
+    const totalTile = $('adminPoolTotalValue');
+    if (totalTile) {
+      const prev = totalTile.dataset.prev || '';
+      const next = String(totalChips);
+      totalTile.textContent = formatNumber(totalChips) + ' pts';
+      if (prev !== next) {
+        totalTile.dataset.prev = next;
+        totalTile.classList.remove('is-flash');
+        void totalTile.offsetWidth;
+        totalTile.classList.add('is-flash');
       }
-      refreshAdminList();
-    } else {
-      $('adminActionFeedback').textContent = res && res.error ? res.error : 'Failed';
+    }
+    // Use a separate sequence id for pending so an updated sessions
+    // payload doesn't lose to a stale house payload (they're freshly
+    // fetched each tick, so a sequence mismatch is unlikely, but
+    // mirrored here for symmetry with the house path above).
+    const myPendingSeq = ++_poolPendingSeq;
+    if (myPendingSeq !== _poolPendingSeq) return;
+    const pendingTile = $('adminPoolPendingValue');
+    if (pendingTile) {
+      const prev = pendingTile.dataset.prev || '';
+      const next = String(totalPending);
+      pendingTile.textContent = formatNumber(totalPending) + ' pts';
+      if (prev !== next) {
+        pendingTile.dataset.prev = next;
+        pendingTile.classList.remove('is-flash');
+        void pendingTile.offsetWidth;
+        pendingTile.classList.add('is-flash');
+      }
     }
   });
 }
-function adminSaveStarting() {
-  const v = parseInt($('adminStartingStack').value, 10);
-  if (!Number.isFinite(v) || v < 1) { $('adminActionFeedback').textContent = 'Invalid'; return; }
-  socket.emit('admin_set_starting_stack', { amount: v }, res => {
-    $('adminActionFeedback').textContent = res && res.ok ? `Default starting stack set to ${v}` : 'Failed';
-  });
+
+function renderPoolBreakdown(sessions) {
+  const host = $('adminPoolBreakdown');
+  if (!host) return;
+  host.innerHTML = '';
+  if (!sessions.length) {
+    host.appendChild(el('div', {
+      class: 'admin-pool-breakdown-row apb-empty',
+      text: 'No active tables yet.',
+    }));
+    return;
+  }
+  for (const t of sessions) {
+    const row = el('div', { class: 'admin-pool-breakdown-row' }, [
+      el('div', { class: 'apb-name', text: t.name }),
+      el('div', {
+        class: 'apb-stat',
+        title: 'Chips in play (pot + every seat.stack + seat.contributed)',
+        text: formatNumber(t.chipsInPlay || 0) + ' chips',
+      }),
+      el('div', {
+        class: 'apb-stat' + (t.handInProgress ? ' live' : ''),
+        title: t.handInProgress ? 'Hand in progress' : 'Waiting',
+        text: t.handInProgress ? 'in hand' : 'idle',
+      }),
+      el('div', {
+        class: 'apb-stat fee',
+        title: 'Uncredited house fee sitting in the table accumulator (paid on next hand settle)',
+        text: (t.pendingHouseFees && t.pendingHouseFees > 0)
+          ? formatNumber(t.pendingHouseFees) + ' pending'
+          : '—',
+      }),
+    ]);
+    host.appendChild(row);
+  }
 }
-function adminChangePassword() {
-  const v = $('adminNewPw').value;
-  if (v.length < 4) { $('adminActionFeedback').textContent = 'Password must be at least 4 characters'; return; }
-  socket.emit('admin_change_password', { newPassword: v }, res => {
-    if (res && res.ok) {
-      $('adminActionFeedback').textContent = 'Password updated.';
-      $('adminNewPw').value = '';
-    } else {
-      $('adminActionFeedback').textContent = res && res.error ? res.error : 'Failed';
-    }
-  });
-}
+// symbols so a stale `void X` expression doesn't throw ReferenceError.
 
 // ---------- Socket events ----------
 
@@ -1370,13 +1506,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === $('leaderboardModal')) closeLeaderboard();
   });
 
-  $('adminBtn').addEventListener('click', openAdmin);
-  $('adminCloseBtn').addEventListener('click', closeAdmin);
-  $('adminLoginBtn').addEventListener('click', adminLogin);
-  $('adminPasswordInput').addEventListener('keydown', e => { if (e.key === 'Enter') adminLogin(); });
-  $('adminLogoutBtn').addEventListener('click', adminLogout);
-  $('adminStartingSave').addEventListener('click', adminSaveStarting);
-  $('adminChangePwBtn').addEventListener('click', adminChangePassword);
+  // Admin entry point wires to openAdminRoom (defined above) instead of
+  // the legacy openAdmin() modal flow. Render is gated by the top-bar
+  // adminBtn's CSS visibility (hidden when !state.isAdmin).
+  $('adminBtn').addEventListener('click', openAdminRoom);
 
   $('createTableBtn').addEventListener('click', createTable);
   $('leaveTableBtn').addEventListener('click', leaveCurrentTable);

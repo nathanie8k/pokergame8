@@ -1,7 +1,23 @@
-// MongoDB-backed persistence for player accounts and admin settings.
+// MongoDB-backed persistence for player accounts, admin flags, and per-table
+// session settings.
 //
-// Storage: a `players` collection (one doc per player, keyed by unique `name`)
-// and a single `metas` singleton doc for the admin password + starting stack.
+// Storage layout:
+//   - `players` collection: one doc per player, keyed by unique `name`.
+//     Each player may carry an `isAdmin` boolean flag (default false). The
+//     user flips this flag in the database/admin panel directly — there is
+//     NO in-app assignment logic on purpose (the spec is explicit about
+//     manual provisioning), so a brand-new install that has no admin set
+//     will simply log "no admin" warnings if any house points/rake accrue.
+//   - `metas` singleton: retained for global starting stack only. The
+//     historical shared `adminPassword` field is deprecated and stripped
+//     from the schema — admin auth is now derived from `Player.isAdmin`.
+//   - `tableSettings` collection: one doc per persisted table, keyed by
+//     `name` (NOT `tableId`). Persisting by name avoids the ID-reset-on-
+//     restart problem: in-memory tableIds reset to "t1", "t2", ... on each
+//     server boot, but the table name ("Beginners Table", "VIP") is stable
+//     across restarts, so name-keyed settings always apply to the right
+//     table when it's recreated on startup.
+//
 // Per-document atomic operators (`$add`/`$max`/`$cond` inside an aggregation
 // pipeline update) replace the previous per-name Promise chain so concurrent
 // `incrementStats('Alice', { gamesDelta: 1 })` calls accumulate without lost
@@ -47,18 +63,51 @@ const playerSchema = new mongoose.Schema({
   gamesPlayed: { type: Number, default: 0 },
   wins:        { type: Number, default: 0 },
   lastSeenAt:  { type: Number, default: 0 },
+  // Admin flag. Indexed because every admin_* socket handler lookup uses
+  // it as a query filter. Brand-new players default to false; the user
+  // flips it directly in the database admin panel (per spec — no in-app
+  // assignment logic). Existing docs that pre-date this field will read
+  // as `false` because mongoose applies the default at read time.
+  isAdmin:     { type: Boolean, default: false, index: true },
   created:     { type: Number, default: () => Date.now() },
   updated:     { type: Number, default: 0 },
 }, { versionKey: false });
 
 const Player = mongoose.model('Player', playerSchema);
 
-// Singleton holding the admin password + default starting stack. The fixed
-// `_id: 'singleton'` makes it a one-row table by construction; new field
-// additions (e.g. a future "table theme" setting) just extend the schema.
+// Per-table settings, persisted by table NAME (see file header for why
+// name > tableId). Used by the admin panel's "edit session settings" flow;
+// in-memory table settings remain authoritative for live state, with this
+// collection serving as the persistence layer that survives restarts and
+// admin edits. Schema is intentionally permissive (all fields default to
+// sensible values) so the admin panel can edit any subset and the rest
+// fall back to defaults.
+//
+// Validation bounds live in the `apply*` helpers below (validateBigBlind
+// etc.) rather than in the schema, so the form layer surfaces human
+// errors as 400 responses instead of Mongoose validation failures.
+const tableSettingsSchema = new mongoose.Schema({
+  name:            { type: String, required: true, unique: true, index: true },
+  bigBlind:        { type: Number, default: 10 },
+  smallBlind:      { type: Number, default: 5 },
+  startingStack:   { type: Number, default: 1000 },
+  houseFeePercent: { type: Number, default: 0 },
+  maxSeats:        { type: Number, default: 6 },
+  updatedAt:       { type: Number, default: () => Date.now() },
+  updatedBy:       { type: String, default: '' },
+}, { versionKey: false });
+
+const TableSettings = mongoose.model('TableSettings', tableSettingsSchema);
+
+// `metas` singleton keeps ONLY the global starting stack (default for
+// brand-new players). The previous `adminPassword`/`setAdminPassword`
+// admin auth flow is gone — admin powers are now derived from
+// `Player.isAdmin`, so the shared-password field is no longer needed
+// and is dropped from the schema. Existing deployments with a custom
+// `adminPassword` set will lose it on first save (no migration path;
+// admin flag is the new authority).
 const metaSchema = new mongoose.Schema({
   _id:           { type: String, default: 'singleton' },
-  adminPassword: { type: String, default: 'admin123' },
   startingStack: { type: Number, default: 1000 },
 }, { _id: false, versionKey: false });
 const Meta = mongoose.model('Meta', metaSchema);
@@ -88,6 +137,7 @@ async function connect(uri) {
   // Make sure indexes exist before any caller races for a unique insert.
   await Player.syncIndexes();
   await Meta.syncIndexes();
+  await TableSettings.syncIndexes();
 }
 
 async function disconnect() {
@@ -105,6 +155,7 @@ async function resetForTests() {
   await mongoose.connection.dropDatabase();
   await Player.syncIndexes();
   await Meta.syncIndexes();
+  await TableSettings.syncIndexes();
 }
 
 // ----- Meta helpers -----
@@ -115,11 +166,11 @@ async function getMeta() {
   if (!meta) {
     // Upsert-by-id is race-safe across multiple concurrent first-callers:
     // the unique `_id` index means the second writer hits a duplicate key
-    // error which we swallow and re-read.
+    // error which we swallow and re-read. No more `adminPassword` in the
+    // seed defaults — that field is dead.
     try {
       meta = await Meta.create({
         _id: 'singleton',
-        adminPassword: 'admin123',
         startingStack: 1000,
       });
     } catch (err) {
@@ -130,6 +181,14 @@ async function getMeta() {
       }
     }
   }
+  // Backward-compat: if an existing meta doc still carries a leftover
+  // `adminPassword` field from the pre-isAdmin schema (no longer in the
+  // schema definition), strip it so admin auth doesn't accidentally
+  // re-derive from a stale value. Strict removes rather than defaulting
+  // to "" so the absence is detectable by readers.
+  if (meta && meta.adminPassword != null) {
+    meta.adminPassword = undefined;
+  }
   return meta;
 }
 
@@ -138,12 +197,12 @@ async function getMeta() {
 // `loadData` / `saveData` were used by the JSON impl and are kept as
 // thin compatibility shims so any future caller (admin tooling, scripts)
 // doesn't break. They return a snapshot shaped the same way as the legacy
-// file: `{ players: {name: ...}, adminPassword, settings }`.
+// file: `{ players: {name: ...}, settings }` (adminPassword removed).
 async function loadData() {
   await connect();
   const players = await Player.find({}).lean();
   const meta = await getMeta();
-  const out = { players: {}, adminPassword: meta.adminPassword, settings: { startingStack: meta.startingStack } };
+  const out = { players: {}, settings: { startingStack: meta.startingStack } };
   for (const p of players) out.players[p.name] = p;
   return out;
 }
@@ -176,6 +235,11 @@ async function getOrCreatePlayer(name, opts) {
   const startingPoints = typeof opts2.points === 'number'
     ? opts2.points
     : (meta.startingStack || 1000);
+  // isAdmin is opt-in via opts2.isAdmin so tests + setup scripts can
+  // create an admin user without poking Mongo directly. Production code
+  // paths leave it as false (the default) — the user flips the flag
+  // via the database admin panel.
+  const isAdmin = opts2.isAdmin === true;
   // Race-safe first-time create: two concurrent `getOrCreatePlayer('Alice')`
   // calls could both miss the `findOne` and both attempt `create`. The
   // unique-name index makes the second call throw E11000; we catch and
@@ -189,6 +253,7 @@ async function getOrCreatePlayer(name, opts) {
       gamesPlayed: 0,
       wins: 0,
       lastSeenAt: 0,
+      isAdmin,
       created: now,
     });
     return created.toObject();
@@ -300,23 +365,6 @@ async function deletePlayer(name) {
   return res.deletedCount > 0;
 }
 
-async function checkAdminPassword(password) {
-  await connect();
-  const meta = await getMeta();
-  return meta.adminPassword === password;
-}
-
-async function setAdminPassword(newPassword) {
-  if (typeof newPassword !== 'string' || newPassword.length < 4) {
-    throw new Error('Password too short');
-  }
-  await connect();
-  const meta = await getMeta();
-  meta.adminPassword = newPassword;
-  await meta.save();
-  return meta.adminPassword;
-}
-
 async function getStartingStack() {
   await connect();
   const meta = await getMeta();
@@ -332,8 +380,203 @@ async function setStartingStack(amount) {
   return clean;
 }
 
+// ----- Admin / house-points helpers -----
+//
+// Per-user isAdmin replaces the prior shared-password system. The admin
+// power is derived at register time (server.js attaches the flag to the
+// socket) and consulted by every admin_* socket handler. This collection
+// of helpers centralizes the query/mutation paths so callers don't have
+// to construct Player queries directly.
+
+// List all players with isAdmin=true. Returns lean docs with the minimum
+// shape the admin panel needs (`name`, `id`, `isAdmin`, `points`). If no
+// admin exists, returns an empty array — callers should treat this as the
+// "no house = no fee sink" case and route fees to a logger or skip them
+// entirely.
+async function getAdminPlayers() {
+  await connect();
+  return Player.find({ isAdmin: true })
+    .sort({ name: 1 })
+    .select({ name: 1, id: 1, isAdmin: 1, points: 1 })
+    .lean();
+}
+
+// Single-row lookup for callers that only need the primary admin (e.g.
+// the server's house-points routing in scheduleNextHand). Picks the
+// lexicographically-first admin name to make the choice deterministic
+// across calls (Mongo doesn't guarantee a stable order on a filtered
+// find without a sort + tie-breaker).
+async function getPrimaryAdminPlayer() {
+  await connect();
+  return Player.findOne({ isAdmin: true })
+    .sort({ name: 1, created: 1 })
+    .select({ name: 1, id: 1, isAdmin: 1, points: 1 })
+    .lean();
+}
+
+// Manually flip the admin flag for a player. Exposed so a Node.js REPL
+// or migration script can do `db.setUserAdmin('Admin', true)` instead of
+// poking Mongo directly. Production callers rarely need this — the spec
+// is explicit that the user manages the flag themselves.
+async function setUserAdmin(name, isAdmin) {
+  if (!name || typeof name !== 'string') {
+    throw new Error('setUserAdmin: name (string) required');
+  }
+  if (typeof isAdmin !== 'boolean') {
+    throw new Error('setUserAdmin: isAdmin (boolean) required');
+  }
+  await connect();
+  const updated = await Player.findOneAndUpdate(
+    { name },
+    [{ $set: { isAdmin, updated: Date.now() } }],
+    { new: true, updatePipeline: true }
+  );
+  return updated ? updated.toObject() : null;
+}
+
+// Credit "house points" to whichever player has isAdmin=true. Used by
+// server.js#scheduleNextHand to route rake / fee receipts to the host,
+// and by future "house-leak" code paths (integer-division remainder, if
+// it ever arises). Atomic `$add` on the admin's `points` field so two
+// concurrent settlements can't lose updates.
+//
+// Returns:
+//   { ok: true,  credited, adminName, adminId, newBalance }
+//   { ok: false, reason: 'no_admin' | 'admin_disappeared' | 'invalid_amount',
+//     credited: 0 }
+//
+// Importantly: if no admin exists yet (fresh install before the user flips
+// their own flag), the call returns `no_admin` and credits NOTHING rather
+// than crashing. This is the spec's "points should automatically be
+// credited to whichever user has is_admin" — if there is no such user,
+// the points simply don't go anywhere. Callers should log a warning.
+async function creditHousePoints(amount) {
+  if (typeof amount !== 'number' || !isFinite(amount) || amount <= 0) {
+    return { ok: false, reason: 'invalid_amount', credited: 0 };
+  }
+  await connect();
+  const integerAmount = Math.floor(amount);
+  if (integerAmount <= 0) {
+    return { ok: false, reason: 'invalid_amount', credited: 0 };
+  }
+  const admin = await getPrimaryAdminPlayer();
+  if (!admin) return { ok: false, reason: 'no_admin', credited: 0 };
+  const updated = await Player.findOneAndUpdate(
+    { _id: admin._id, isAdmin: true },
+    [{
+      $set: {
+        points: { $add: [{ $ifNull: ['$points', 0] }, integerAmount] },
+        updated: Date.now(),
+      },
+    }],
+    { new: true, updatePipeline: true }
+  );
+  if (!updated) return { ok: false, reason: 'admin_disappeared', credited: 0 };
+  return {
+    ok: true,
+    credited: integerAmount,
+    adminName: updated.name,
+    adminId: updated.id,
+    newBalance: updated.points,
+  };
+}
+
+// ----- Table-settings helpers -----
+//
+// Persistence layer for the per-table editing flow in the admin panel.
+// The in-memory `table` object in RoomManager remains authoritative for
+// live state — these helpers are the long-lived backup so an admin edit
+// sticks across server restarts.
+//
+// KEY DESIGN: persisted by `name` (NOT tableId). TableIds reset to "t1",
+// "t2", ... on every server boot because RoomManager.idCounter resets;
+// persisting by name keeps the persisted settings bound to the
+// (stable) display name users see in the lobby. See file header for the
+// full discussion of why name > tableId.
+
+// Validate-and-clamp helpers. Bounds chosen for a friendlier "playable"
+// poker app: positive integers for chip values, smallBlind <= bigBlind
+// (after individual clamps), house fee 0..50% (anything higher than 50%
+// is punitive and almost certainly a typo), maxSeats 2..9 (existing
+// engine clamp).
+function clampInt(value, lo, hi, fallback) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(lo, Math.min(hi, n));
+}
+function clampFloat(value, lo, hi, fallback) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function validateTableSettings(input, fallback) {
+  // Default to the supplied fallback (the in-memory table's current
+  // settings) so partial edits keep unspecified fields stable.
+  const fb = fallback || {};
+  const bigBlind   = clampInt(input.bigBlind,    1, 1000000, fb.bigBlind || 10);
+  const smallBlind = clampInt(input.smallBlind,  1, 999999,  fb.smallBlind || 5);
+  const startingStack = clampInt(input.startingStack, 1, 1000000, fb.startingStack || 1000);
+  const houseFeePercent = clampFloat(input.houseFeePercent, 0, 50, fb.houseFeePercent || 0);
+  const maxSeats  = clampInt(input.maxSeats, 2, 9, fb.maxSeats || 6);
+  // Sanity invariant: smallBlind must be strictly less than bigBlind
+  // (equality leaves no raise room). If the user typed them equal, lift
+  // smallBlind down to max(1, bigBlind-1) so the table is still
+  // playable. Failure-to-satisfy is silent (auto-correction) rather
+  // than 400-return — admin panels are friendlier when they "fix
+  // obvious typos" instead of rejecting.
+  const safeSmallBlind = Math.min(smallBlind, Math.max(1, bigBlind - 1));
+  return {
+    bigBlind,
+    smallBlind: safeSmallBlind,
+    startingStack,
+    houseFeePercent,
+    maxSeats,
+  };
+}
+
+async function getTableSettings(name) {
+  if (!name) return null;
+  await connect();
+  const doc = await TableSettings.findOne({ name }).lean();
+  return doc || null;
+}
+
+async function upsertTableSettings(name, settings, updatedBy) {
+  if (!name) throw new Error('upsertTableSettings: name required');
+  await connect();
+  const doc = {
+    name,
+    bigBlind:        settings.bigBlind,
+    smallBlind:      settings.smallBlind,
+    startingStack:   settings.startingStack,
+    houseFeePercent: settings.houseFeePercent,
+    maxSeats:        settings.maxSeats,
+    updatedAt:       Date.now(),
+    updatedBy:       updatedBy || '',
+  };
+  await TableSettings.findOneAndUpdate(
+    { name },
+    { $set: doc },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  return TableSettings.findOne({ name }).lean();
+}
+
+async function deleteTableSettings(name) {
+  if (!name) return false;
+  await connect();
+  const r = await TableSettings.deleteOne({ name });
+  return r.deletedCount > 0;
+}
+
+async function loadAllTableSettings() {
+  await connect();
+  return TableSettings.find({}).lean();
+}
+
 module.exports = {
-  // Lifecycle (new)
+  // Lifecycle
   connect,
   disconnect,
   resetForTests,
@@ -347,10 +590,20 @@ module.exports = {
   addPoints,
   getAllPlayers,
   deletePlayer,
-  checkAdminPassword,
-  setAdminPassword,
   getStartingStack,
   setStartingStack,
   incrementStats,
   getLeaderboardRows,
+  // Admin / house-points
+  getAdminPlayers,
+  getPrimaryAdminPlayer,
+  setUserAdmin,
+  creditHousePoints,
+  // Table-settings persistence
+  getTableSettings,
+  upsertTableSettings,
+  deleteTableSettings,
+  loadAllTableSettings,
+  // Validation helper (exposed for the server's admin route to reuse)
+  validateTableSettings,
 };

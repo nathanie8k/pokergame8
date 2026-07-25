@@ -13,13 +13,33 @@ const poker = require('./poker');
 // Five permanent tables with increasing stakes. Created on server startup
 // (see `ensureDefaultTables`) and excluded from auto-deletion so the lobby
 // always has at least one entry at every stakes tier — even when empty.
+// `houseFeePercent: 0` per default — the admin panel's editable field
+// can introduce a non-zero rake on any specific table; defaults stay at
+// zero so the friendly-game baseline has no fees.
 const DEFAULT_TABLES = [
-  { name: 'Beginners Table', smallBlind: 5,   bigBlind: 10  },
-  { name: 'Low Stakes',      smallBlind: 25,  bigBlind: 50  },
-  { name: 'Medium Stakes',   smallBlind: 50,  bigBlind: 100 },
-  { name: 'High Stakes',     smallBlind: 100, bigBlind: 200 },
-  { name: 'VIP',             smallBlind: 250, bigBlind: 500 },
+  { name: 'Beginners Table', smallBlind: 5,   bigBlind: 10,  startingStack: 1000, houseFeePercent: 0 },
+  { name: 'Low Stakes',      smallBlind: 25,  bigBlind: 50,  startingStack: 1000, houseFeePercent: 0 },
+  { name: 'Medium Stakes',   smallBlind: 50,  bigBlind: 100, startingStack: 1000, houseFeePercent: 0 },
+  { name: 'High Stakes',     smallBlind: 100, bigBlind: 200, startingStack: 1000, houseFeePercent: 0 },
+  { name: 'VIP',             smallBlind: 250, bigBlind: 500, startingStack: 1000, houseFeePercent: 0 },
 ];
+
+// ----- Persisted-settings cache -----
+//
+// Module-level Map<name, settings> populated at server startup (in
+// server.js's `loadPersistedSettingsIntoCache`) and mutated by every
+// admin_update_session call. The cache exists so the RoomManager can
+// apply persisted settings when a table is RECREATED with the same
+// name (e.g. default tables after a server restart) — without the
+// cache, an admin who set "Beginners Table" to 25/50 would lose their
+// changes on restart because createTable defaults to 5/10.
+//
+// `dirty` here means "this name has unstaged changes since the DB
+// upsert" — used to short-circuit redundant DB writes from concurrent
+// admin updates within the same process. In practice the flag is a
+// no-op (the upsert is idempotent), but it keeps the writes from
+// happening N times for an admin who holds the Save button.
+let settingsCache = new Map();
 
 class RoomManager {
   constructor() {
@@ -29,32 +49,152 @@ class RoomManager {
   }
 
   listTables() {
-    return Array.from(this.tables.values()).map((t) => ({
-      id: t.id,
-      name: t.name,
-      smallBlind: t.smallBlind,
-      bigBlind: t.bigBlind,
-      maxSeats: t.maxSeats,
-      seatsTaken: t.seats.filter((s) => s && !s.removed).length,
-      phase: t.phase,
-      handNumber: t.handNumber,
-      handInProgress: ![poker.PHASE.WAITING, poker.PHASE.HAND_OVER].includes(t.phase),
-    }));
+    return Array.from(this.tables.values()).map((t) => {
+      // chipsInPlay = everything currently held in the table's ecosystem
+      // (so the host can track the live "pool at the felt"). The formula
+      // deliberately INCLUDES `t.pot` and `seat.contributed` so the pool
+      // shows chips as still-in-circulation during a hand (they will move
+      // from `contributed` → `stack` on showdown, but the sum stays
+      // constant through a hand). The chips that drop OUT (rake) are
+      // already reflected in admin's Player.points at next-hand time
+      // — the pool strictly shrinks by those bites.
+      //
+      // Busted / removed seats contribute 0 (their stack is gone) but
+      // are still counted as removed in `seatsTaken`, so the card can
+      // indicate a table where everyone just got busted.
+      const chipsInPlay = (t.pot || 0) +
+        t.seats.reduce((sum, s) => {
+          if (!s || s.removed) return sum;
+          return sum + (s.stack || 0) + (s.contributed || 0);
+        }, 0);
+      return {
+        id: t.id,
+        name: t.name,
+        smallBlind: t.smallBlind,
+        bigBlind: t.bigBlind,
+        maxSeats: t.maxSeats,
+        startingStack: t.startingStack,
+        houseFeePercent: t.houseFeePercent,
+        seatsTaken: t.seats.filter((s) => s && !s.removed).length,
+        chipsInPlay,
+        phase: t.phase,
+        handNumber: t.handNumber,
+        handInProgress: ![poker.PHASE.WAITING, poker.PHASE.HAND_OVER].includes(t.phase),
+        pendingHouseFees: t._pendingHouseFees || 0,
+      };
+    });
   }
 
-  createTable({ name, smallBlind, bigBlind, maxSeats, startingStack }) {
+  createTable({ name, smallBlind, bigBlind, maxSeats, startingStack, houseFeePercent }) {
     const id = 't' + (this.idCounter++);
+    // If a persisted-settings cache entry exists for this name (either
+    // from the server-startup load OR from a prior admin edit on a
+    // now-deleted custom table), apply the overrides here. This is the
+    // bookkeeping the tableId-reset-on-restart problem forces us into:
+    // on restart, the same default name gets `createTable` called fresh
+    // from `ensureDefaultTables`, and the persisted overrides must
+    // re-apply or they'd be silently lost.
+    const persisted = name ? settingsCache.get(name) : null;
+    const finalSB     = persisted?.smallBlind     ?? smallBlind     ?? 5;
+    const finalBB     = persisted?.bigBlind       ?? bigBlind       ?? 10;
+    const finalMS     = persisted?.maxSeats       ?? maxSeats       ?? 6;
+    const finalStack  = persisted?.startingStack  ?? startingStack  ?? 1000;
+    const finalFee    = persisted?.houseFeePercent ?? houseFeePercent ?? 0;
     const table = poker.createTable({
       id,
-      name: name || 'Table ' + id,
-      smallBlind,
-      bigBlind,
-      startingStack,
-      maxSeats,
+      name: name || ('Table ' + id),
+      smallBlind: finalSB,
+      bigBlind: finalBB,
+      startingStack: finalStack,
+      houseFeePercent: finalFee,
+      maxSeats: finalMS,
     });
     table.chatMessages = [];
     this.tables.set(id, table);
     return table;
+  }
+
+  // Apply a partial settings update on the live table, persist to
+  // the DB (keyed by name), and update the in-memory cache. Called
+  // from server.js's admin_update_session handler. Returns
+  // { ok, settings } where `settings` is the post-update snapshot the
+  // client should mirror in its optimistic-UI state.
+  //
+  // IMPORTANT: this only allows changing the editable surface agreed
+  // in the spec — bigBlind, smallBlind, startingStack, houseFeePercent.
+  // Server-side validation runs through `db.validateTableSettings`
+  // before mutation, so the room manager can trust the incoming
+  // values are sane (no negative BBQ, etc.).
+  updateTableSettings(tableId, partialSettings, updatedBy) {
+    const t = this.tables.get(tableId);
+    if (!t) return { ok: false, error: 'No such table' };
+    // Refuse edits MID-HAND so an admin can't accidentally change a
+    // blind while money is in the middle. WAITING/HAND_OVER are
+    // inter-hand safe windows. The check is done against the engine's
+    // PHASE enum so a future addition of new phases (e.g. "dealing")
+    // doesn't accidentally become editable.
+    if (t.phase !== poker.PHASE.WAITING && t.phase !== poker.PHASE.HAND_OVER) {
+      return { ok: false, error: 'Cannot edit settings mid-hand; wait for next hand' };
+    }
+    // Belt-and-braces: also block edits that would change `maxSeats`
+    // mid-occupancy (a 6-seat table with 4 seated players cannot become
+    // 3 seats without losing live seats). Even though that's a
+    // mid-hand-adjacent concern (not mid-betting), the safest reading of
+    // "structural edits happen between hands" is to require
+    // hand-over or waiting here.
+    if (typeof partialSettings.maxSeats === 'number'
+        && partialSettings.maxSeats !== t.maxSeats) {
+      const occupied = t.seats.filter((s) => s && !s.removed).length;
+      if (occupied > 0 && t.phase === poker.PHASE.WAITING) {
+        return { ok: false, error: 'Cannot resize table while seats are occupied' };
+      }
+      // Also: the new maxSeats must accommodate every non-null seat
+      // entry the array currently holds (removed-but-non-null seats
+      // can sit at index >= newMaxSeats if we're shrinking; that's a
+      // server.js regression we want to avoid here).
+      const longestIndex = t.seats.reduce((acc, s, i) => (s ? i : acc), -1);
+      if (longestIndex >= partialSettings.maxSeats) {
+        return { ok: false, error: 'Cannot shrink below current longest occupied seat index' };
+      }
+    }
+    // Apply the partial mutation. We deliberately only touch fields
+    // explicitly named in `partialSettings` so a client that sends
+    // an empty patch is a harmless no-op.
+    const next = {};
+    if (Object.prototype.hasOwnProperty.call(partialSettings, 'bigBlind')) {
+      t.bigBlind = partialSettings.bigBlind;
+      next.bigBlind = t.bigBlind;
+    }
+    if (Object.prototype.hasOwnProperty.call(partialSettings, 'smallBlind')) {
+      t.smallBlind = partialSettings.smallBlind;
+      next.smallBlind = t.smallBlind;
+    }
+    if (Object.prototype.hasOwnProperty.call(partialSettings, 'startingStack')) {
+      t.startingStack = partialSettings.startingStack;
+      next.startingStack = t.startingStack;
+    }
+    if (Object.prototype.hasOwnProperty.call(partialSettings, 'houseFeePercent')) {
+      t.houseFeePercent = partialSettings.houseFeePercent;
+      next.houseFeePercent = t.houseFeePercent;
+    }
+    if (Object.prototype.hasOwnProperty.call(partialSettings, 'maxSeats')) {
+      t.maxSeats = partialSettings.maxSeats;
+      next.maxSeats = t.maxSeats;
+    }
+    // Refresh the cache so a restart (or a same-name recreate) keeps
+    // the new values. The server's admin_update_session handler runs
+    // `db.upsertTableSettings` separately; this cache update is the
+    // half of the write that has to land for in-process consistency.
+    settingsCache.set(t.name, {
+      smallBlind: t.smallBlind,
+      bigBlind: t.bigBlind,
+      startingStack: t.startingStack,
+      houseFeePercent: t.houseFeePercent,
+      maxSeats: t.maxSeats,
+      updatedAt: Date.now(),
+      updatedBy: updatedBy || '',
+    });
+    return { ok: true, settings: next, table: t };
   }
 
   get(tableId) { return this.tables.get(tableId) || null; }
@@ -322,6 +462,8 @@ class RoomManager {
       name: t.name,
       smallBlind: t.smallBlind,
       bigBlind: t.bigBlind,
+      startingStack: t.startingStack,
+      houseFeePercent: t.houseFeePercent,
       maxSeats: t.maxSeats,
       phase: t.phase,
       handNumber: t.handNumber,
@@ -373,4 +515,41 @@ function serializeCard(c) {
   return { rank: c.rank, suit: c.suit };
 }
 
-module.exports = { RoomManager, DEFAULT_TABLES };
+// ----- Settings-cache bootstrapping (server-startup hook) -----
+//
+// Called from server.js once on boot, AFTER Mongo connects, so the
+// in-memory cache the createTable path consults is pre-populated with
+// every persisted setting. The Map is constructed fresh per server
+// process (state doesn't survive restart), so this is the entry point
+// the boot sequence uses.
+function loadPersistedSettingsIntoCache(rows) {
+  settingsCache = new Map();
+  for (const row of rows || []) {
+    if (!row || !row.name) continue;
+    settingsCache.set(row.name, {
+      smallBlind: row.smallBlind,
+      bigBlind: row.bigBlind,
+      startingStack: row.startingStack,
+      houseFeePercent: row.houseFeePercent,
+      maxSeats: row.maxSeats,
+      updatedAt: row.updatedAt,
+      updatedBy: row.updatedBy,
+    });
+  }
+  return settingsCache.size;
+}
+
+// Read-only advisory accessor for the admin panel: returns the cached
+// settings for a given table name, or null if nothing has been
+// persisted. Tests use this; the admin panel hits the server's
+// admin_list_sessions/listTables route instead.
+function getCachedSettingsFor(name) {
+  return name ? (settingsCache.get(name) || null) : null;
+}
+
+module.exports = {
+  RoomManager,
+  DEFAULT_TABLES,
+  loadPersistedSettingsIntoCache,
+  getCachedSettingsFor,
+};

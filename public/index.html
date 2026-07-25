@@ -18,7 +18,13 @@
       <span class="player-chip" id="playerChip"></span>
       <span class="points-chip" id="pointsChip"></span>
       <button class="ghost-btn" id="leaderboardBtn" title="View top players">★ Leaderboard</button>
-      <button class="ghost-btn" id="adminBtn" title="Open admin panel">Admin</button>
+      <!-- Admin entry point: hidden by default; JS shows this only once
+           the registered player's isAdmin flag is true. Click-handler
+           navigates to #view-admin (the dedicated admin room). The
+           shared-password login modal that used to live in #adminModal
+           is retired — admin auth is now derived from
+           state.player.isAdmin at register time. -->
+      <button class="ghost-btn" id="adminBtn" title="Open admin panel" style="display:none">♠ Admin</button>
     </div>
   </header>
 
@@ -150,63 +156,136 @@
       <div class="hand-log" id="handLog"></div>
     </section>
 
-    <!-- ===== Admin modal ===== -->
-    <div class="modal" id="adminModal" style="display:none">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Admin panel</h3>
-          <button class="close-btn" id="adminCloseBtn">&times;</button>
-        </div>
-        <div id="adminLoginArea">
-          <p class="muted">Enter the admin password to continue.</p>
-          <div class="form-row">
-            <input id="adminPasswordInput" type="password" placeholder="Admin password" />
-            <button id="adminLoginBtn" class="primary-btn">Unlock</button>
+    <!-- ===== Admin room =====
+         Dedicated, full-page view for the user with isAdmin=true. The
+         legacy shared-password admin modal that lived here is
+         retired alongside admin_login / admin_change_password (see
+         src/database.js + server.js). Auth is now derived at register
+         time from state.player.isAdmin; this view is only reachable
+         when that flag is true and only the top-bar Admin button can
+         navigate into it.
+         Layout: header (with house balance + back-home) → active
+         sessions card grid → expandable editor per session → player
+         management table (carried over from the prior admin modal). -->
+    <section id="view-admin" class="view admin-room" style="display:none">
+      <header class="admin-room-header">
+        <div class="admin-room-title">
+          <span class="admin-room-icon" aria-hidden="true">♠</span>
+          <div>
+            <h2>Admin panel</h2>
+            <p class="muted small" id="adminRoomSubtitle">Manage sessions, points, the house account.</p>
           </div>
-          <p id="adminLoginError" class="error-text" style="display:none"></p>
         </div>
-        <div id="adminPanelArea" style="display:none">
-          <div class="admin-actions">
-            <h4>Players</h4>
-            <p class="muted small">You can add or subtract points to anyone, anytime.</p>
-            <div class="admin-table-wrap">
-              <table class="admin-table">
-                <thead>
-                  <tr><th>Name</th><th>Points</th><th>Add</th><th>Set</th><th>Remove</th></tr>
-                </thead>
-                <tbody id="adminPlayersTbody"></tbody>
-              </table>
-            </div>
-          </div>
-          <hr />
-          <div class="admin-actions">
-            <h4>Settings</h4>
-            <div class="form-row">
-              <label class="inline-label">
-                <span>Default starting points for new players:</span>
-                <input id="adminStartingStack" type="number" min="1" />
-              </label>
-              <button id="adminStartingSave" class="primary-btn">Save</button>
-            </div>
-            <div class="form-row">
-              <label class="inline-label">
-                <span>Change admin password:</span>
-                <input id="adminNewPw" type="password" placeholder="New password" />
-              </label>
-              <button id="adminChangePwBtn" class="primary-btn">Update</button>
-            </div>
-          </div>
-          <hr />
-          <div id="adminActionFeedback" class="muted small"></div>
-          <button id="adminLogoutBtn" class="ghost-btn">Log out of admin</button>
+        <div class="admin-room-meta" id="adminRoomMeta">
+          <span class="admin-room-chip" id="adminRoomHouseChip">
+            <span class="admin-room-chip-label">House</span>
+            <span class="admin-room-chip-value" id="adminRoomHouseName">—</span>
+            <span class="admin-room-chip-points" id="adminRoomHousePoints">0 pts</span>
+          </span>
+          <button class="ghost-btn" id="adminRoomBackBtn" title="Back to lobby">← Back to lobby</button>
         </div>
-      </div>
-    </div>
+      </header>
+
+      <!-- Pool snapshot — read-only card sitting at the top of the
+           admin room so the host can see the rake balance + total chips
+           in play at a glance, plus a per-table breakdown so they can
+           spot a table that's leaking chips for some reason. Pulls
+           from `state.adminRoom.sessions` (which already carries
+           chipsInPlay + pendingHouseFees per table via
+           rooms.listTables()) and `state.adminRoom.house` (which
+           already carries admin.points via admin_get_house_info). No new
+           socket events needed — both halves are already on the
+           onEnterAdminRoom fetch chain. The card auto-refreshes
+           whenever the admin clicks the section's [↻ Refresh] button,
+           which re-fetches sessions + house and re-renders the pool. -->
+      <section class="admin-pool" aria-labelledby="adminPoolHeading">
+        <header class="admin-section-header">
+          <h3 id="adminPoolHeading">Pool snapshot</h3>
+          <button class="link-btn" id="adminPoolRefreshBtn" title="Refresh pool totals">↻ Refresh</button>
+        </header>
+        <div class="admin-pool-totals">
+          <div class="admin-pool-tile admin-pool-tile-rake">
+            <div class="admin-pool-tile-label">Rake Balance</div>
+            <div class="admin-pool-tile-value" id="adminPoolRakeValue">—</div>
+            <div class="admin-pool-tile-sub muted small">house wallet</div>
+          </div>
+          <div class="admin-pool-tile">
+            <div class="admin-pool-tile-label">Total Chips in Play</div>
+            <div class="admin-pool-tile-value" id="adminPoolTotalValue">—</div>
+            <div class="admin-pool-tile-sub muted small">across all tables</div>
+          </div>
+          <div class="admin-pool-tile admin-pool-tile-pending">
+            <div class="admin-pool-tile-label">Pending House Fees</div>
+            <div class="admin-pool-tile-value" id="adminPoolPendingValue">0</div>
+            <div class="admin-pool-tile-sub muted small">awaiting credit</div>
+          </div>
+        </div>
+        <div class="admin-pool-breakdown" id="adminPoolBreakdown"></div>
+      </section>
+
+      <!-- Active sessions: card grid with each table + a [Edit] button.
+           Editor shows underneath the clicked card. -->
+      <section class="admin-sessions" aria-labelledby="adminSessionsHeading">
+        <header class="admin-section-header">
+          <h3 id="adminSessionsHeading">Active sessions</h3>
+          <button class="link-btn" id="adminRoomRefreshBtn" title="Refresh list">↻ Refresh</button>
+        </header>
+        <div class="admin-sessions-grid" id="adminSessionsGrid"></div>
+        <div class="admin-editor" id="adminEditor" style="display:none"></div>
+      </section>
+
+      <hr class="admin-divider" />
+
+      <!-- Player management table (carried over from the prior shared-
+           password admin modal). Add/subtract points and remove players,
+           with the changes visible in the running tables immediately. -->
+      <section class="admin-players" aria-labelledby="adminPlayersHeading">
+        <header class="admin-section-header">
+          <h3 id="adminPlayersHeading">Player management</h3>
+          <button class="link-btn" id="adminRoomRefreshPlayersBtn" title="Refresh players">↻ Refresh</button>
+        </header>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Points</th>
+                <th>Add</th>
+                <th>Set</th>
+                <th>Admin</th>
+                <th>Remove</th>
+              </tr>
+            </thead>
+            <tbody id="adminPlayersTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Settings: global default starting stack for brand-new players.
+           Kept as a dedicated row (different from per-table startingStack
+           which lives on each session card). -->
+      <section class="admin-global" aria-labelledby="adminGlobalHeading">
+        <h3 id="adminGlobalHeading">Global defaults</h3>
+        <div class="form-row">
+          <label class="inline-label">
+            <span>Starting points for new players:</span>
+            <input id="adminStartingStack" type="number" min="1" />
+          </label>
+          <button id="adminStartingSave" class="primary-btn">Save</button>
+        </div>
+      </section>
+
+      <div id="adminActionFeedback" class="muted small admin-feedback"></div>
+    </section>
   </main>
 
-  <div id="toast" class="toast" style="display:none"></div>
+  <div id="toast" class="toast" style="display:none"></div>    <!-- Backwards-compat: the prior admin modal HTML is removed; the
+         admin room now lives at #view-admin. The legacy <div id=
+         "adminModal"> is gone. Tests + clipboard users that targeted
+         the old id will 404 on it; document that in the README if
+         pinning URLs. -->
 
-  <!-- ===== Showdown modal ===== -->
+    <!-- ===== Showdown modal ===== -->
   <!-- Pops up whenever the engine transitions the table to phase =
        hand_over with a real showdown (i.e. lastHandResults is non-null
        and every winner's handName is NOT "Won by fold"). Visible for 5
