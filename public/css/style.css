@@ -2055,32 +2055,33 @@ input, button, select, textarea { color: inherit; }
   line-height: 1;
 }
 
-/* Chat overlay panel. Hidden by default; .is-open slides it in
-   from the right edge. Position:absolute inside .poker-table
-   means it can never extend beyond the felt's vertical bounds —
-   never covers .self-panel / .raise-row below. */
+/* Chat strip: lives as a FLEX SIBLING of .poker-table inside
+   .table-chat-row. Default flex:0 0 0 → 0 width, invisible.
+   `.is-open` toggles flex-basis to 100px mobile / 280px desktop,
+   which forces .poker-table (flex:1 1 0; min-width:0) to shrink
+   cleanly — table never gets overlaid. Vertical extent matches
+   .poker-table via the row's natural alignment. */
 .chat-edge-panel {
-  display: none;
-  position: absolute;
-  right: 0;
-  top: 0;
-  height: 100%;
+  display: flex;
+  flex: 0 0 0;
   width: 0;
+  height: auto;
   max-width: 320px;
   flex-direction: column;
   background: rgba(7, 11, 9, 0.94);
   border-left: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 14px 0 0 14px;
-  box-shadow: var(--shadow-lg);
-  z-index: 5;
-  overflow: hidden;
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  transition: width 220ms var(--ease);
+  overflow: hidden;
+  transition: flex-basis 220ms var(--ease);
 }
 .chat-edge-panel.is-open {
-  display: flex;
-  width: 75%;
+  flex: 0 0 100px;            /* mobile: very narrow strip */
+}
+@media (min-width: 721px) {
+  .chat-edge-panel.is-open {
+    flex: 0 0 280px;          /* desktop: wider but still narrow; never overlaps table */
+  }
 }
 .chat-edge-panel-head {
   display: flex;
@@ -2456,49 +2457,92 @@ input, button, select, textarea { color: inherit; }
    action-bar (Fold/Check/Call/Raise/All-in) which sits next to
    the cards in the same panel. */
 .self-panel {
+  /* Single horizontal row container:  [info | cards | actions].
+     gap:0 because each child has its own border-right separator
+     for the segmented-row look. align-items:stretch so all three
+     children rise to the same height. flex:0 0 auto means the
+     panel reserves its natural content height and never grows or
+     shrinks in the parent column's flex math. */
   flex: 0 0 auto;
   display: flex;
-  gap: 8px;
+  gap: 0;
   align-items: stretch;
-  padding: 8px;
+  padding: 0;
   background: var(--bg-1);
   border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   margin-top: 6px;
+  overflow: hidden;
 }
+/* Self-panel — single horizontal row:  [info] [cards] [actions]
+   All three sections live inside ONE .self-panel wrapper that
+   flex-shrinks horizontally on narrow viewports. flex:0 0 auto on
+   .self-panel means this zone reserves its natural content
+   height and never flex-grows or flex-shrinks in the column.
+   Mobile + desktop use the same flex-row recipe — viewport
+   width determines each child's flex-basis, not a media query
+   (just resize-friendly). */
 .self-panel-cards {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  min-height: 64px;
-}
-.self-panel-cards .self-cards {
   flex: 0 0 auto;
   display: flex;
-  gap: 4px;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
-.self-panel-cards .self-info {
-  flex: 1 1 auto;
-  min-width: 0;
+/* .self-panel-info — far-left vertical stack: name / stack /
+   position label. Written by populateSelfInfo(). min-width
+   keeps it readable even on the narrowest phones. */
+.self-panel-info {
+  flex: 0 0 auto;
+  min-width: 84px;
+  max-width: 180px;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 2px;
+  padding: 6px 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+.self-panel-info .self-name {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.self-panel-info .self-stack {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.self-panel-info .self-status {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.self-panel-info .self-marks {
+  font-size: 11px;
+  color: var(--info);
+  letter-spacing: 0.5px;
+  font-weight: 700;
 }
 
-/* Action-bar inline within .self-panel: 5 color-coded buttons.
-   Stretches to match cards height; font stays small so 5 buttons
-   + label + cards fit comfortably in a 64px-tall panel. */
+/* Action-bar — right-aligned inside .self-panel. flex:1 1 auto
+   so it grabs remaining horizontal space after info+cards reserve
+   their natural widths. */
 .self-panel > .action-bar {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   display: flex;
   gap: 4px;
   align-items: stretch;
+  padding: 4px 8px;
   background: transparent;
-  padding: 0;
   border: none;
+  justify-content: flex-end;
 }
 .self-panel > .action-bar > .action-btn {
   flex: 1 1 0;
@@ -2620,5 +2664,69 @@ input, button, select, textarea { color: inherit; }
   .empty-seat[data-slot="4"] { top: 18%; }
   .seat[data-slot="5"],
   .empty-seat[data-slot="5"] { top: 14%; }
+}
+
+/* CHAT-OPEN seat-position shifts. When the chat panel is open
+   (width 100px mobile / 280px desktop), the right-side seats
+   (slot 2 — right-center, slot 4 — top-right) would otherwise
+   be visually overlapped by the chat panel. The :has() parent
+   selector detects the open state and pulls those two slots
+   inward. Supported in modern browsers (Chrome 105+, Safari
+   15.4+, Firefox 121+). The shifts are small enough that the
+   LSYMMETRIC layout stays coherent. */
+.table-chat-row:has(.chat-edge-panel.is-open) .seat[data-slot="2"],
+.table-chat-row:has(.chat-edge-panel.is-open) .empty-seat[data-slot="2"] { left: 84%; }
+.table-chat-row:has(.chat-edge-panel.is-open) .seat[data-slot="4"],
+.table-chat-row:has(.chat-edge-panel.is-open) .empty-seat[data-slot="4"] { left: 74%; }
+@media (min-width: 721px) {
+  .table-chat-row:has(.chat-edge-panel.is-open) .seat[data-slot="2"],
+  .table-chat-row:has(.chat-edge-panel.is-open) .empty-seat[data-slot="2"] { left: 86%; }
+  .table-chat-row:has(.chat-edge-panel.is-open) .seat[data-slot="4"],
+  .table-chat-row:has(.chat-edge-panel.is-open) .empty-seat[data-slot="4"] { left: 72%; }
+}
+
+/* NARROW-PHONE polish. Below 380px viewport, the 5-button action
+   bar can't fit 44px tap targets in a single row. Wrap to a 2-row
+   grid (3 buttons per row, or 2-of-3 split), minimum 44×44 each.
+   .self-panel-info compresses too so the info block + cards +
+   buttons together fit the 320–380px range. */
+@media (max-width: 380px) {
+  .self-panel-info { min-width: 64px; padding: 6px 6px; }
+  .self-panel-info .self-name { font-size: 12px; }
+  .self-panel-info .self-stack { font-size: 12px; }
+  .self-panel-info .self-marks { font-size: 10px; }
+  .self-panel-cards .card { transform: scale(0.86); }
+  .self-panel > .action-bar { flex-wrap: wrap; gap: 4px; padding: 4px 6px; }
+  /* 3+2 grid (Fold/Check/Call on row 1; Raise/All-in on row 2)
+     reads cleaner than 2+2+1 orphan. flex-basis 33% keeps each
+     button >= 44px tap target on most narrow phones; min-width
+     guards the absolute floor for older small screens. */
+  .self-panel > .action-bar > .action-btn {
+    flex: 1 1 calc(33% - 6px);
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 11px;
+    padding: 4px 6px;
+  }
+}
+
+/* =============================================================
+   table-chat-row — flex-row container that pairs .poker-table
+   with .chat-edge-panel. When chat opens, chat-edge-panel grows
+   from flex-basis:0 (closed) to 100px mobile / 280px desktop,
+   and .poker-table (flex:1 1 0; min-width:0) absorbs the freed
+   space — the table shrinks without ever being overlaid.
+   This row MUST be the only direct flex-children of #view-table
+   that can shrink horizontally, so we set min-height:0 to allow
+   .poker-table to actually compress below its content size.
+   ============================================================= */
+.table-chat-row {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  margin-top: 4px;
 }
 

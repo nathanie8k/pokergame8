@@ -678,12 +678,18 @@ function renderTable() {
 
   // Sit-out / Sit-in buttons for self
   const selfSeat = t.seats.find(s => s.occupied && s.isSelf);
-  // Self-panel: now wraps BOTH populated cards AND a static action-bar
-  // (Fold/Check/Call/Raise/All-in). populateSelfPanel targets the inner
-  // #selfPanelCards div so the static action-bar isn't wiped on every
-  // renderTable pass. setupActionButtons continues to update the
-  // action-bar children's enabled/textContent — nothing else moves.
-  populateSelfPanel($('selfPanelCards'), selfSeat, t);
+  // Self-panel: single horizontal row with three flex segments
+  //  [info | cards | action buttons]. Each segment is populated
+  // independently so the static action-bar (Fold/Check/Call/Raise/All-in)
+  // isn't wiped on every renderTable pass. The "is-active" glow goes
+  // on the wrapper #selfPanel so the WHOLE panel (info + cards + action
+  // buttons) glows when it's the viewer's turn, matching the old
+  // populateSelfPanel behavior.
+  const sidxForActive = t.seats.findIndex(s => s && s.isSelf);
+  $('selfPanel').classList.toggle('is-active',
+    sidxForActive >= 0 && sidxForActive === t.currentPlayerIndex);
+  populateSelfInfo($('selfPanelInfo'), selfSeat, t);
+  populateSelfCards($('selfPanelCards'), selfSeat);
 
   $('sitOutBtn').style.display = (selfSeat && !selfSeat.folded && !selfSeat.allIn && !selfSeat.satOut && selfSeat.stack > 0) ? '' : 'none';
   // Sit-in only makes sense between hands (not folded / not all-in for current round).
@@ -869,23 +875,19 @@ function renderCard(c, opts = {}) {
   return card;
 }
 
-function populateSelfPanel(panelEl, seat, t) {
-  // Populate the mobile-only "your hand" panel with the viewer's own cards
-  // and identity. Always invoked from renderTable (CSS hides the element on
-  // desktop) so the data is ready the moment the viewport narrows below the
-  // stacked-mobile breakpoint. When `seat` is null (observer mode or pre-join)
-  // the panel is emptied — CSS already hides the empty container.
-  if (!panelEl) return;
-  panelEl.innerHTML = '';
-  if (!seat) { panelEl.classList.remove('is-active'); return; }
+function populateSelfInfo(infoEl, seat, t) {
+  // Writes the LEFT segment of .self-panel: name + stack + status
+  // + position label stacked vertically. Living in #selfPanelInfo
+  // (separate from #selfPanelCards) lets the .self-panel wrapper
+  // use a clean three-segment flex-row layout (info | cards |
+  // action buttons). Called only when seat is non-null. The
+  // "your turn" glow now lives on #selfPanel itself, set from
+  // renameTable so the WHOLE panel (info + cards + buttons) glows.
+  if (!infoEl) return;
+  infoEl.innerHTML = '';
+  if (!seat) return;
   const sidx = t.seats.findIndex((s) => s && s.isSelf);
-  // Mobile "your turn" cue: since .seat.is-self is hidden on phones, the
-  // .self-panel needs its own active-glow so the viewer has a visual cue
-  // when currentPlayerIndex points at them. CSS mirrors the desktop
-  // .seat.is-active gold-glow recipe on .self-panel.is-active.
-  panelEl.classList.toggle('is-active', sidx >= 0 && sidx === t.currentPlayerIndex);
-  const info = el('div', { class: 'self-info' });
-  info.appendChild(el('div', { class: 'self-name' }, seat.name));
+  infoEl.appendChild(el('div', { class: 'self-name' }, seat.name));
   // Stack count-up/down mirrors renderSeat — reuse state.prevStacks + tickCount.
   // Cosmetic only: never gates any socket event. On mobile, this panel IS
   // the viewer's only visible chip count (the .seat.is-self ring is hidden).
@@ -904,27 +906,37 @@ function populateSelfPanel(panelEl, seat, t) {
   } else {
     selfStackEl.textContent = formatNumber(seat.stack || 0) + ' pts';
   }
-  info.appendChild(selfStackEl);
+  infoEl.appendChild(selfStackEl);
   let status = '';
   if (seat.folded)      status = 'Folded';
   else if (seat.allIn)  status = 'All-in';
   else if (seat.satOut) status = 'Sitting out';
-  if (status) info.appendChild(el('div', { class: 'self-status' }, status));
+  if (status) infoEl.appendChild(el('div', { class: 'self-status' }, status));
   const marks = [];
   if (sidx === t.buttonIndex) marks.push('Dealer (D)');
   if (sidx === t.sbIndex)     marks.push('Small Blind');
   if (sidx === t.bbIndex)     marks.push('Big Blind');
-  if (marks.length) info.appendChild(el('div', { class: 'self-marks' }, marks.join(' \u00B7 ')));
+  if (marks.length) infoEl.appendChild(el('div', { class: 'self-marks' }, marks.join(' \u00B7 ')));
+}
 
-  const cards = el('div', { class: 'self-cards' });
-  if (seat.holeCards && seat.holeCards.length === 2) {
-    seat.holeCards.forEach((c, i) => cards.appendChild(renderCard(c, { delay: i * 80 })));
-  } else {
-    cards.appendChild(renderCard(null, { faceDown: true }));
-    cards.appendChild(renderCard(null, { faceDown: true }));
+function populateSelfCards(cardsEl, seat) {
+  // Writes the MIDDLE segment of .self-panel: the viewer's two
+  // hole cards. When hole cards are unknown (observer / pre-deal)
+  // we render two face-down card backs so the layout doesn't
+  // collapse to a thin sliver.
+  if (!cardsEl) return;
+  cardsEl.innerHTML = '';
+  if (!seat) {
+    cardsEl.appendChild(renderCard(null, { faceDown: true }));
+    cardsEl.appendChild(renderCard(null, { faceDown: true }));
+    return;
   }
-  panelEl.appendChild(info);
-  panelEl.appendChild(cards);
+  if (seat.holeCards && seat.holeCards.length === 2) {
+    seat.holeCards.forEach((c, i) => cardsEl.appendChild(renderCard(c, { delay: i * 80 })));
+  } else {
+    cardsEl.appendChild(renderCard(null, { faceDown: true }));
+    cardsEl.appendChild(renderCard(null, { faceDown: true }));
+  }
 }
 
 // ---------- Chat panel ----------

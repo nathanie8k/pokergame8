@@ -139,40 +139,41 @@
         </div>
       </div>
 
-      <div class="poker-table" id="pokerTable">
-        <div class="table-felt">
-          <div class="pot-display">
-            <div class="pot-label">Pot</div>
-            <div class="pot-amount" id="potAmount">0</div>
+      <!-- table-chat-row wraps BOTH .poker-table AND .chat-edge-panel as
+           flex-row siblings. When chat opens (.chat-edge-panel.is-open),
+           the chat panel gains flex-basis (100px mobile / 280px desktop)
+           which forces .poker-table (flex:1 1 0; min-width:0) to shrink
+           rather than being overlaid. The chat panel's flex-basis:0
+           default means closed = invisible + 0-width. The chat-edge-tab
+           stays as a 32×80 floating trigger INSIDE .poker-table so it
+           can never spill onto the self-panel / raise-row zones below. -->
+      <div class="table-chat-row">
+        <div class="poker-table" id="pokerTable">
+          <div class="table-felt">
+            <div class="pot-display">
+              <div class="pot-label">Pot</div>
+              <div class="pot-amount" id="potAmount">0</div>
+            </div>
+            <div class="community-cards" id="communityCards"></div>
+            <div class="phase-display" id="phaseDisplay">Waiting...</div>
+            <div class="hand-result" id="handResult" style="display:none"></div>
           </div>
-          <div class="community-cards" id="communityCards"></div>
-          <div class="phase-display" id="phaseDisplay">Waiting...</div>
-          <div class="hand-result" id="handResult" style="display:none"></div>
-        </div>
-        <div class="seats" id="seatsContainer"></div>
+          <div class="seats" id="seatsContainer"></div>
 
-        <!-- Right-edge chat toggle: slim vertical strip fixed to .poker-table's
-             right edge via position:absolute. Click handler toggles .is-open
-             on #chatPanel which expands the chat-edge-panel overlay. Element
-             id kept as chatBubbleBtn for click handler compatibility; class
-             retargeted to chat-edge-tab for the new CSS. Lives INSIDE the
-             poker-table so it physically CAN'T cover the self-panel / raise-row
-             below. -->
-        <button class="chat-edge-tab" id="chatBubbleBtn" type="button"
-                aria-expanded="false" aria-controls="chatPanel"
-                aria-label="Toggle chat panel" title="Chat">
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
-                  fill="none" stroke="currentColor" stroke-width="2"
-                  stroke-linejoin="round" stroke-linecap="round"/>
-          </svg>
-          <span class="chat-edge-tab-label">CHAT</span>
-        </button>
-        <!-- Chat overlay panel: position:absolute inside .poker-table, slides
-             in from the right when the tab is tapped. id="chatPanel" so
-             renderChat() + updateChatReadOnly() + the existing
-             chatInput/chatSendBtn IDs continue to find the message list and
-             input without further JS plumbing. -->
+          <button class="chat-edge-tab" id="chatBubbleBtn" type="button"
+                  aria-expanded="false" aria-controls="chatPanel"
+                  aria-label="Toggle chat panel" title="Chat">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                    fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+            <span class="chat-edge-tab-label">CHAT</span>
+          </button>
+        </div>
+
+        <!-- Chat strip docked as a flex sibling of .poker-table, taking
+             0 width when closed and flex-basis (100/280px) when open. -->
         <div class="chat-edge-panel" id="chatPanel">
           <div class="chat-edge-panel-head">
             <span class="chat-edge-panel-title">Chat</span>
@@ -187,17 +188,19 @@
         </div>
       </div>
 
-      <!-- Combined self-zone: cards + action buttons in ONE panel.
-           #selfPanel wrapper has TWO children:
-             .self-panel-cards — populated by populateSelfPanel() (the JS
-                                call-site now targets this inner div so the
-                                static action-bar isn't wiped on each
-                                renderTable pass). Contains the player's
-                                hole cards + name + stack + status.
-             .action-bar       — static Fold / Check / Call / Raise /
-                                All-in row. #raiseBtn moved here from the
-                                old raise-row. -->
+      <!-- Combined self-zone: single horizontal row with three flex
+           children — left to right:  [info block]  [hole cards]  [action buttons]
+             .self-panel-info  — populateSelfInfo() writes name + points
+                                 + position label (Dealer (D) · SB · BB)
+                                 stacked vertically here.
+             .self-panel-cards — populateSelfCards() writes the player's
+                                 two hole cards horizontally here.
+             .action-bar       — static Fold / Check / Call [amount] /
+                                 Raise / All-in [amount] buttons, each
+                                 color-coded. Right-aligned via
+                                 justify-content:flex-end. -->
       <div class="self-panel" id="selfPanel">
+        <div class="self-panel-info" id="selfPanelInfo"></div>
         <div class="self-panel-cards" id="selfPanelCards"></div>
         <div class="action-bar" id="actionBar">
           <button class="action-btn fold"   data-action="fold">Fold</button>
