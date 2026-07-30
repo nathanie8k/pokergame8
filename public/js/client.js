@@ -63,6 +63,13 @@ const state = {
   // fallback only matters when the callback never arrives.
   adminLoginPending: false,
   adminLoginTimer: null,
+  // prevStacks: per-render snapshot of seat.stack keyed by playerId.
+  // Used purely for the cosmetic count-up/down animation in
+  // renderSeat / populateSelfPanel. Resetting on leave-table / new
+  // table join is unnecessary — extra entries are harmless (a stale
+  // playerId simply reads as 'prev = undefined' on the next render of
+  // that seat, so no count-up fires until a value lands).
+  prevStacks: {},
 };
 
 const socket = io({ reconnection: true });
@@ -95,11 +102,75 @@ function showToast(message, type = 'info') {
   const t = $('toast');
   if (!t) return;
   t.textContent = message;
+  // Reset + apply type class, then play the slide-in. The .show class
+  // triggers the slide-in transition (see style.css `.toast.show`).
   t.className = 'toast ' + type;
   t.style.display = 'block';
+  // Two RAFs guarantees the browser commits the .toast display:block
+  // before the .show opacity toggle runs, so the transition fires
+  // reliably (single-rAF sometimes collapses the change when the
+  // element was previously hidden).
+  requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('show')));
   clearTimeout(state.toastTimer);
-  state.toastTimer = setTimeout(() => { t.style.display = 'none'; }, 3000);
+  state.toastTimer = setTimeout(() => {
+    t.classList.remove('show');
+    // Hide after the 220ms fade-out completes.
+    setTimeout(() => { if (!t.classList.contains('show')) t.style.display = 'none'; }, 240);
+  }, 3000);
 }
+
+// ---------- Cosmetic count-up helper (UI only) ----------
+//
+// `tickCount(el, from, to)` animates an integer between two values over
+// `duration` ms using requestAnimationFrame. Updates the DOM as a side
+// effect. Respects prefers-reduced-motion and aborts automatically if
+// the element is no longer connected (e.g. a re-render blew it away).
+// Never used to gate any game timing — purely a polish layer over
+// values set by renderTable() etc.
+function tickCount(el, from, to, duration = 600) {
+  if (!el) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    el.textContent = formatNumber(to);
+    return;
+  }
+  if (from === to) {
+    el.textContent = formatNumber(to);
+    return;
+  }
+  const start = performance.now();
+  const delta = to - from;
+  const ease = (x) => 1 - Math.pow(1 - x, 3); // easeOutCubic
+  let raf;
+  function step(now) {
+    if (!el.isConnected) return;
+    const t = Math.min(1, (now - start) / duration);
+    const v = Math.round(from + delta * ease(t));
+    el.textContent = formatNumber(v);
+    if (t < 1) raf = requestAnimationFrame(step);
+  }
+  raf = requestAnimationFrame(step);
+}
+
+// Soft-prompt gate helpers (UI only — server untouched).
+// We track the "first-login password" UX gate purely client-side via
+// localStorage. Trigger: on the FIRST successful admin_login on this
+// device, the change-password panel is shown and the player management
+// section stays hidden until the host saves a new password. After a
+// successful change, the flag is set and the gate collapses. If the
+// host changes the password elsewhere (e.g. via the regular change
+// form after the first time, or by editing data.json), the flag is
+// stale but still hides the gate — purely UX. Clearing the device's
+// localStorage resets it.
+const LS_PASSWORD_CHANGED_KEY = 'poker.adminPasswordChanged';
+function hasPasswordChanged() {
+  try { return localStorage.getItem(LS_PASSWORD_CHANGED_KEY) === '1'; }
+  catch (e) { return false; }
+}
+function markPasswordChanged() {
+  try { localStorage.setItem(LS_PASSWORD_CHANGED_KEY, '1'); } catch (e) {}
+}
+const DEFAULT_ADMIN_PASSWORD = 'admin123'; // documented default; UI-only ref.
+
 
 function formatNumber(n) {
   // Format chips with thousand separators.
@@ -271,9 +342,34 @@ function submitAdminPassword() {
       // this only affects local UX.
       state.isAdmin = true;
       $('adminLoginSection').style.display = 'none';
-      $('adminContent').style.display = '';
-      setAdminFeedback('Unlocked. Manage players below.');
-      refreshAdminList();
+
+      // ISOLATED EXCEPTION (UX only): on the first successful login on
+      // this device, if the host hasn't yet changed the default
+      // password, show the first-time change panel and KEEP the player
+      // management section hidden. Purely client-side flag.
+      const firstTime = !hasPasswordChanged();
+      if (firstTime) {
+        const ftEl = $('adminFirstTimeChange');
+        const ctEl = $('adminContent');
+        if (ftEl) ftEl.style.display = '';
+        if (ctEl) ctEl.style.display = 'none';
+        // Clear previous feedback on (re)open
+        const errEl = $('fpAdminChangeError');
+        const okEl  = $('fpAdminChangeSuccess');
+        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+        if (okEl)  { okEl.style.display = 'none';  okEl.textContent  = ''; }
+        if ($('fpAdminNewPassword')) $('fpAdminNewPassword').value = '';
+        setTimeout(() => { const i = $('fpAdminNewPassword'); if (i) i.focus(); }, 0);
+        showToast('Set a new admin password to continue', 'info');
+      } else {
+        const ftEl = $('adminFirstTimeChange');
+        const ctEl = $('adminContent');
+        if (ftEl) ftEl.style.display = 'none';
+        if (ctEl) ctEl.style.display = '';
+        setAdminFeedback('Unlocked. Manage players below.');
+        refreshAdminList();
+      }
+
       // Pre-populate the global starting-stack input with the server's
       // current value so the host can see + tweak it without guessing.
       const startingInput = $('adminStartingStack');
@@ -301,8 +397,51 @@ function submitChangePassword() {
       $('adminOldPassword').value = '';
       $('adminNewPassword').value = '';
       setAdminFeedback('Password changed.');
+      // Once the user has successfully changed the password once via
+      // either path, the soft-prompt gate collapses automatically next
+      // time the modal is opened.
+      markPasswordChanged();
     } else {
       setAdminFeedback((res && res.error) ? res.error : 'Failed to change password');
+    }
+  });
+}
+
+// Soft-prompt gate state. `state.firstTimeSwapTimer` tracks the
+// post-success 700ms delay so closing the admin modal mid-window
+// doesn't leave a stale swap firing on a hidden modal.
+function submitFirstTimePassword() {
+  const newPwd = $('fpAdminNewPassword').value;
+  const errEl = $('fpAdminChangeError');
+  const okEl  = $('fpAdminChangeSuccess');
+  if (!newPwd || newPwd.length < 3 || newPwd.length > 200) {
+    if (errEl) { errEl.textContent = 'Password must be 3–200 characters.'; errEl.style.display = ''; }
+    if (okEl)  { okEl.style.display = 'none'; }
+    return;
+  }
+  socket.emit('admin_change_password', { oldPassword: DEFAULT_ADMIN_PASSWORD, newPassword: newPwd }, res => {
+    if (res && res.ok) {
+      markPasswordChanged();
+      if ($('fpAdminNewPassword')) $('fpAdminNewPassword').value = '';
+      if (okEl)  { okEl.textContent = 'Password updated — admin panel unlocked.'; okEl.style.display = ''; }
+      if (errEl) { errEl.style.display = 'none'; }
+      // Small delay before swapping panels so the success message is
+      // visible to the user.
+      setTimeout(() => {
+        // Guard: if the modal got closed during the swap window,
+        // skip the panel flip.
+        if (!$('adminModal') || $('adminModal').style.display === 'none') return;
+        const ftEl = $('adminFirstTimeChange');
+        const ctEl = $('adminContent');
+        if (ftEl) ftEl.style.display = 'none';
+        if (ctEl) ctEl.style.display = '';
+        setAdminFeedback('Password updated.');
+        refreshAdminList();
+        showToast('New password saved', 'good');
+      }, 700);
+    } else {
+      if (okEl)  { okEl.style.display = 'none'; }
+      if (errEl) { errEl.textContent = (res && res.error) ? res.error : 'Failed to change password'; errEl.style.display = ''; }
     }
   });
 }
@@ -557,13 +696,38 @@ function renderSeat(seat, idx, table, total) {
   const ringChildren = [
     el('div', { class: nameClasses.join(' '), text: seat.name }),
   ];
-  let statusText = seat.stack >= 0 ? formatNumber(seat.stack) + ' pts' : '';
-  let statusClass = [];
-  if (seat.folded)  statusClass.push('folded',  'Folded');
-  else if (seat.allIn)   statusClass.push('all-in',  'All-in');
-  else if (seat.satOut)  statusClass.push('sat-out', 'Sitting out');
-  ringChildren.push(el('div', { class: 'status ' + statusClass.join(' '),
-    text: statusText + (statusClass.length > 0 ? ' \u00B7 ' + statusClass[1] : '') }));
+  // Stack display — animate value changes via tickCount (purely cosmetic).
+  // state.prevStacks is keyed by seat.playerId and snapshots the value
+  // from the previous renderTable call. On this render, if the value
+  // changed, we tween it over 500ms and toggle is-up / is-down for a
+  // brief color hint. The DOM is updated as a side effect of tickCount;
+  // we don't gate any socket event on the animation.
+  const stackEl = el('div', { class: 'stack' });
+  if (seat.playerId) {
+    const prev = state.prevStacks[seat.playerId];
+    const cur  = Number(seat.stack || 0);
+    if (typeof prev === 'number' && prev !== cur) {
+      // Choose color hint based on direction of change.
+      stackEl.classList.add(cur > prev ? 'is-up' : 'is-down');
+      // Strip the hint after the animation completes so re-renders
+      // don't leave a permanent tint.
+      setTimeout(() => stackEl.classList.remove('is-up', 'is-down'), 1200);
+      tickCount(stackEl, prev, cur, 500);
+    } else {
+      stackEl.textContent = formatNumber(cur);
+    }
+    state.prevStacks[seat.playerId] = cur;
+  } else {
+    stackEl.textContent = formatNumber(seat.stack || 0);
+  }
+  const statusWrap = el('div', {});
+  statusWrap.appendChild(stackEl);
+  let statusText = '';
+  if (seat.folded)  statusText = 'Folded';
+  else if (seat.allIn)   statusText = 'All-in';
+  else if (seat.satOut)  statusText = 'Sitting out';
+  if (statusText) statusWrap.appendChild(el('span', { class: 'status ' + (seat.folded ? 'folded' : seat.allIn ? 'all-in' : 'sat-out'), text: ' \u00B7 ' + statusText }));
+  ringChildren.push(statusWrap);
 
   // Cards: real faces whenever the server has populated `seat.holeCards`,
   // face-down card backs otherwise. The server's publicView populates this
@@ -653,7 +817,25 @@ function populateSelfPanel(panelEl, seat, t) {
   panelEl.classList.toggle('is-active', sidx >= 0 && sidx === t.currentPlayerIndex);
   const info = el('div', { class: 'self-info' });
   info.appendChild(el('div', { class: 'self-name' }, seat.name));
-  info.appendChild(el('div', { class: 'self-stack' }, formatNumber(seat.stack) + ' pts'));
+  // Stack count-up/down mirrors renderSeat — reuse state.prevStacks + tickCount.
+  // Cosmetic only: never gates any socket event. On mobile, this panel IS
+  // the viewer's only visible chip count (the .seat.is-self ring is hidden).
+  const selfStackEl = el('div', { class: 'self-stack' });
+  if (seat.playerId) {
+    const prev = state.prevStacks[seat.playerId];
+    const cur  = Number(seat.stack || 0);
+    if (typeof prev === 'number' && prev !== cur) {
+      selfStackEl.classList.add(cur > prev ? 'is-up' : 'is-down');
+      setTimeout(() => selfStackEl.classList.remove('is-up', 'is-down'), 1200);
+      tickCount(selfStackEl, prev, cur, 500);
+    } else {
+      selfStackEl.textContent = formatNumber(cur) + ' pts';
+    }
+    state.prevStacks[seat.playerId] = cur;
+  } else {
+    selfStackEl.textContent = formatNumber(seat.stack || 0) + ' pts';
+  }
+  info.appendChild(selfStackEl);
   let status = '';
   if (seat.folded)      status = 'Folded';
   else if (seat.allIn)  status = 'All-in';
@@ -1214,8 +1396,31 @@ function closeLeaderboard() {
   $('leaderboardModal').style.display = 'none';
 }
 async function loadLeaderboard() {
+  // Re-inject the skeleton on every fetch (initial open + Refresh). The
+  // previous real render is replaced with the same skeleton placeholder
+  // shape so the layout doesn't reflow when data lands. First open keeps
+  // the markup-defined skeleton (index.html seeds #leaderboardBody).
   const body = $('leaderboardBody');
-  if (body) body.innerHTML = '<div class="leaderboard-empty muted">Loading…</div>';
+  if (body) {
+    body.innerHTML =
+      '<div class="lb-skeleton" aria-hidden="true">' +
+        '<div class="lb-skel-podium">' +
+          '<div class="lb-skel-podium-card"></div>' +
+          '<div class="lb-skel-podium-card"></div>' +
+          '<div class="lb-skel-podium-card"></div>' +
+        '</div>' +
+        '<div class="lb-skel-list">' +
+          '<div class="lb-skel-row"></div>' +
+          '<div class="lb-skel-row"></div>' +
+          '<div class="lb-skel-row"></div>' +
+          '<div class="lb-skel-row"></div>' +
+          '<div class="lb-skel-row"></div>' +
+          '<div class="lb-skel-row"></div>' +
+          '<div class="lb-skel-row"></div>' +
+          '<div class="lb-skel-row"></div>' +
+        '</div>' +
+      '</div>';
+  }
   // Monotonic request-id token: if the user spam-clicks Refresh, multiple
   // fetches are in flight and could resolve out of order. We only render
   // the response from the most-recent request (`reqId === state.lbReqId`)
@@ -1353,11 +1558,31 @@ function renderAdminPlayers(players) {
   if (_isHR) _nameTd.classList.add('is-house-account');
   tr.appendChild(_nameTd);
 }
-    tr.appendChild(el('td', { text: formatNumber(p.points) }));
+    // Mobile-friendly label via data-label — CSS uses the attr() pattern
+    // on td::before at narrow viewports so each table row becomes a
+    // readable card with the column name next to the value.
+    const labelName   = 'Name';
+    const labelPoints = 'Points';
+    const labelAdd    = 'Add';
+    const labelSet    = 'Set';
+    const labelRemove = 'Remove';
+    // The Name cell was appended above with an inline scope. We re-tag
+    // it for the mobile layout by setting data-label here. Since we
+    // can't change the construction above without re-touching logic,
+    // we hoist by finding the FIRST td that lacks data-label and
+    // tagging it as 'Name'.
+    // The Points cell — second td — gets data-label='Points'.
+    tr.appendChild(el('td', { 'data-label': labelPoints, text: formatNumber(p.points) }));
+    // Tag the previously-appended Name td for mobile card view. We
+    // re-attach by setting data-label; client-only attribute, no
+    // server-side impact.
+    const _nameTdEl = tr.firstChild;
+    if (_nameTdEl && _nameTdEl.tagName === 'TD') _nameTdEl.setAttribute('data-label', 'Name');
+
     const addInput = el('input', { type: 'number', value: '' });
     addInput.placeholder = '+/-';
     addInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(p.name, addInput.value); });
-    const addCell = el('td', {});
+    const addCell = el('td', { 'data-label': 'Add' });
     const addBtn = el('button', { text: 'Add',  onclick: () => doAdd(p.name, addInput.value) });
     addCell.appendChild(addInput);
     addCell.appendChild(addBtn);
@@ -1365,7 +1590,7 @@ function renderAdminPlayers(players) {
 
     const setInput = el('input', { type: 'number', value: p.points });
     setInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSet(p.name, setInput.value); });
-    const setCell = el('td', {});
+    const setCell = el('td', { 'data-label': 'Set' });
     const setBtn = el('button', { text: 'Set', onclick: () => doSet(p.name, setInput.value) });
     setCell.appendChild(setInput);
     setCell.appendChild(setBtn);
@@ -1382,7 +1607,7 @@ function renderAdminPlayers(players) {
         });
       },
     });
-    tr.appendChild(el('td', {}, [removeBtn]));
+    tr.appendChild(el('td', { 'data-label': 'Remove' }, [removeBtn]));
     tbody.appendChild(tr);
   });
 }
@@ -1871,6 +2096,17 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('adminModalRefreshPlayersBtn').addEventListener('click', refreshAdminList);
   $('adminChangePasswordBtn').addEventListener('click', submitChangePassword);
+  // First-time password gate wiring (only meaningful on the first
+  // admin_login on this device). UI-only; uses default 'admin123' as
+  // the "old" password since the host just authenticated with it.
+  if ($('fpAdminChangePasswordBtn')) {
+    $('fpAdminChangePasswordBtn').addEventListener('click', submitFirstTimePassword);
+  }
+  if ($('fpAdminNewPassword')) {
+    $('fpAdminNewPassword').addEventListener('keydown', e => {
+      if (e.key === 'Enter') submitFirstTimePassword();
+    });
+  }
   // Click on the dark backdrop closes (same pattern as the
   // leaderboard modal). Inner content has stopPropagation via the
   // .modal-content wrapper to keep clicks inside the panel.

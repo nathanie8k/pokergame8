@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Friendly Poker - Texas Hold'em</title>
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>♠</text></svg>" />
@@ -18,49 +18,79 @@
       <span class="player-chip" id="playerChip"></span>
       <span class="points-chip" id="pointsChip"></span>
       <button class="ghost-btn" id="leaderboardBtn" title="View top players">★ Leaderboard</button>
-      <!-- Admin entry point: hidden by default; JS shows this only once
-           the registered player's isAdmin flag is true. Click-handler
-           navigates to #view-admin (the dedicated admin room). The
-           shared-password login modal that used to live in #adminModal
-           is retired — admin auth is now derived from
-           state.player.isAdmin at register time. Label is "Admin Room"
-           per spec: visible only to the isAdmin=true user; non-admins
-           never see this button (client hides via syncAdminButtonVisibility,
-           server rejects every admin_* event without the flag on the
-           underlying socket). -->
-      <button class="ghost-btn" id="adminBtn" title="Open the Admin Room (isAdmin=true)" style="display:none">Admin Room</button>
+      <!-- Admin entry point: visible to everyone. Click-handler
+           navigates to #adminModal (the shared-password modal). The
+           per-user isAdmin flag + socket.data.isAdmin still work as the
+           server-side gate; this button is purely a UX gate. Label is
+           "Admin Room" so non-admins see a single, unambiguous path. -->
+      <button class="ghost-btn" id="adminBtn" title="Open the admin panel" style="display:none">Admin Room</button>
     </div>
   </header>
 
   <main id="app">
-    <!-- ===== Login view ===== -->
+    <!-- ===== Login view (with hero moment) ===== -->
     <section id="view-login" class="view">
-      <div class="login-card">
-        <h1>Welcome to the table</h1>
-        <p class="muted">Friendly Texas Hold'em. No money. Just points.</p>
+      <div class="login-wrap">
 
-        <div class="form-row">
-          <input id="loginName" type="text" maxlength="20" placeholder="Enter your name" autocomplete="off" />
-          <button id="loginBtn" class="primary-btn">Take a seat</button>
+        <!-- Hero: stacked CSS cards + animated light. Pure visual; no JS
+             involvement, no game logic implied. -->
+        <div class="login-hero">
+          <div class="login-hero__art" aria-hidden="true">
+            <div class="hero-spotlight"></div>
+            <div class="hero-card c1 red live">
+              <div class="hc-corner">K<br>♥</div>
+              <div class="hc-pip">♥</div>
+            </div>
+            <div class="hero-card c2 live">
+              <div class="hc-corner">A<br>♠</div>
+              <div class="hc-pip">♠</div>
+            </div>
+            <div class="hero-card c3 red live">
+              <div class="hc-corner">Q<br>♦</div>
+              <div class="hc-pip">♦</div>
+            </div>
+          </div>
+          <h1>Friendly Texas Hold'em</h1>
+          <p class="tagline">No money. Just points. Pick a name — or grab a random one — and pull up a chair.</p>
         </div>
 
-        <div class="random-block">
-          <p class="muted small">Or pick a random name:</p>
-          <div class="name-list" id="randomNameList"></div>
-          <button id="refreshNamesBtn" class="link-btn">Shuffle names</button>
+        <!-- Login card -->
+        <div class="login-card">
+          <h2>Take a seat</h2>
+          <p class="subtitle">Your points are saved — return any time with the same name.</p>
+          <div class="form-row">
+            <input id="loginName" type="text" maxlength="20" placeholder="Enter your name" autocomplete="off" />
+            <button id="loginBtn" class="primary-btn">Take a seat</button>
+          </div>
+
+          <div class="random-block">
+            <div class="random-block-title">
+              <span>Or pick a random name:</span>
+            </div>
+            <div class="name-list" id="randomNameList"></div>
+            <button id="refreshNamesBtn" class="link-btn">Shuffle names ↻</button>
+          </div>
         </div>
 
-        <div class="login-help">
-          <details>
-            <summary>How it works</summary>
-            <ul>
-              <li>Pick a name. If you've played here before, your points are saved.</li>
-              <li>Join a table to sit down. The game auto-starts with 2+ players.</li>
-              <li>The admin can give you points any time.</li>
-              <li>No money is involved &mdash; it's just for fun.</li>
-            </ul>
-          </details>
+        <!-- "How it works" — 3 visual steps with icons -->
+        <div class="steps-strip">
+          <div class="step">
+            <div class="step__icon c1">♠</div>
+            <h3>Pick a name</h3>
+            <p>Returning players: same name restores your points automatically.</p>
+          </div>
+          <div class="step">
+            <div class="step__icon c2">★</div>
+            <h3>Join a table</h3>
+            <p>Pick a seat or create your own. Hands start at 2+ players.</p>
+          </div>
+          <div class="step">
+            <div class="step__icon c3">♦</div>
+            <h3>Have fun</h3>
+            <p>Real Texas Hold'em rules. The admin can top up your stack any time.</p>
+          </div>
         </div>
+
       </div>
     </section>
 
@@ -123,20 +153,14 @@
         <div class="seats" id="seatsContainer"></div>
       </div>
 
-      <!-- Self-panel: hidden on desktop via CSS. On phones, this becomes the
-           prominent "your hand" area where the viewer sees their own two hole
-           cards next to their name, stack, and dealer/sb/bb markers — the
-           self seat is hidden from the .seats row on mobile to keep the
-           opponents row above the felt from being cluttered by self. The
-           element is always populated by renderTable() so the data is ready
-           when the viewport narrows (no JS resize listener needed). -->
+      <!-- Self-panel: highlighted on mobile (max-width: 720px) via CSS as
+           "your hand" tray. Always populated by renderTable() so the
+           DOM is ready when the viewport narrows. No JS resize listener
+           needed since CSS handles the visibility switch. -->
       <div class="self-panel" id="selfPanel"></div>
 
-      <!-- Per-table chat panel. Hidden until the viewer joins a table (CSS
-           reads state from the panel class). When the table becomes empty
-           (everyone leaves / disconnects / busts) the server-side chat
-           history resets, and the next table_state / chat_update broadcast
-           re-renders an empty panel. -->
+      <!-- Per-table chat panel. Hidden until the viewer joins a table.
+           CSS reads the .read-only class to dim/disable for spectators. -->
       <div class="chat-panel" id="chatPanel">
         <div class="chat-messages" id="chatMessages"></div>
         <div class="chat-input-row">
@@ -160,15 +184,11 @@
       <div class="hand-log" id="handLog"></div>
     </section>
 
-    <!-- ===== Legacy shared-password admin modal =====
-         Restored per current spec. Clicking the top-bar "Admin" button
-         opens a password modal (default admin123, stored on the meta
-         singleton). On success the modal shows the player list with
-         add/set/subtract/remove controls, a change-password form, and
-         the global default starting-stack editor. The legacy
-         per-Player isAdmin flag still works as an alternative gate
-         (the register handler sets socket.data.isAdmin=true for those
-         users), but the modal is the canonical entry point. -->
+    <!-- ===== Shared-password admin modal =====
+         The legacy per-user isAdmin gate still works in parallel: those
+         users get socket.data.isAdmin=true at register time and skip
+         the modal. Server rejects every admin_* event unless the flag
+         is set, so the modal is purely UX. -->
     <div id="adminModal" class="modal admin" role="dialog" aria-modal="true" aria-labelledby="adminModalTitle" style="display:none">
       <div class="modal-content admin-modal-content">
         <header class="admin-modal-header">
@@ -179,10 +199,7 @@
           <button class="close-btn" id="adminModalCloseBtn" title="Close">×</button>
         </header>
 
-        <!-- Login form (the very first thing every host sees).
-             Submits to server's admin_login handler which compares the
-             input against db.getAdminPassword() (default 'admin123').
-             On success, this row is hidden and #adminContent shown. -->
+        <!-- Login form. Submits to server's admin_login handler. -->
         <section id="adminLoginSection" class="admin-login-section">
           <p class="muted small">Enter the admin password to unlock the panel.</p>
           <div class="form-row admin-login-row">
@@ -190,18 +207,37 @@
             <button id="adminLoginBtn" class="primary-btn">Unlock</button>
           </div>
           <div id="adminLoginError" class="admin-error-line" style="display:none"></div>
-          <p class="muted small admin-default-hint">Default: <code>admin123</code> (change it after first login).</p>
         </section>
 
-        <!-- Authenticated contents (player list + change-password +
-             starting-stack). Revealed only after admin_login succeeds. -->
+        <!-- ISOLATED EXCEPTION (UX only): on first successful admin_login
+             where the host hasn't yet changed the default password, this
+             section is shown and the player management stays hidden
+             until a new password is saved. Fully client-side flag in
+             localStorage; the server's admin_change_password handler is
+             untouched. After a successful change, the flag is set and
+             the section collapses. -->
+        <section id="adminFirstTimeChange" class="admin-first-time" style="display:none">
+          <div class="admin-first-time-banner">
+            <div class="admin-first-time-icon">🔒</div>
+            <div class="admin-first-time-text">
+              <strong>You're using the default password.</strong>
+              <div class="muted small">Set a new password to unlock player management.</div>
+            </div>
+          </div>
+          <div class="admin-first-time-form">
+            <label class="inline-label">
+              <span>New password (3–200 chars):</span>
+              <input id="fpAdminNewPassword" type="password" autocomplete="off" />
+            </label>
+            <button id="fpAdminChangePasswordBtn" class="primary-btn">Save new password</button>
+          </div>
+          <div id="fpAdminChangeError" class="muted small admin-feedback" style="display:none"></div>
+          <div id="fpAdminChangeSuccess" class="muted small admin-feedback ok" style="display:none"></div>
+        </section>
+
+        <!-- Authenticated contents (player table + change-password + starting-stack). -->
         <section id="adminContent" class="admin-content" style="display:none">
 
-          <!-- Player management. Carried over from the prior admin
-               surface. Each row exposes Add (+/-), Set (overwrite),
-               Remove buttons. The 'Admin' column is informational only
-               (read-only); the legacy per-user isAdmin flag is set
-               out-of-band in MongoDB. -->
           <section class="admin-section">
             <header class="admin-section-header">
               <h4>Player management</h4>
@@ -224,7 +260,6 @@
             </div>
           </section>
 
-          <!-- Global defaults: starting points for new players. -->
           <section class="admin-section">
             <header class="admin-section-header"><h4>Global defaults</h4></header>
             <div class="form-row">
@@ -236,10 +271,6 @@
             </div>
           </section>
 
-          <!-- Change password: requires a successful admin_login first
-               (so we always have a known-correct OLD password to
-               compare against). The server validates old, then
-               persists the new value via db.setAdminPassword(). -->
           <section class="admin-section">
             <header class="admin-section-header"><h4>Change admin password</h4></header>
             <div class="form-row">
@@ -263,24 +294,13 @@
     </div>
   </main>
 
-  <div id="toast" class="toast" style="display:none"></div>    <!-- Backwards-compat: the prior admin modal HTML is removed; the
-         admin room now lives at #view-admin. The legacy <div id=
-         "adminModal"> is gone. Tests + clipboard users that targeted
-         the old id will 404 on it; document that in the README if
-         pinning URLs. -->
+  <!-- Toast — slides in from the top with a show() class added by JS. -->
+  <div id="toast" class="toast"></div>
 
-    <!-- ===== Showdown modal ===== -->
-  <!-- Pops up whenever the engine transitions the table to phase =
-       hand_over with a real showdown (i.e. lastHandResults is non-null
-       and every winner's handName is NOT "Won by fold"). Visible for 5
-       seconds, then auto-clears; the underlying .hand-result banner
-       stays so a viewer returning to the table still sees the result.
-       Purely client-side timing — the server payload is identical to
-       before, the modal just consumes the existing publicView data
-       (communityCards + every non-folded seat's revealed holeCards +
-       lastHandResults.winners[] with their handName + share). Fold-out
-       hands (no full board) deliberately skip this modal and show a
-       lighter-fold per-seat banner only. -->
+  <!-- Showdown modal — undismissable for 20s at hand_over. The
+       pointer-events: auto on the dark backdrop blocks click-through
+       to underlying UI for the duration of the window. No close
+       button or Escape handler. -->
   <div class="modal showdown-modal" id="showdownModal" aria-modal="true" aria-labelledby="showdownTitle" style="display:none">
     <div class="modal-content showdown-content">
       <div class="showdown-header">
@@ -293,17 +313,16 @@
     </div>
   </div>
 
-  <!-- Leaderboard modal — opened from the top-bar "★ Leaderboard" button.
-       Polished casino-style view of the top 50 by points. Top 3 are
-       rendered as a podium with gold / silver / bronze accents so the
-       meta-game has immediate visual hierarchy. The current viewer's row
-       is highlighted wherever they appear so they can find themselves. -->
+  <!-- Leaderboard modal — opened from the top-bar button. Body is
+       initially a skeleton placeholder (`.lb-skeleton`) so the layout
+       doesn't jump when real data lands. CSS animation shimmers the
+       placeholder rects via background-position. -->
   <div class="modal" id="leaderboardModal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="leaderboardHeading">
     <div class="modal-content leaderboard-content">
       <div class="modal-header">
         <div class="leaderboard-title">
           <span class="leaderboard-trophy" aria-hidden="true">🏆</span>
-          <h3>Top Players</h3>
+          <h3 id="leaderboardHeading">Top Players</h3>
         </div>
         <button class="close-btn" id="leaderboardCloseBtn" title="Close">×</button>
       </div>
@@ -312,7 +331,26 @@
         <button class="link-btn" id="leaderboardRefreshBtn" title="Refresh now">Refresh</button>
       </div>
       <div class="leaderboard-body" id="leaderboardBody">
-        <div class="leaderboard-empty muted">Loading…</div>
+        <!-- Skeleton placeholder — replaced by the real render once
+             /api/leaderboard resolves. The shape (3 podium + 8 list rows)
+             matches the eventual layout so the modal doesn't reflow. -->
+        <div class="lb-skeleton" aria-hidden="true">
+          <div class="lb-skel-podium">
+            <div class="lb-skel-podium-card"></div>
+            <div class="lb-skel-podium-card"></div>
+            <div class="lb-skel-podium-card"></div>
+          </div>
+          <div class="lb-skel-list">
+            <div class="lb-skel-row"></div>
+            <div class="lb-skel-row"></div>
+            <div class="lb-skel-row"></div>
+            <div class="lb-skel-row"></div>
+            <div class="lb-skel-row"></div>
+            <div class="lb-skel-row"></div>
+            <div class="lb-skel-row"></div>
+            <div class="lb-skel-row"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

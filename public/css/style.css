@@ -1,155 +1,489 @@
-/* ===== Friendly Poker - stylesheet =====
-   A friendly, dark casino vibe with a green-felt table, polished playing
-   cards, smooth transitions, and responsive layout.
-
-   Designed to look great on desktop and gracefully degrade to a usable
-   layout on small screens (the poker table remains usable down to ~420px).
-*/
+/* ============================================================
+   Friendly Poker - Bold Redesign Stylesheet
+   Cohesive dark casino theme with felt-green accents,
+   card-suit motifs, premium playing cards, dramatic motion.
+   100% visual/UX layer. No game logic touched.
+   ============================================================ */
 
 * { box-sizing: border-box; }
+
+/* ---------- Theme tokens ---------- */
 :root {
-  --bg-0:        #0d1411;   /* outermost background */
-  --bg-1:        #14201c;   /* panels */
+  /* Background stages — deeper, more cinematic */
+  --bg-0:        #080d0b;   /* outermost */
+  --bg-1:        #121e1a;   /* panels */
   --bg-2:        #1b2c25;   /* inputs */
   --bg-3:        #243a30;   /* hover */
-  --table-felt:  #15563b;
-  --table-edge:  #0f3f2b;
+  --bg-4:        #2e4639;   /* active */
+
+  /* Felt green — richer, deeper */
+  --table-felt:     #166b48;
+  --table-felt-lit: #1d8859;
+  --table-edge:     #0e3d28;
+  --table-rail:     #2a1d10;
+
+  /* Accents — bolder gold + cyan + crimson */
   --accent:      #ffcc4d;   /* warm gold */
-  --accent-2:    #ffd97a;
-  --text:        #f5f5f5;
-  --text-dim:    #a6b5ad;
-  --text-mute:   #6c7c75;
-  --danger:      #ff5c5c;
-  --good:        #5cd97a;
+  --accent-2:    #ffe27a;
+  --accent-glow: rgba(255, 204, 77, 0.55);
   --info:        #5ccdff;
-  --shadow-lg:   0 12px 40px rgba(0,0,0,0.45);
-  --shadow-md:   0 6px 18px rgba(0,0,0,0.35);
-  --shadow-sm:   0 2px 6px rgba(0,0,0,0.35);
+  --info-glow:   rgba(92, 205, 255, 0.45);
+  --good:        #5cd97a;
+  --danger:      #ff6b6b;
+  --warn:        #ff9b59;
+
+  /* Text */
+  --text:        #f5f8f6;
+  --text-dim:    #a6b8b0;
+  --text-mute:   #6c7c75;
+
+  /* Card slot colors */
+  --card-red:    #c40d1a;
+  --card-black:  #1f1a14;
+
+  /* Shadows */
+  --shadow-lg:   0 22px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  --shadow-md:   0 8px 24px rgba(0,0,0,0.45);
+  --shadow-sm:   0 2px 8px rgba(0,0,0,0.35);
+
+  /* Radii */
+  --radius-xl:   22px;
   --radius-lg:   16px;
   --radius-md:   10px;
   --radius-sm:   6px;
+
+  /* Card geometry */
   --card-w:      64px;
   --card-h:      92px;
+  --card-w-sm:   40px;
+  --card-h-sm:   56px;
+
+  /* Motion */
+  --ease:        cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-soft:   cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html, body {
   margin: 0; padding: 0;
-  background: radial-gradient(ellipse at top, #1a3026 0%, var(--bg-0) 70%);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Trebuchet MS", sans-serif;
+  font-size: 15px;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Animated radial-gradient backdrop. CSS only — no JS gauges motion.
+     Two layered radial gradients animate the position of light sources
+     inside the bg stack; this gives a slow "felt rotating under spot
+     lights" effect without ever moving any actual UI element so it
+     never affects when actions become available. */
+  background:
+    radial-gradient(ellipse 60vw 50vh at 20% 0%, rgba(29, 136, 89, 0.18), transparent 60%),
+    radial-gradient(ellipse 50vw 40vh at 95% 90%, rgba(255, 204, 77, 0.08), transparent 60%),
+    radial-gradient(ellipse 100vw 80vh at 50% 50%, var(--bg-0) 0%, #050807 100%);
+  background-attachment: fixed;
+  animation: backdropShift 22s ease-in-out infinite alternate;
+}
+@keyframes backdropShift {
+  from { background-position: 0% 0%, 100% 100%, 50% 50%; }
+  to   { background-position: 4% 6%, 96% 94%, 50% 50%; }
+}
+/* Suit-decoration watermark — faint card glyphs in the corners of the
+   page (behind everything). Purely decorative; lives at z-index -1
+   so it never intercepts clicks or attention. Honors reduced-motion. */
+body::before {
+  content: "♠ ♥ ♦ ♣ ♠ ♥ ♦ ♣";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  color: rgba(255, 255, 255, 0.025);
+  font-size: 120px;
+  font-weight: 700;
+  letter-spacing: 60px;
+  line-height: 1.5;
+  word-spacing: 80px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  justify-content: center;
+  align-items: center;
+  opacity: 0.6;
+  user-select: none;
+}
+body::after {
+  /* Subtle film-grain noise via radial dots. Adds texture without disturbing
+     layouts. */
+  content: "";
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background-image: radial-gradient(circle at center, rgba(255,255,255,0.012) 1px, transparent 1px);
+  background-size: 3px 3px;
+  mix-blend-mode: overlay;
 }
 
 button { font-family: inherit; }
-input, button { color: inherit; }
-
-/* ===== Top bar ===== */
-
-.top-bar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 24px;
-  background: rgba(0,0,0,0.35);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  position: sticky; top: 0; z-index: 100;
-}
-.brand {
-  display: flex; align-items: center; gap: 10px;
-  font-weight: 700;
-}
-.brand-icon { color: var(--accent); font-size: 18px; letter-spacing: 1px; }
-.brand-text { font-size: 16px; letter-spacing: 0.5px; }
-.top-info { display: flex; align-items: center; gap: 12px; }
-.player-chip {
-  padding: 6px 12px;
-  background: var(--bg-2);
-  border-radius: 999px;
-  font-weight: 600;
-  border: 1px solid rgba(255,255,255,0.06);
-}
-.points-chip {
-  padding: 6px 12px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #2a1d00;
-  border-radius: 999px;
-  font-weight: 700;
-  box-shadow: var(--shadow-sm);
+input, button, select, textarea { color: inherit; }
+::selection { background: rgba(255, 204, 77, 0.35); color: var(--text); }
+@media (prefers-reduced-motion: reduce) {
+  body { animation: none; }
+  body::before { animation: none; }
 }
 
-/* ===== Buttons ===== */
-.primary-btn {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #2a1d00;
-  border: none; cursor: pointer;
-  padding: 10px 18px;
-  border-radius: var(--radius-md);
-  font-weight: 700;
-  letter-spacing: 0.2px;
-  transition: transform 80ms ease, box-shadow 80ms ease, filter 80ms ease;
-  box-shadow: var(--shadow-sm);
-}
-.primary-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  filter: brightness(1.05);
-  box-shadow: var(--shadow-md);
-}
-.primary-btn:active:not(:disabled) { transform: translateY(0); }
-.primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.ghost-btn {
-  background: transparent;
-  color: var(--text-dim);
-  border: 1px solid rgba(255,255,255,0.15);
-  cursor: pointer;
-  padding: 8px 14px;
-  border-radius: var(--radius-md);
-  transition: background 80ms, color 80ms, border-color 80ms;
-  font-weight: 600;
-}
-.ghost-btn:hover { background: var(--bg-3); color: var(--text); border-color: rgba(255,255,255,0.25); }
-
-.link-btn {
-  background: none; border: none;
-  color: var(--info); cursor: pointer;
-  font-weight: 600;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  transition: color 80ms, background 80ms;
-}
-.link-btn:hover { color: var(--text); background: var(--bg-3); }
-
-.close-btn {
-  background: none; border: none;
-  color: var(--text-dim); cursor: pointer;
-  font-size: 24px; line-height: 1;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  transition: color 80ms, background 80ms;
-}
-.close-btn:hover { color: var(--text); background: var(--bg-3); }
-
-/* ===== Layouts ===== */
-.view { padding: 24px; max-width: 1400px; margin: 0 auto; }
+/* ============================================================
+   Layout primitives
+   ============================================================ */
+.view { padding: 28px 24px; max-width: 1400px; margin: 0 auto; }
 .muted { color: var(--text-dim); }
 .small { font-size: 12px; }
 .error-text { color: var(--danger); }
 
-/* ===== Login ===== */
-.login-card {
-  max-width: 520px;
-  margin: 60px auto;
-  padding: 36px;
-  background: var(--bg-1);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  text-align: center;
+/* ============================================================
+   Top bar — sticky, glassy
+   ============================================================ */
+.top-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 24px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.30));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.30);
 }
-.login-card h1 { margin-top: 0; font-size: 28px; letter-spacing: 0.5px; }
-.login-card p.muted { margin-bottom: 24px; }
+.brand { display: flex; align-items: center; gap: 12px; font-weight: 800; }
+.brand-icon {
+  color: var(--accent);
+  font-size: 18px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 12px var(--accent-glow);
+}
+.brand-text {
+  font-size: 17px;
+  letter-spacing: 0.6px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.top-info { display: flex; align-items: center; gap: 12px; }
+.player-chip {
+  padding: 8px 14px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 999px;
+  font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.10);
+  font-size: 13px;
+}
+.points-chip {
+  padding: 8px 14px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #2a1d00;
+  border-radius: 999px;
+  font-weight: 800;
+  box-shadow: var(--shadow-sm), 0 0 0 1px rgba(255,255,255,0.08) inset;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+}
 
+/* ============================================================
+   Buttons
+   ============================================================ */
+.primary-btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #2a1d00;
+  border: none; cursor: pointer;
+  padding: 12px 22px;
+  min-height: 44px;        /* a11y tap target */
+  border-radius: var(--radius-md);
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  font-size: 14px;
+  transition: transform 120ms var(--ease), box-shadow 120ms var(--ease), filter 120ms var(--ease);
+  box-shadow: var(--shadow-sm), 0 0 0 1px rgba(255,255,255,0.12) inset;
+  position: relative;
+}
+.primary-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+  box-shadow: var(--shadow-md), 0 0 24px var(--accent-glow), 0 0 0 1px rgba(255,255,255,0.18) inset;
+}
+.primary-btn:active:not(:disabled) { transform: translateY(0); filter: brightness(0.96); }
+.primary-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.ghost-btn {
+  background: rgba(255,255,255,0.04);
+  color: var(--text-dim);
+  border: 1px solid rgba(255,255,255,0.16);
+  cursor: pointer;
+  padding: 11px 18px;
+  min-height: 44px;
+  border-radius: var(--radius-md);
+  transition: background 120ms, color 120ms, border-color 120ms, transform 120ms var(--ease), box-shadow 120ms var(--ease);
+  font-weight: 600;
+}
+.ghost-btn:hover { background: var(--bg-3); color: var(--text); border-color: rgba(255,255,255,0.30); transform: translateY(-1px); }
+
+.link-btn {
+  background: none; border: none;
+  color: var(--info); cursor: pointer;
+  font-weight: 700;
+  padding: 6px 10px;
+  min-height: 32px;
+  border-radius: var(--radius-sm);
+  transition: color 120ms, background 120ms, transform 120ms var(--ease);
+}
+.link-btn:hover { color: var(--text); background: var(--bg-3); transform: translateY(-1px); }
+
+.close-btn {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 22px; line-height: 1;
+  padding: 4px 12px;
+  min-height: 36px; min-width: 36px;
+  border-radius: var(--radius-sm);
+  transition: color 120ms, background 120ms, transform 120ms var(--ease);
+}
+.close-btn:hover { color: var(--text); background: var(--bg-3); transform: rotate(90deg); }
+
+/* ============================================================
+   Login (with hero moment)
+   ============================================================ */
+.login-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  padding: 56px 16px 64px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+/* Hero — visual moment using stacked CSS cards + animated light. */
+.login-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 0;
+  perspective: 900px;
+  animation: heroEnter 700ms var(--ease) both;
+}
+@keyframes heroEnter {
+  from { transform: translateY(-12px); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+.login-hero__art {
+  position: relative;
+  width: 280px; height: 110px;
+  margin-bottom: 24px;
+}
+.hero-card {
+  position: absolute;
+  width: 76px; height: 110px;
+  border-radius: 10px;
+  background: linear-gradient(160deg, #ffffff 0%, #f7efdc 92%);
+  border: 1px solid #d7c7a8;
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.7);
+  display: flex; flex-direction: column;
+  font-family: "Trebuchet MS", sans-serif;
+  font-weight: 700;
+  color: #1f1a14;
+  padding: 7px 8px;
+  user-select: none;
+}
+.hero-card .hc-corner { line-height: 1; font-size: 18px; }
+.hero-card .hc-pip {
+  position: absolute;
+  font-size: 42px;
+  inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0.85;
+}
+.hero-card.red { color: var(--card-red); }
+.hero-card.live { animation: heroFloat 4.4s ease-in-out infinite; }
+.hero-card.c1 { left: 0;    top: 0;   transform: rotate(-14deg); animation-delay: 0ms;   }
+.hero-card.c2 { left: 50%;  top: -6px; transform: translateX(-50%) rotate(0deg); z-index: 2; animation-delay: 200ms; }
+.hero-card.c3 { right: 0;   top: 0;   transform: rotate(14deg); animation-delay: 400ms; }
+@keyframes heroFloat {
+  0%, 100% { translate: 0 0; }
+  50%      { translate: 0 -8px; }
+}
+/* Hero spotlight — soft glow behind the cards. */
+.hero-spotlight {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(255,204,77,0.30), transparent 60%);
+  filter: blur(20px);
+  z-index: -1;
+  animation: spotlightPulse 5s ease-in-out infinite alternate;
+}
+@keyframes spotlightPulse {
+  from { opacity: 0.65; transform: scale(0.95); }
+  to   { opacity: 1.0;  transform: scale(1.05); }
+}
+.login-hero h1 {
+  font-size: 36px;
+  margin: 0;
+  letter-spacing: 0.5px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--text) 0%, var(--accent) 50%, var(--text) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: textShimmer 6s ease-in-out infinite alternate;
+}
+@keyframes textShimmer {
+  from { background-position: 0% 50%; }
+  to   { background-position: 100% 50%; }
+}
+.login-hero .tagline {
+  color: var(--text-dim);
+  font-size: 15px;
+  margin: 0;
+  letter-spacing: 0.3px;
+}
+
+/* Login card — the "Take a seat" surface */
+.login-card {
+  width: 100%;
+  max-width: 560px;
+  padding: 32px 36px 28px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+  animation: cardEnter 700ms var(--ease) 100ms both;
+}
+.login-card::before {
+  /* Thin gold border accent at the top edge. */
+  content: "";
+  position: absolute; inset: 0;
+  border-radius: var(--radius-xl);
+  padding: 1px;
+  background: linear-gradient(180deg, rgba(255,204,77,0.55), rgba(255,204,77,0.0) 30%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+@keyframes cardEnter {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.login-card h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 800;
+}
+.login-card .subtitle {
+  margin: 0 0 22px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* "How it works" — 3-step visual strip */
+.steps-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: 12px;
+  width: 100%;
+  max-width: 760px;
+  animation: stepsEnter 700ms var(--ease) 250ms both;
+}
+@keyframes stepsEnter {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.step {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md);
+  padding: 16px 14px;
+  text-align: center;
+  display: flex; flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: transform 160ms var(--ease), background 160ms, border-color 160ms;
+}
+.step:hover { transform: translateY(-3px); border-color: var(--accent); background: rgba(255,255,255,0.07); }
+.step__icon {
+  width: 44px; height: 44px;
+  border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  background: rgba(255,204,77,0.12);
+  color: var(--accent);
+  border: 1px solid rgba(255,204,77,0.30);
+  box-shadow: inset 0 0 0 4px rgba(255,204,77,0.05);
+}
+.step__icon.c2 { background: rgba(92,205,255,0.12); color: var(--info); border-color: rgba(92,205,255,0.30); }
+.step__icon.c3 { background: rgba(92,217,122,0.12); color: var(--good); border-color: rgba(92,217,122,0.30); }
+.step h3 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.step p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+/* Random name block — Snuffle names as a clean card */
+.random-block {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px dashed rgba(255,255,255,0.10);
+  text-align: left;
+}
+.random-block-title {
+  margin: 0 0 6px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.name-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 12px; }
+.name-pill {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  padding: 10px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  transition: background 120ms, transform 160ms var(--ease), border-color 120ms, color 120ms, box-shadow 120ms;
+}
+.name-pill:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.30), 0 0 0 1px var(--accent) inset;
+}
+.name-pill.selected {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #2a1d00;
+  border-color: transparent;
+  box-shadow: 0 6px 20px rgba(255,204,77,0.30), 0 0 0 1px rgba(255,204,77,0.20) inset;
+}
+
+/* Form rows in login modal — input + button side by side */
 .form-row {
   display: flex; align-items: stretch; gap: 8px;
   margin-bottom: 12px;
@@ -157,371 +491,345 @@ input, button { color: inherit; }
 .form-row input[type=text], .form-row input[type=password] {
   flex: 1;
   background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: var(--radius-md);
-  padding: 12px 14px;
+  padding: 12px 16px;
+  min-height: 44px;
   outline: none;
-  transition: border-color 80ms, background 80ms;
+  transition: border-color 120ms, background 120ms;
   font-size: 15px;
+  font-weight: 600;
 }
 .form-row input:focus {
   border-color: var(--accent);
   background: var(--bg-3);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
-.random-block {
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px dashed rgba(255,255,255,0.1);
-  text-align: left;
-}
-.name-list {
-  display: flex; flex-wrap: wrap; gap: 8px;
-  margin: 10px 0;
-}
-.name-pill {
-  background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.08);
-  padding: 6px 12px;
-  border-radius: 999px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: background 80ms, transform 80ms, border-color 80ms;
-}
-.name-pill:hover {
-  background: var(--bg-3);
-  border-color: var(--accent);
-  transform: translateY(-1px);
-}
-.name-pill.selected {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #2a1d00;
-  border-color: transparent;
-}
-
-.login-help {
-  margin-top: 28px;
-  text-align: left;
-}
-.login-help summary { cursor: pointer; color: var(--text-dim); }
-.login-help ul { padding-left: 18px; }
-.login-help li { margin: 4px 0; color: var(--text-dim); }
-
-/* ===== Lobby ===== */
-.lobby-header h2 { margin: 0; }
+/* ============================================================
+   Lobby
+   ============================================================ */
+.lobby-header { margin-bottom: 18px; }
+.lobby-header h2 { margin: 0 0 4px; font-size: 26px; letter-spacing: 0.4px; }
+.lobby-header p { margin: 0; color: var(--text-dim); }
 .lobby-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-  margin: 20px 0;
+  gap: 18px;
+  margin: 18px 0 24px;
 }
 .table-card {
-  background: var(--bg-1);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: var(--radius-lg);
-  padding: 18px 20px;
+  padding: 20px 22px;
   box-shadow: var(--shadow-sm);
   display: flex; flex-direction: column;
-  transition: transform 100ms ease, box-shadow 100ms ease, border-color 100ms ease;
+  transition: transform 160ms var(--ease), box-shadow 160ms var(--ease), border-color 160ms;
+  position: relative;
+  overflow: hidden;
+}
+.table-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  opacity: 0.7;
 }
 .table-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--accent);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md), 0 0 0 1px rgba(255,204,77,0.15);
+  border-color: rgba(255,204,77,0.30);
 }
-.table-card .name { font-size: 18px; font-weight: 700; }
-.table-card .meta {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  margin: 12px 0;
-}
+.table-card .name { font-size: 19px; font-weight: 800; margin-bottom: 6px; }
+.table-card .meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 16px; }
 .chip {
-  background: var(--bg-2);
+  background: rgba(255,255,255,0.04);
   color: var(--text-dim);
-  padding: 4px 10px;
+  padding: 5px 11px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.08);
 }
-.chip.live { background: rgba(92,217,122,0.15); color: var(--good); }
-.chip.empty { background: rgba(108,124,117,0.2); }
+.chip.live { background: rgba(92,217,122,0.15); color: var(--good); border-color: rgba(92,217,122,0.30); }
+.chip.empty { background: rgba(108,124,117,0.18); }
+.chip.blind { background: rgba(255,204,77,0.12); color: var(--accent); border-color: rgba(255,204,77,0.25); font-weight: 700; }
+.table-card .primary-btn { align-self: stretch; }
 
 .create-table-card {
-  background: var(--bg-1);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: var(--radius-lg);
-  padding: 20px;
+  padding: 22px 24px;
   box-shadow: var(--shadow-sm);
-  margin-top: 24px;
+  margin-top: 26px;
+}
+.create-table-card h3 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  letter-spacing: 0.4px;
 }
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  gap: 14px;
   margin: 14px 0;
 }
-.form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.form-grid label {
+  display: flex; flex-direction: column; gap: 5px;
+  font-size: 11px; color: var(--text-dim);
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+}
 .form-grid input {
   background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: var(--radius-md);
-  padding: 10px 12px;
+  padding: 11px 14px;
+  min-height: 44px;
   color: var(--text);
   outline: none;
   font-size: 14px;
+  font-weight: 600;
+  transition: border-color 120ms, background 120ms;
 }
 .form-grid input:focus {
   border-color: var(--accent);
   background: var(--bg-3);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
-/* ===== Poker table ===== */
+/* ============================================================
+   Poker table / gameplay screen
+   ============================================================ */
 .table-info {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-  gap: 10px;
-}.table-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  margin-bottom: 18px;
+  flex-wrap: wrap; gap: 10px;
 }
-
-   the game-affecting buttons (Sit out / Sit in / Leave) so users don't
-   mistake it for a real action. Dashed border + small amber leading
-   dot convey "preview / not a real game effect". */
-
-/* ===== Legacy shared-password admin modal ===== */
-.admin-modal-content {
-  max-width: 820px;
-}
-.admin-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-.admin-modal-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.admin-modal-title h3 {
-  margin: 0;
-  font-size: 18px;
-}
-.admin-modal-icon {
-  font-size: 22px;
-  color: var(--accent);
-}
-.admin-login-section {
-  padding: 18px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  margin-bottom: 14px;
-}
-.admin-login-row {
-  align-items: center;
-}
-.admin-login-row input[type="password"] {
-  flex: 1;
-}
-.admin-error-line {
-  color: var(--danger, #ef4444);
-  font-size: 13px;
-  margin-top: 8px;
-}
-.admin-default-hint {
-  margin-top: 8px;
-  font-size: 12px;
-}
-.admin-content {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-.admin-section {
-  /* Lightweight card. Reuses admin-table / form-row from the previous
-     admin surface; only the wrapper gets a chrome line for visual
-     separation between sections. */
-  padding-top: 4px;
-}
-.admin-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-.admin-section-header h4 {
-  margin: 0;
-  font-size: 15px;
-  color: var(--text);
-}
-.admin-feedback {
-  text-align: center;
-  padding-top: 6px;
-}
+.table-info h2 { margin: 0; font-size: 22px; letter-spacing: 0.4px; }
+.table-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .poker-table {
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   max-height: 70vh;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background:
-    radial-gradient(ellipse at center, var(--table-felt) 30%, var(--table-edge) 90%);
+    radial-gradient(ellipse 80% 70% at center, var(--table-felt-lit) 0%, var(--table-felt) 40%, var(--table-edge) 90%);
   box-shadow:
-    inset 0 0 60px rgba(0,0,0,0.6),
-    0 12px 40px rgba(0,0,0,0.5);
-  border: 8px solid #2a1d10;
+    inset 0 0 80px rgba(0,0,0,0.55),
+    inset 0 0 0 4px rgba(255,255,255,0.04),
+    0 22px 60px rgba(0,0,0,0.55);
+  border: 10px solid var(--table-rail);
   outline: 1px solid rgba(255,255,255,0.05);
+  outline-offset: -2px;
   display: flex; align-items: center; justify-content: center;
   overflow: hidden;
+  animation: tableEnter 600ms var(--ease) both;
 }
+@keyframes tableEnter {
+  from { transform: scale(0.985) translateY(6px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+.poker-table::before {
+  /* Subtle moving shimmer on the felt. Background-position animation
+     only; no DOM mutation, so it never gates game-actions. */
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 25%, rgba(255,255,255,0.04) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: feltShimmer 9s ease-in-out infinite;
+}
+@keyframes feltShimmer {
+  from { background-position: -30% 0; }
+  to   { background-position: 130% 0; }
+}
+
 .table-felt {
   position: absolute;
   width: 70%; height: 70%;
-  border: 2px dashed rgba(255,255,255,0.04);
+  border: 2px dashed rgba(255,255,255,0.06);
   border-radius: 50%;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 8px;
+  gap: 12px;
   pointer-events: none;
 }
-.pot-display { text-align: center; }
-.pot-label { color: var(--text-dim); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+.pot-display { text-align: center; line-height: 1.1; }
+.pot-label {
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
 .pot-amount {
-  font-size: 26px; font-weight: 800;
+  font-size: 32px;
+  font-weight: 900;
   color: var(--accent);
-  text-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  text-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 24px var(--accent-glow);
+  font-variant-numeric: tabular-nums;
 }
 .community-cards {
   display: flex; gap: 8px; justify-content: center;
-  min-height: 60px;
+  min-height: 70px;
+  align-items: center;
 }
+
+/* Phase tag — animated underline. */
 .phase-display {
   color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 2px;
-  font-size: 12px;
+  letter-spacing: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 999px;
+  background: rgba(0,0,0,0.30);
+  position: relative;
+  overflow: hidden;
 }
-.hand-result {
-  margin-top: 8px;
-  background: rgba(0,0,0,0.45);
-  padding: 10px 16px;
-  border-radius: var(--radius-md);
-  text-align: center;
-  font-weight: 600;
-  color: var(--accent);
-  pointer-events: auto;
+.phase-display::before {
+  content: "";
+  position: absolute;
+  left: -10%; top: 0;
+  width: 30%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.10), transparent);
+  animation: phaseSweep 3.2s linear infinite;
+}
+@keyframes phaseSweep {
+  from { left: -10%; }
+  to   { left: 110%; }
 }
 
-/* Seats placed around the table */
-.seats {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+.hand-result {
+  margin-top: 4px;
+  background: rgba(0,0,0,0.50);
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-weight: 700;
+  color: var(--accent);
+  pointer-events: auto;
+  border: 1px solid rgba(255,204,77,0.30);
+  animation: handResultIn 500ms var(--ease) both;
 }
+@keyframes handResultIn {
+  from { transform: translateY(8px) scale(0.96); opacity: 0; }
+  to   { transform: translateY(0) scale(1);     opacity: 1; }
+}
+
+/* ============================================================
+   Seats around the table
+   ============================================================ */
+.seats { position: absolute; inset: 0; pointer-events: none; }
 .seat {
   position: absolute;
-  width: 130px;
+  width: 140px;
   text-align: center;
   pointer-events: auto;
-  transition: transform 200ms;
+  transition: transform 200ms var(--ease);
 }
 .seat .seat-ring {
-  background: rgba(0,0,0,0.4);
-  border-radius: 999px;
-  padding: 8px 10px;
-  border: 2px solid rgba(255,255,255,0.05);
-  transition: border-color 150ms, box-shadow 150ms;
+  background: rgba(0,0,0,0.45);
+  border-radius: 18px;
+  padding: 10px 12px;
+  border: 2px solid rgba(255,255,255,0.06);
+  transition: border-color 200ms, box-shadow 200ms;
+  backdrop-filter: blur(2px);
 }
 .seat.is-active .seat-ring {
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(255,204,77,0.15), 0 0 24px rgba(255,204,77,0.4);
+  box-shadow:
+    0 0 0 4px rgba(255,204,77,0.18),
+    0 0 30px rgba(255,204,77,0.45),
+    inset 0 0 14px rgba(255,204,77,0.18);
+  animation: activeThrob 1.4s ease-in-out infinite;
 }
-.seat.is-self .seat-ring { border-color: var(--info); }
+@keyframes activeThrob {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.03); }
+}
+.seat.is-self .seat-ring { border-color: var(--info); box-shadow: 0 0 0 2px rgba(92,205,255,0.20); }
 .seat .name {
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 13px;
+  font-size: 14px;
+  letter-spacing: 0.2px;
 }
-.seat .name.dealer-mark::after {
-  content: " (D)";
+.seat .name.dealer-mark::after { content: " (D)"; color: var(--accent); font-weight: 800; }
+.seat .name.sb-mark::before { content: "SB "; color: var(--info); font-weight: 700; }
+.seat .name.bb-mark::before { content: "BB "; color: var(--info); font-weight: 700; }
+.seat .stack {
   color: var(--accent);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+  display: inline-block;
+  transition: color 240ms var(--ease), text-shadow 240ms var(--ease);
 }
-.seat .name.sb-mark::before {
-  content: "SB ";
-  color: var(--info);
-}
-.seat .name.bb-mark::before {
-  content: "BB ";
-  color: var(--info);
-}
-.seat .stack { color: var(--accent); font-weight: 700; }
-.seat .status { font-size: 11px; color: var(--text-dim); }
-.seat .status.folded   { color: var(--text-mute); }
-.seat .status.all-in   { color: var(--good); }
+.seat .stack.is-up { color: var(--good); text-shadow: 0 0 14px rgba(92,217,122,0.55); }
+.seat .stack.is-down { color: var(--danger); text-shadow: 0 0 14px rgba(255,107,107,0.55); }
+.seat .status { font-size: 11px; color: var(--text-dim); letter-spacing: 0.4px; margin-top: 2px; }
+.seat .status.folded   { color: var(--text-mute); text-decoration: line-through; }
+.seat .status.all-in   { color: var(--good); font-weight: 800; }
 .seat .status.sat-out  { color: var(--text-mute); font-style: italic; }
-
-.seat .cards {
-  display: flex; gap: 4px; justify-content: center;
-  margin-top: 6px;
-}
+.seat .cards { display: flex; gap: 4px; justify-content: center; margin-top: 8px; }
 .seat .empty-card {
-  width: 28px; height: 38px;
-  background: rgba(0,0,0,0.3);
-  border: 1px dashed rgba(255,255,255,0.2);
+  width: 30px; height: 42px;
+  background: rgba(0,0,0,0.30);
+  border: 1px dashed rgba(255,255,255,0.20);
   border-radius: 4px;
 }
 
-/* Take-a-seat pill. Mirrors the .seat-ring shape so the chair reads as
-   "reserved / waiting for a player" rather than a broken placeholder.
-   Reduced opacity background signals emptiness; hover lights up with the
-   same gold-glow that the active seat ring uses to confirm it's clickable. */
+/* "Sit here" empty-seat pill */
 .empty-seat {
   position: relative;
-  width: 130px;
+  width: 140px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 4px;
   padding: 14px 12px;
-  border-radius: 999px;                /* same pill shape as .seat-ring */
-  background: rgba(0,0,0,0.22);
-  border: 1px dashed rgba(255,204,77,0.30);
+  border-radius: 18px;
+  background: rgba(0,0,0,0.30);
+  border: 1px dashed rgba(255,204,77,0.35);
   color: var(--text-dim);
   font-size: 11px;
   letter-spacing: 1px;
   text-transform: uppercase;
   cursor: pointer;
   user-select: none;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease,
-              box-shadow 140ms ease, transform 140ms ease;
+  min-height: 80px;
+  transition: background 160ms var(--ease), border-color 160ms, color 160ms, box-shadow 200ms var(--ease), transform 200ms var(--ease);
 }
 .empty-seat .empty-seat-icon {
   display: inline-flex;
   align-items: center; justify-content: center;
-  width: 24px; height: 24px;
+  width: 26px; height: 26px;
   border-radius: 999px;
-  border: 1px dashed rgba(255,255,255,0.22);
+  border: 1px dashed rgba(255,255,255,0.30);
   color: var(--text-mute);
-  font-size: 14px; line-height: 1;
-  font-weight: 600;
-  transition: color 140ms ease, border-color 140ms ease, border-style 140ms ease;
+  font-size: 16px; line-height: 1;
+  font-weight: 700;
+  transition: color 160ms, border-color 160ms, border-style 160ms;
 }
-.empty-seat .empty-seat-label {
-  white-space: nowrap;
-  line-height: 1;
-}
+.empty-seat-label { white-space: nowrap; line-height: 1; font-weight: 700; }
 .empty-seat:hover,
 .empty-seat:focus-visible {
-  background: rgba(0,0,0,0.42);
+  background: rgba(0,0,0,0.55);
   border-color: var(--accent);
   border-style: solid;
   color: var(--accent);
-  /* Same gold-glow recipe as the active seat ring, slightly tighter. */
   box-shadow:
-    0 0 0 4px rgba(255,204,77,0.15),
-    0 0 22px rgba(255,204,77,0.35);
-  transform: translateY(-1px);
+    0 0 0 4px rgba(255,204,77,0.18),
+    0 0 24px rgba(255,204,77,0.35);
+  transform: translateY(-2px) scale(1.03);
   outline: none;
 }
 .empty-seat:hover .empty-seat-icon,
@@ -531,12 +839,12 @@ input, button { color: inherit; }
   color: var(--accent);
 }
 
-/* ===== Playing cards ===== */
+/* ============================================================
+   Playing cards
+   ============================================================ */
 .card {
   width: var(--card-w);
   height: var(--card-h);
-  /* Tactile white + cream gradient + inset highlight + soft shadow so the
-     card feels lifted off the felt instead of printed on it. */
   background: linear-gradient(160deg, #ffffff 0%, #f7efdc 92%);
   border-radius: 9px;
   border: 1px solid #d7c7a8;
@@ -550,16 +858,7 @@ input, button { color: inherit; }
   user-select: none;
   overflow: hidden;
 }
-.card.red { color: #c40d1a; }
-
-/* Real-playing-card layout:
-   - .corner.top holds the rank stacked above a small suit (top-left).
-   - .corner.bottom is the same content positioned at bottom-right; we
-     deliberately do NOT rotate it 180° because that mirrors Unicode glyphs
-     ("A" -> "∀", "K" -> "ʞ", etc.) which renders as broken-looking
-     characters in most browsers/fonts. Modern digital poker UIs
-     (Hearthstone, PokerStars, etc.) render both corners upright-readable.
-   - .center-suit is the large visual pip in the middle. */
+.card.red { color: var(--card-red); }
 .card .corner {
   position: absolute;
   display: flex; flex-direction: column;
@@ -567,148 +866,171 @@ input, button { color: inherit; }
   line-height: 1;
   pointer-events: none;
 }
-.card .corner.top    { top: 5px;     left: 6px; }
-.card .corner.bottom { bottom: 5px;  right: 6px; }
-.card .corner .rank {
-  font-size: 19px;
-  letter-spacing: 0;
-}
-/* "10" is two characters and reads loose at the corner; tighten the spacing
-   so it sits as compactly as the single-letter ranks. */
+.card .corner.top    { top: 6px;     left: 7px; }
+.card .corner.bottom { bottom: 6px;  right: 7px; }
+.card .corner .rank { font-size: 19px; letter-spacing: 0; }
 .card .corner .rank.is-ten { letter-spacing: -1.5px; }
-.card .corner .suit {
-  font-size: 12px;
-  margin-top: 1px;
-}
-
+.card .corner .suit { font-size: 12px; margin-top: 1px; }
 .card .center-suit {
   position: absolute;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 38px;
+  font-size: 40px;
   line-height: 1;
   opacity: 0.92;
   pointer-events: none;
 }
-
 .card.face-down {
   background: linear-gradient(135deg, #4a2f99, #6b3fb5);
   color: #fff;
   background-image:
-    repeating-linear-gradient(45deg, rgba(255,255,255,0.06) 0 8px, transparent 8px 16px),
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.08) 0 8px, transparent 8px 16px),
     linear-gradient(135deg, #4a2f99, #6b3fb5);
   border-color: #2a1a55;
 }
-/* Hide face elements when showing the back design. */
 .card.face-down .corner,
 .card.face-down .center-suit { visibility: hidden; }
 .card.face-down::before {
   content: "";
   position: absolute; inset: 6px;
-  border: 2px solid rgba(255,255,255,0.3);
+  border: 2px solid rgba(255,255,255,0.4);
   border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
 }
-
-.card-small {
-  width: 40px; height: 56px;
-  padding: 0;
-}
+.card-small { width: var(--card-w-sm); height: var(--card-h-sm); padding: 0; }
 .card-small .corner.top    { top: 3px;    left: 4px; }
 .card-small .corner.bottom { bottom: 3px; right: 4px; }
 .card-small .corner .rank  { font-size: 13px; }
 .card-small .corner .suit  { font-size: 9px; }
 .card-small .center-suit   { font-size: 22px; }
 
+/* Cosmetic deal/reveal — JS toggles this class only at .append time.
+   The animation fires AFTER the card is in the DOM, so no animation
+   delays when the player gets a button-press available. */
 .community-cards .card.fade-in,
-.seat .cards .card.fade-in { animation: cardIn 250ms ease-out; }
+.seat .cards .card.fade-in { animation: cardIn 320ms var(--ease) both; }
 @keyframes cardIn {
-  from { transform: translateY(-12px) scale(0.9); opacity: 0; }
-  to   { transform: translateY(0)     scale(1);   opacity: 1; }
+  from { transform: translateY(-18px) scale(0.85); opacity: 0; }
+  to   { transform: translateY(0) scale(1);     opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .community-cards .card.fade-in,
+  .seat .cards .card.fade-in { animation: none; }
 }
 
-/* ===== Action bar ===== */
+/* ============================================================
+   Action bar — fixed bottom on mobile, sticky on desktop
+   ============================================================ */
 .action-bar {
   display: flex; gap: 8px; flex-wrap: wrap;
-  background: var(--bg-1);
-  border: 1px solid rgba(255,255,255,0.08);
+  align-items: stretch;
+  background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.30));
+  border: 1px solid rgba(255,255,255,0.10);
   padding: 12px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   margin-top: 16px;
-  position: sticky;
-  bottom: 12px;
-  z-index: 50;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(10px);
+  animation: actionBarEnter 400ms var(--ease);
+}
+@keyframes actionBarEnter {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
 }
 .action-bar.disabled { opacity: 0.5; }
-/* IMPORTANT: do NOT add `pointer-events: none` here. The user's turn
-   is gated by showAct (!showAct toggles .disabled), but if a CSS bug
-   or a stale table_state leaves the bar visually disabled while the
-   server-side `action` handler still accepts the player's move, the
-   previously-applied pointer-events:none silently swallowed every
-   click (`buttons all do nothing` bug report). The per-button
-   `disabled` attribute set by setupActionButtons/disableAllActions is
-   the single source of truth for whether a click is honoured. */
 
 .action-btn {
-  background: var(--bg-3);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
   color: var(--text);
   cursor: pointer;
   padding: 12px 18px;
+  min-height: 48px;       /* thumb-friendly */
+  min-width: 44px;
   border-radius: var(--radius-md);
-  font-weight: 700;
-  letter-spacing: 0.3px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
   font-size: 14px;
-  transition: transform 80ms, background 80ms, border-color 80ms, box-shadow 80ms;
+  transition: transform 90ms, background 120ms, border-color 120ms, box-shadow 120ms, color 120ms;
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px;
+  flex: 0 1 auto;
 }
 .action-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: rgba(255,255,255,0.25);
-  background: #2e4639;
+  transform: translateY(-2px);
+  border-color: rgba(255,255,255,0.30);
+  background: rgba(255,255,255,0.08);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.30);
 }
 .action-btn:active:not(:disabled) { transform: translateY(0); }
-.action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.action-btn.fold { color: #ffb8b8; border-color: rgba(255,92,92,0.4); }
-.action-btn.fold:hover:not(:disabled) { background: rgba(255,92,92,0.18); }
-.action-btn.check { color: #c5eaff; border-color: rgba(92,205,255,0.4); }
-.action-btn.call  { color: var(--accent); border-color: rgba(255,204,77,0.4); }
-.action-btn.raise { color: #ffd97a; border-color: rgba(255,217,122,0.4); background: rgba(255,217,122,0.1); }
-.action-btn.all-in { color: #ff9b59; border-color: rgba(255,155,89,0.4); background: rgba(255,155,89,0.1); }
+.action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.action-btn.fold {
+  color: #ffb8b8;
+  border-color: rgba(255,107,107,0.45);
+  background: rgba(255,107,107,0.08);
+}
+.action-btn.fold:hover:not(:disabled) {
+  background: rgba(255,107,107,0.20);
+  box-shadow: 0 6px 18px rgba(255,107,107,0.30);
+}
+.action-btn.check {
+  color: #c5eaff;
+  border-color: rgba(92,205,255,0.45);
+  background: rgba(92,205,255,0.08);
+}
+.action-btn.call {
+  color: var(--accent);
+  border-color: rgba(255,204,77,0.45);
+  background: rgba(255,204,77,0.10);
+}
+.action-btn.raise {
+  color: #ffd97a;
+  border-color: rgba(255,217,122,0.45);
+  background: rgba(255,217,122,0.10);
+}
+.action-btn.all-in {
+  color: #ff9b59;
+  border-color: rgba(255,155,89,0.45);
+  background: rgba(255,155,89,0.10);
+}
 
 .bet-controls {
   display: flex; align-items: center; gap: 8px;
   margin-left: auto;
+  flex-wrap: wrap;
 }
 .bet-controls input[type=number] {
-  width: 90px;
+  width: 96px;
   background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
+  min-height: 44px;
   color: var(--text);
   outline: none;
   font-size: 14px;
   font-weight: 700;
 }
-.raise-presets {
-  display: flex; gap: 4px;
-}
+.raise-presets { display: flex; gap: 4px; flex-wrap: wrap; }
 .raise-presets button {
   background: var(--bg-2);
   color: var(--text-dim);
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: var(--radius-sm);
-  padding: 6px 10px;
+  padding: 10px 12px;
+  min-height: 44px;
   cursor: pointer;
   font-size: 12px;
-  font-weight: 600;
-  transition: background 80ms, color 80ms;
+  font-weight: 700;
+  transition: background 120ms, color 120ms, border-color 120ms;
 }
-.raise-presets button:hover { background: var(--bg-3); color: var(--accent); }
+.raise-presets button:hover { background: var(--bg-3); color: var(--accent); border-color: rgba(255,204,77,0.30); }
 
-/* ===== Hand log ===== */
+/* ============================================================
+   Hand log
+   ============================================================ */
 .hand-log {
-  background: var(--bg-1);
+  background: rgba(0,0,0,0.40);
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: var(--radius-md);
   padding: 10px 14px;
@@ -717,127 +1039,186 @@ input, button { color: inherit; }
   overflow-y: auto;
   font-size: 12px;
   color: var(--text-dim);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
-/* ===== Leaderboard =====
-   Modal that lists the top 50 players by points. The top 3 are rendered as
-   a podium with gold / silver / bronze card accents so the meta-game has
-   immediate visual hierarchy. Ranks 4+ flow into a compact, dense table
-   with the current viewer's row highlighted regardless of rank so they
-   can find themselves even when buried. */
+/* ============================================================
+   Chat (in-table panel)
+   ============================================================ */
+.chat-panel { margin-top: 16px; }
+.chat-messages {
+  background: rgba(0,0,0,0.40);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 13px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.chat-msg { line-height: 1.4; }
+.chat-msg .chat-from { font-weight: 700; color: var(--accent); }
+.chat-msg.chat-system { color: var(--text-mute); font-style: italic; font-size: 12px; }
+.chat-input-row { display: flex; gap: 8px; margin-top: 8px; }
+.chat-input-row input { flex: 1; }
+.chat-panel.read-only .chat-messages { opacity: 0.85; }
+.chat-panel.read-only .chat-input-row input,
+.chat-panel.read-only .chat-input-row button { opacity: 0.5; pointer-events: none; }
+
+/* ============================================================
+   Mobile-only "Your hand" panel
+   ============================================================ */
+.self-panel { display: none; } /* shown on mobile only */
+
+/* ============================================================
+   Leaderboard modal + podium + list
+   ============================================================ */
+.modal {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.60);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(6px);
+  animation: modalBackdropIn 200ms ease-out both;
+}
+@keyframes modalBackdropIn { from { opacity: 0; } to { opacity: 1; } }
+.modal-content {
+  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, var(--bg-1) 50%);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--radius-xl);
+  padding: 22px 26px;
+  max-width: 720px;
+  width: 100%;
+  max-height: 90vh; overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+}
+.modal-content::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.modal-header h3 { margin: 0; }
+
 .leaderboard-content { max-width: 760px; }
-.leaderboard-title { display: flex; align-items: center; gap: 10px; }
-.leaderboard-title h3 { margin: 0; letter-spacing: 0.4px; }
+.leaderboard-title { display: flex; align-items: center; gap: 12px; }
+.leaderboard-title h3 { margin: 0; font-size: 22px; letter-spacing: 0.4px; }
 .leaderboard-trophy {
-  font-size: 26px; line-height: 1;
-  filter: drop-shadow(0 2px 6px rgba(255,204,77,0.5));
+  font-size: 28px; line-height: 1;
+  filter: drop-shadow(0 2px 8px rgba(255,204,77,0.55));
 }
-.leaderboard-meta {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 14px;
-}
+.leaderboard-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .leaderboard-body { display: flex; flex-direction: column; gap: 18px; }
-.leaderboard-empty {
-  text-align: center; padding: 24px 0; font-style: italic;
+.leaderboard-empty { text-align: center; padding: 24px 0; font-style: italic; }
+
+/* Skeleton loader — replaces "Loading…" text. Shimming rectangles
+   shaped like the eventual podium + list so the layout doesn't jump. */
+.lb-skeleton { display: flex; flex-direction: column; gap: 18px; }
+.lb-skel-podium { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding-top: 8px; }
+.lb-skel-podium-card {
+  height: 130px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(110deg, rgba(255,255,255,0.04) 30%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 70%);
+  background-size: 200% 100%;
+  animation: skelShimmer 1.4s ease-in-out infinite;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.lb-skel-list { display: flex; flex-direction: column; gap: 6px; }
+.lb-skel-row {
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(110deg, rgba(255,255,255,0.03) 30%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 70%);
+  background-size: 200% 100%;
+  animation: skelShimmer 1.4s ease-in-out infinite;
+}
+@keyframes skelShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
-.podium {
-  display: flex; align-items: flex-end; justify-content: center;
-  gap: 14px;
-  padding: 12px 6px 0;
-}
+.podium { display: flex; align-items: flex-end; justify-content: center; gap: 14px; padding: 12px 6px 0; }
 .podium-card {
   flex: 1 1 0; min-width: 0;
-  background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: var(--radius-lg);
-  padding: 18px 14px 16px;
+  padding: 26px 14px 16px;
   text-align: center;
   position: relative;
   box-shadow: var(--shadow-sm);
-  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
-  animation: podiumRise 360ms ease-out both;
+  transition: transform 160ms var(--ease), box-shadow 160ms var(--ease), border-color 160ms;
+  animation: podiumRise 480ms var(--ease) both;
 }
-.podium-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: rgba(255,255,255,0.18);
-}
+.podium-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: rgba(255,255,255,0.18); }
 .podium-card .podium-rank {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px;
+  width: 40px; height: 40px;
   border-radius: 999px;
   font-weight: 800; font-size: 16px;
   color: #1f1a14;
   box-shadow: var(--shadow-sm);
-  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+  position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
+  border: 2px solid rgba(255,255,255,0.10);
 }
 .podium-card .podium-name {
   font-weight: 700; font-size: 15px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .podium-card .podium-points {
-  font-size: 22px; font-weight: 800;
+  font-size: 24px; font-weight: 900;
   margin-top: 4px;
+  font-variant-numeric: tabular-nums;
 }
-/* "X games · Y wins" sub-line below each podium card's points. Muted
-   so it doesn't compete with the chip-style rank medals. */
-.podium-card .podium-stats {
-  font-size: 11px;
-  color: rgba(255,255,255,0.55);
-  margin-top: 2px;
-  letter-spacing: 0.3px;
-}
-.podium-card .podium-medal {
-  font-size: 26px; margin-top: 2px; line-height: 1;
-}
+.podium-card .podium-stats { font-size: 11px; color: rgba(255,255,255,0.55); margin-top: 2px; letter-spacing: 0.3px; }
+.podium-card .podium-medal { font-size: 26px; margin-top: 4px; line-height: 1; }
 .podium-card .leaderboard-self-badge {
   display: inline-block;
-  margin-top: 6px;
+  margin-top: 8px;
   font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
   background: var(--info); color: #062b36;
-  padding: 2px 8px; border-radius: 999px;
-  font-weight: 700;
+  padding: 4px 10px; border-radius: 999px;
+  font-weight: 800;
 }
 .podium-card.rank-1 {
-  background: linear-gradient(180deg, rgba(255,204,77,0.18), var(--bg-2));
-  border-color: rgba(255,204,77,0.5);
-  padding-top: 26px; min-height: 132px;
+  background: linear-gradient(180deg, rgba(255,204,77,0.20), rgba(255,255,255,0.02));
+  border-color: rgba(255,204,77,0.50);
+  min-height: 144px;
 }
 .podium-card.rank-1 .podium-rank { background: linear-gradient(135deg, #ffe27a, #c9931f); }
-.podium-card.rank-1 .podium-points { color: #ffe27a; }
-.podium-card.rank-1 { animation-delay: 60ms; }
+.podium-card.rank-1 .podium-points { color: #ffe27a; text-shadow: 0 0 14px var(--accent-glow); }
+.podium-card.rank-1 { animation-delay: 80ms; }
 .podium-card.rank-2 {
-  background: linear-gradient(180deg, rgba(220,220,235,0.16), var(--bg-2));
+  background: linear-gradient(180deg, rgba(220,220,235,0.16), rgba(255,255,255,0.02));
   border-color: rgba(220,220,235,0.45);
-  padding-top: 26px; min-height: 116px;
+  min-height: 124px;
 }
 .podium-card.rank-2 .podium-rank { background: linear-gradient(135deg, #f1f1f4, #b1b3c0); }
 .podium-card.rank-2 .podium-points { color: #f1f1f4; }
 .podium-card.rank-3 {
-  background: linear-gradient(180deg, rgba(217,150,86,0.16), var(--bg-2));
+  background: linear-gradient(180deg, rgba(217,150,86,0.16), rgba(255,255,255,0.02));
   border-color: rgba(217,150,86,0.45);
-  padding-top: 26px; min-height: 100px;
+  min-height: 108px;
 }
 .podium-card.rank-3 .podium-rank { background: linear-gradient(135deg, #f0c594, #a5672a); }
 .podium-card.rank-3 .podium-points { color: #f0c594; }
-.podium-card.rank-3 { animation-delay: 120ms; }
-/* When the viewer lands on the podium, light it up with the same info-cyan
-   recipe the lb-row.is-self uses, so their silhouette is unmistakable —
-   gold/silver/bronze accents stay but the border + glow say "you". */
+.podium-card.rank-3 { animation-delay: 160ms; }
 .podium-card.is-self {
   box-shadow:
-    0 0 0 3px rgba(92,205,255,0.35),
-    0 0 24px rgba(92,205,255,0.3);
+    0 0 0 3px var(--info-glow),
+    0 0 28px var(--info-glow);
 }
 @keyframes podiumRise {
-  from { transform: translateY(20px); opacity: 0; }
+  from { transform: translateY(24px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
 
 .leaderboard-list {
   display: flex; flex-direction: column;
-  background: var(--bg-1);
+  background: rgba(255,255,255,0.02);
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -846,165 +1227,111 @@ input, button { color: inherit; }
   display: grid;
   grid-template-columns: 44px 1fr auto;
   align-items: center; gap: 8px;
-  padding: 10px 14px;
+  padding: 12px 14px;
+  min-height: 50px;       /* tap target on phone */
   border-bottom: 1px solid rgba(255,255,255,0.04);
   font-size: 14px;
-  transition: background 80ms;
+  transition: background 120ms;
 }
 .leaderboard-list .lb-row:last-child { border-bottom: none; }
 .leaderboard-list .lb-row:hover { background: rgba(255,255,255,0.04); }
-.leaderboard-list .lb-row .lb-rank {
-  color: var(--text-mute); font-weight: 700; font-size: 13px;
-  text-align: center;
-}
-.leaderboard-list .lb-row .lb-name {
-  font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.leaderboard-list .lb-row .lb-points {
-  font-weight: 700; color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-/* Inline games/wins tag on dense leaderboard list rows. Kept small +
-   muted so the points value on the right stays visually dominant. */
-.leaderboard-list .lb-row .lb-stats {
-  font-size: 10px;
-  color: rgba(255,255,255,0.45);
-  margin-left: 4px;
-}
+.leaderboard-list .lb-row .lb-rank { color: var(--text-mute); font-weight: 700; font-size: 13px; text-align: center; }
+.leaderboard-list .lb-row .lb-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.leaderboard-list .lb-row .lb-points { font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+.leaderboard-list .lb-row .lb-stats { font-size: 11px; color: rgba(255,255,255,0.45); margin-left: 4px; }
 .leaderboard-list .lb-row.is-self {
-  background: rgba(92,205,255,0.08);
+  background: rgba(92,205,255,0.10);
   border-left: 3px solid var(--info);
   padding-left: 11px;
 }
 .leaderboard-list .lb-row.is-self .lb-name { color: var(--info); }
 .leaderboard-list .lb-row.is-self .lb-rank { color: var(--info); }
 
-@media (max-width: 720px) {
-  .podium { gap: 8px; }
-  .podium-card { padding: 14px 8px 12px; min-height: 0; }
-  .podium-card.rank-1 { min-height: 116px; }
-  .podium-card.rank-2 { min-height: 102px; }
-  .podium-card.rank-3 { min-height: 90px; }
-  .podium-card .podium-points { font-size: 18px; }
-  .podium-card .podium-name { font-size: 13px; }
-  .leaderboard-list .lb-row { grid-template-columns: 36px 1fr auto; padding: 8px 12px; font-size: 13px; }
-}
-
-@media (max-width: 480px) {
-  /* Cap podium card sizes + ellipsize names so three stacked cards still fit
-     on a tiny phone without horizontal overflow. */
-  .podium-card { max-width: 110px; min-height: 0 !important; padding: 18px 6px 12px; }
-  .podium-card .podium-rank { width: 30px; height: 30px; font-size: 14px; top: -12px; }
-  .podium-card .podium-medal { font-size: 22px; }
-  .podium-card .podium-points { font-size: 16px; }
-  .podium-card .podium-name { font-size: 12px; }
-}
-
-/* ===== Showdown modal & per-seat banners ===== */
-
-/* Centered modal that pops up for 20s at the end of a real showdown
-   (full board + multiple players evaluated). Fold-out ('Won by fold')
-   hands deliberately skip this modal — see client.js#maybeShowShowdown
-   for the discrimination rule — and show a lighter per-seat banner
-   only. Emphasis is on the per-player rows: name + 2 hole cards +
-   descriptive hand name + a "YOU WON $X" affordance on the viewer
-   themselves, or a muted "lost" line otherwise. */
+/* ============================================================
+   Showdown modal & per-seat banners
+   ============================================================ */
 .showdown-content {
   max-width: 720px;
   background:
-    radial-gradient(ellipse at top, rgba(255,204,77,0.10), var(--bg-1) 60%);
-  border: 1px solid rgba(255,204,77,0.35);
+    radial-gradient(ellipse at top, rgba(255,204,77,0.14), var(--bg-1) 60%);
+  border: 1px solid rgba(255,204,77,0.45);
   box-shadow:
     var(--shadow-lg),
     0 0 0 1px rgba(255,204,77,0.10),
-    0 0 60px rgba(255,204,77,0.15);
-  /* Slide in from above (small parallax feel) on every first-show event;
-     re-renders within the same 20s window don't re-trigger the animation
-     — the .no-pop class guards against that. */
-  animation: showdownIn 280ms ease-out;
+    0 0 80px rgba(255,204,77,0.20);
+  animation: showdownIn 320ms var(--ease) both;
 }
 @keyframes showdownIn {
-  from { transform: translateY(-12px) scale(0.98); opacity: 0; }
-  to   { transform: translateY(0)     scale(1);    opacity: 1; }
+  from { transform: translateY(-16px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0) scale(1);        opacity: 1; }
 }
 .showdown-header {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
   margin-bottom: 14px;
 }
 .showdown-header h3 {
-  margin: 0; letter-spacing: 0.4px;
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: 0.6px;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 .showdown-trophy {
-  font-size: 28px; line-height: 1;
-  filter: drop-shadow(0 2px 8px rgba(255,204,77,0.5));
+  font-size: 32px; line-height: 1;
+  filter: drop-shadow(0 2px 12px rgba(255,204,77,0.55));
   animation: trophyBounce 1.4s ease-in-out infinite;
-  /* Offset the bounce half-period so the trophy doesn't lockstep with a
-     browser's vertical font-metrics (which would shift its baseline
-     under the h3). Anchored to the header. */
 }
 @keyframes trophyBounce {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-4px); }
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-6px) scale(1.06); }
 }
 .showdown-board {
   display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
-  margin: 16px 0 8px;
+  margin: 18px 0 10px;
 }
 .showdown-rows {
   display: flex; flex-direction: column;
-  gap: 8px;
-  margin: 6px 0 14px;
+  gap: 10px;
+  margin: 8px 0 14px;
 }
 .showdown-row {
   display: grid;
-  /* Columns: name flex, hole-card-pair small, hand name flex, label flex */
   grid-template-columns: 1.4fr auto 1.6fr auto;
   align-items: center;
   gap: 14px;
-  padding: 12px 14px;
-  background: rgba(0,0,0,0.32);
+  padding: 14px 16px;
+  background: rgba(0,0,0,0.40);
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
   font-size: 14px;
-  transition: border-color 150ms, background 150ms;
-  /* Each row slides in slightly delayed so they cascade instead of all
-     snapping on at once. CSS --i is set inline per row from JS. */
-  animation: showdownRowIn 240ms ease-out both;
+  transition: border-color 200ms, background 200ms;
+  animation: showdownRowIn 320ms var(--ease) both;
   animation-delay: calc(var(--i, 0) * 60ms);
 }
 @keyframes showdownRowIn {
-  from { transform: translateY(6px); opacity: 0; }
+  from { transform: translateY(8px); opacity: 0; }
   to   { transform: translateY(0);   opacity: 1; }
 }
-/* Highlight the viewer's own row so they can find themselves instantly
-   even on a busy 6-seat table. */
 .showdown-row.is-self {
-  background: rgba(92,205,255,0.10);
-  border-color: rgba(92,205,255,0.4);
-  box-shadow: 0 0 0 1px rgba(92,205,255,0.15);
+  background: rgba(92,205,255,0.12);
+  border-color: rgba(92,205,255,0.45);
+  box-shadow: 0 0 0 1px rgba(92,205,255,0.20);
 }
 .showdown-row.is-winner {
-  background: linear-gradient(180deg, rgba(255,204,77,0.20), rgba(255,204,77,0.08));
-  border-color: rgba(255,204,77,0.45);
+  background: linear-gradient(180deg, rgba(255,204,77,0.22), rgba(255,204,77,0.08));
+  border-color: rgba(255,204,77,0.50);
 }
 .showdown-row.is-winner.is-self {
-  background: linear-gradient(180deg, rgba(255,204,77,0.22), rgba(92,205,255,0.08));
-  border-color: rgba(255,204,77,0.55);
+  background: linear-gradient(180deg, rgba(255,204,77,0.24), rgba(92,205,255,0.10));
+  border-color: rgba(255,204,77,0.60);
 }
 .showdown-row .showdown-name {
   font-weight: 700;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Reused .card and .card-small from above with .fade-in for the deal
-   stagger (existing keyframe). */
-.showdown-row .showdown-cards {
-  display: flex; gap: 4px;
-}
+.showdown-row .showdown-cards { display: flex; gap: 4px; }
 .showdown-row .showdown-hand {
   font-size: 13px;
   color: var(--text-dim);
@@ -1015,9 +1342,9 @@ input, button { color: inherit; }
 .showdown-row .showdown-hand.is-winner { color: var(--accent); }
 .showdown-row .showdown-badge {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.5px;
-  padding: 4px 10px;
+  padding: 6px 12px;
   border-radius: 999px;
   white-space: nowrap;
 }
@@ -1035,11 +1362,259 @@ input, button { color: inherit; }
   font-size: 11px;
   letter-spacing: 0.5px;
   margin-top: 4px;
+  color: var(--text-dim);
 }
 
-/* Tablet / phone: stack the row columns so cards / labels don't crowd
-   each other. */
+/* Per-seat showdown banner */
+.seat-banner {
+  position: absolute;
+  top: -22px; left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 5;
+  box-shadow: var(--shadow-sm);
+  transition: opacity 200ms ease, transform 220ms var(--ease);
+}
+.seat-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.seat-banner.won {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #2a1d00;
+}
+.seat-banner.lost {
+  background: rgba(0,0,0,0.70);
+  color: rgba(255,255,255,0.78);
+  border: 1px solid rgba(255,255,255,0.18);
+}
+.seat-banner.fold {
+  background: rgba(255,204,77,0.85);
+  color: #2a1d00;
+}
+
+/* ============================================================
+   Admin modal & mobile-card layout
+   ============================================================ */
+.admin-modal-content {
+  max-width: 820px;
+  background: linear-gradient(180deg, rgba(92,205,255,0.06), var(--bg-1) 30%);
+}
+.admin-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.admin-modal-title { display: flex; align-items: center; gap: 10px; }
+.admin-modal-title h3 { margin: 0; font-size: 20px; letter-spacing: 0.4px; }
+.admin-modal-icon {
+  font-size: 24px;
+  color: var(--accent);
+  text-shadow: 0 0 12px var(--accent-glow);
+}
+.admin-login-section {
+  padding: 18px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 14px;
+}
+.admin-login-row { align-items: center; }
+.admin-login-row input[type="password"] { flex: 1; }
+.admin-error-line {
+  color: var(--danger);
+  font-size: 13px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(255,107,107,0.08);
+  border-left: 2px solid var(--danger);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.admin-content { display: flex; flex-direction: column; gap: 18px; }
+.admin-section { padding-top: 4px; }
+.admin-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.admin-section-header h4 { margin: 0; font-size: 16px; color: var(--text); }
+.admin-feedback { text-align: center; padding-top: 8px; font-weight: 600; }
+.admin-feedback.ok    { color: var(--good); }
+.admin-feedback.error { color: var(--danger); }
+
+/* First-login password gate — soft prompt visible only on the first
+   successful admin_login until the host changes the password. */
+.admin-first-time {
+  animation: firstTimeIn 320ms var(--ease) both;
+}
+@keyframes firstTimeIn {
+  from { transform: translateY(-8px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.admin-first-time-banner {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(255,204,77,0.12), rgba(255,204,77,0.04));
+  border: 1px solid rgba(255,204,77,0.35);
+  margin-bottom: 14px;
+}
+.admin-first-time-icon {
+  font-size: 18px;
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,204,77,0.20);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 4px rgba(255,204,77,0.05);
+}
+.admin-first-time-text { flex: 1; color: var(--text); font-size: 14px; }
+.admin-first-time-form { display: flex; flex-direction: column; gap: 10px; }
+
+/* Admin table — on mobile, switch to card grid. The wrapper handles
+   the responsive switch; JS keeps rendering the same <tr><td> rows. */
+.admin-table-wrap { overflow-x: auto; }
+.admin-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.admin-table thead tr { background: rgba(255,204,77,0.06); }
+.admin-table th {
+  color: var(--text-dim);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  padding: 10px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  text-align: left;
+}
+.admin-table td {
+  padding: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-size: 13px;
+  vertical-align: middle;
+}
+.admin-table input[type=number] {
+  width: 80px;
+  background: var(--bg-2);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  min-height: 44px;
+  color: var(--text);
+  outline: none;
+  font-weight: 700;
+}
+.admin-table button {
+  background: var(--bg-3);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 36px;
+  min-width: 44px;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.admin-table button:hover { background: var(--accent); color: #2a1d00; border-color: transparent; }
+.admin-table button.danger:hover { background: var(--danger); color: #fff; }
+
+.inline-label { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.inline-label > span { color: var(--text-dim); font-weight: 700; }
+.inline-label input {
+  background: var(--bg-2);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  min-height: 44px;
+  color: var(--text);
+  outline: none;
+}
+
+/* ============================================================
+   Toast — slides in from the top
+   ============================================================ */
+.toast {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-12px);
+  background: linear-gradient(135deg, rgba(0,0,0,0.85), rgba(0,0,0,0.65));
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  z-index: 300;
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms var(--ease), transform 220ms var(--ease);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.info  { border-color: rgba(92,205,255,0.40); }
+.toast.good  { border-color: rgba(92,217,122,0.40); color: var(--good); }
+.toast.error { border-color: rgba(255,107,107,0.40); color: var(--danger); }
+
+/* ============================================================
+   Mobile-fixed action bar (only at narrow viewports)
+   ============================================================ */
 @media (max-width: 720px) {
+  /* Bottom padding accounts for the fixed action bar (~80px) + presets
+     row + safe-area padding. Tighter than the earlier 200px so the
+     visual gap below the felt is minimal. */
+  .view { padding: 16px 14px 130px; }
+  .top-bar { padding: 12px 16px; }
+  .brand-text { font-size: 15px; }
+  .top-info { gap: 8px; }
+  .player-chip, .points-chip { font-size: 12px; padding: 6px 10px; }
+  .poker-table { aspect-ratio: 4 / 3; max-height: 60vh; }
+  .pot-amount { font-size: 24px; }
+  /* Fixed bottom action bar with safe-area-inset for iOS. */
+  .action-bar {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 50;
+    margin-top: 0;
+    border-radius: var(--radius-lg);
+  }
+  /* Self-panel becomes visible on phones — a "your hand" tray */
+  .seat.is-self { display: none; }
+  .self-panel {
+    display: block;
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), var(--bg-1));
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: var(--radius-lg);
+    padding: 12px 14px;
+    margin-top: 12px;
+    box-shadow: var(--shadow-md);
+  }
+  .self-panel.is-active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(255,204,77,0.20), var(--shadow-md);
+    animation: activeThrob 1.4s ease-in-out infinite;
+  }
+  .self-info { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .self-name { font-weight: 800; }
+  .self-stack { font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .self-status { font-size: 11px; color: var(--text-dim); }
+  .self-marks { font-size: 11px; color: var(--info); }
+  .self-cards { display: flex; gap: 6px; margin-top: 10px; }
+
+  /* Leaderboard stack adjustments */
+  .podium { gap: 8px; }
+  .podium-card { padding: 14px 8px 12px; min-height: 0; }
+  .podium-card.rank-1 { min-height: 120px; }
+  .podium-card.rank-2 { min-height: 104px; }
+  .podium-card.rank-3 { min-height: 92px; }
+  .podium-card .podium-points { font-size: 18px; }
+  .podium-card .podium-name { font-size: 13px; }
+  .leaderboard-list .lb-row { grid-template-columns: 36px 1fr auto; padding: 8px 12px; font-size: 13px; }
+
+  /* Showdown modal */
   .showdown-row {
     grid-template-columns: 1fr auto;
     grid-template-areas:
@@ -1051,938 +1626,57 @@ input, button { color: inherit; }
   .showdown-row .showdown-cards { grid-area: cards; }
   .showdown-row .showdown-hand  { grid-area: hand; text-align: right; }
   .showdown-row .showdown-badge { grid-area: badge; }
+
+  /* Steps strip — switch to 1-column on phones */
+  .steps-strip { grid-template-columns: 1fr; }
 }
+
 @media (max-width: 480px) {
-  .showdown-content { padding: 16px 12px; }
-  .showdown-row     { padding: 10px 10px; gap: 6px; font-size: 13px; }
-}
-
-/* ===== Per-seat showdown banner =====
-   Tiny floating pill anchored above each seat for the same 20-second
-   showdown window. Winners get a gold "WON $X" pill; losers get a
-   muted "lost" pill. Fold-out winners (single live player at
-   preflop-/flop-/turn-fold) get a lighter gold pill reading "WON". */
-.seat-banner {
-  position: absolute;
-  top: -22px; left: 50%;
-  transform: translateX(-50%) translateY(-4px);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.6px;
-  padding: 4px 9px;
-  border-radius: 999px;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  z-index: 5;
-  box-shadow: var(--shadow-sm);
-  /* Fade-in over 220ms, then waits for the JS clearShowdown() to remove
-     the .show class (which fades it back out over the 200ms "out"
-     keyframe). No auto-hide via CSS so the client owns the timer
-     uniformly with the modal. */
-  transition: opacity 200ms ease, transform 220ms ease;
-}
-.seat-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-.seat-banner.won {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #2a1d00;
-}
-.seat-banner.lost {
-  background: rgba(0,0,0,0.62);
-  color: rgba(255,255,255,0.78);
-  border: 1px solid rgba(255,255,255,0.18);
-}
-.seat-banner.fold {
-  background: rgba(255,204,77,0.85);
-  color: #2a1d00;
-}
-
-.modal {
-  position: fixed; inset: 0; z-index: 200;
-  background: rgba(0,0,0,0.55);
-  display: flex; align-items: center; justify-content: center;
-  backdrop-filter: blur(4px);
-}
-.modal-content {
-  background: var(--bg-1);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: var(--radius-lg);
-  padding: 22px 26px;
-  max-width: 720px; width: 90%;
-  max-height: 90vh; overflow-y: auto;
-  box-shadow: var(--shadow-lg);
-}
-.modal-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 14px;
-}
-.modal-header h3 { margin: 0; }
-
-.admin-table-wrap { overflow-x: auto; }
-.admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.admin-table th, .admin-table td {
-  padding: 8px 10px; text-align: left;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-.admin-table th { color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
-.admin-table input[type=number] {
-  width: 80px;
-  background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: var(--radius-sm);
-  padding: 4px 6px;
-  color: var(--text);
-  outline: none;
-}
-.admin-table button {
-  background: var(--bg-3);
-  border: 1px solid rgba(255,255,255,0.08);
-  color: var(--text);
-  border-radius: var(--radius-sm);
-  padding: 4px 10px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: background 80ms, color 80ms;
-}
-.admin-table button:hover { background: var(--accent); color: #2a1d00; border-color: transparent; }
-.admin-table button.danger:hover { background: var(--danger); color: #fff; }
-
-.inline-label { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.inline-label > span { color: var(--text-dim); font-weight: 600; }
-.inline-label input {
-  background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  color: var(--text);
-  outline: none;
-}
-
-/* ===== Admin room ===== */
-/*
-   Dedicated, full-page view for the user with isAdmin=true. Replaces
-   the legacy shared-password admin modal (#adminModal in the
-   pre-isAdmin flow). The design goal here is "polished, scannable,
-   hard to mis-click" — admin actions are destructive-ish, so the
-   visual rhythm is calm-but-explicit:
-     - Header chip showing house balance so it's always visible what
-       the host owns.
-     - Sessions card grid with per-card [Edit] CTAs that fold out an
-       editor underneath (single-editor-at-a-time flow so two sessions
-       can't be in flight simultaneously).
-     - Player management table with confirm-on-remove affordance.
-   Color treatment reuses the existing palette (--accent gold for
-   highlight, --info cyan for "read-only / observation", --danger
-   red for destructive actions). Hover/focus states preserve the
-   existing 80ms feel so the admin panel doesn't feel "different" from
-   the lobby/table views.
-*/
-
-.admin-room {
-  padding: 24px 28px 64px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-/* Header — title-left + house chip + back-to-lobby right. Stacks on
-   narrow viewports so the action button doesn't crowd the title. */
-.admin-room-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
-  flex-wrap: wrap;
-  margin-bottom: 26px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-.admin-room-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.admin-room-icon {
-  font-size: 26px;
-  color: var(--accent);
-  background: rgba(255,204,77,0.10);
-  border: 1px solid rgba(255,204,77,0.35);
-  border-radius: 12px;
-  padding: 10px 12px;
-  text-shadow: 0 2px 6px rgba(255,204,77,0.4);
-}
-.admin-room-title h2 {
-  margin: 0;
-  font-size: 22px;
-  letter-spacing: 0.4px;
-}
-.admin-room-title .admin-room-subtitle { margin: 2px 0 0; }
-.admin-room-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.admin-room-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-1);
-  border: 1px solid rgba(255,204,77,0.25);
-  border-radius: 999px;
-  padding: 7px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  box-shadow: var(--shadow-sm);
-}
-.admin-room-chip-label {
-  font-size: 10px;
-  letter-spacing: 1px;
-  color: var(--accent);
-  text-transform: uppercase;
-}
-
-/* Sections (sessions, players, global) — share an h3 + meta-row layout */
-.admin-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 0 0 12px;
-}
-.admin-section-header h3 {
-  margin: 0;
-  font-size: 16px;
-  letter-spacing: 0.4px;
-  color: var(--text);
-}
-
-/* Sessions card grid — auto-fill minmax so 1-3 cards per row depending
-   on viewport width. Each card is clickable to open the editor. */
-.admin-sessions-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
-  margin-bottom: 18px;
-}
-.admin-session-card {
-  background: var(--bg-1);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: var(--radius-md);
-  padding: 16px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  transition: transform 100ms ease, border-color 100ms ease, box-shadow 100ms ease;
-  box-shadow: var(--shadow-sm);
-  position: relative;
-}
-.admin-session-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255,204,77,0.40);
-  box-shadow: var(--shadow-md);
-}
-.admin-session-card.is-active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(255,204,77,0.10), var(--shadow-md);
-}
-.admin-session-card .asc-name {
-  font-weight: 700;
-  font-size: 16px;
-}
-.admin-session-card .asc-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.admin-session-card .asc-stat {
-  font-size: 11px;
-  letter-spacing: 0.5px;
-  color: var(--text-dim);
-  background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 999px;
-  padding: 3px 9px;
-  white-space: nowrap;
-}
-.admin-session-card .asc-stat.blind {
-  background: rgba(255,204,77,0.10);
-  color: var(--accent);
-  border-color: rgba(255,204,77,0.25);
-  font-weight: 700;
-}
-.admin-session-card .asc-stat.live {
-  background: rgba(92,217,122,0.15);
-  color: var(--good);
-  border-color: rgba(92,217,122,0.30);
-}
-.admin-session-card .asc-stat.fee {
-  background: rgba(92,205,255,0.10);
-  color: var(--info);
-  border-color: rgba(92,205,255,0.25);
-}
-.admin-session-card .asc-edit-row {
-  margin-top: 4px;
-  display: flex;
-  justify-content: flex-end;
-}
-/* Editor — slides in UNDER the cards. Single-editor-at-a-time so
-   two sessions can't be in flight simultaneously; the parent
-   .admin-sessions grid stays put while this block opens. */
-.admin-editor {
-  background: var(--bg-1);
-  border: 1px solid rgba(255,204,77,0.30);
-  border-radius: var(--radius-lg);
-  padding: 18px 22px;
-  box-shadow: var(--shadow-md);
-  margin-bottom: 16px;
-  animation: editorIn 220ms ease-out;
-}
-@keyframes editorIn {
-  from { transform: translateY(-6px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
-}
-.admin-editor-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
-}
-.admin-editor-header h4 {
-  margin: 0;
-  font-size: 18px;
-  color: var(--accent);
-}
-.admin-editor-status {
-  font-size: 11px;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(92,217,122,0.12);
-  color: var(--good);
-  border: 1px solid rgba(92,217,122,0.30);
-  font-weight: 700;
-}
-.admin-editor-status.locked {
-  background: rgba(255,92,92,0.12);
-  color: var(--danger);
-  border-color: rgba(255,92,92,0.30);
-}
-.admin-editor-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 14px;
-  margin-bottom: 12px;
-}
-.admin-editor-grid label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--text-dim);
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-.admin-editor-grid input {
-  background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  color: var(--text);
-  outline: none;
-  font-size: 15px;
-  font-weight: 700;
-  transition: border-color 80ms, background 80ms;
-}
-.admin-editor-grid input:focus {
-  border-color: var(--accent);
-  background: var(--bg-3);
-}
-.admin-editor-grid input:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.admin-editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.admin-editor-feedback {
-  font-size: 12px;
-  min-height: 18px;
-  margin-right: auto;
-  align-self: center;
-  color: var(--text-dim);
-}
-.admin-editor-feedback.ok    { color: var(--good); }
-.admin-editor-feedback.error { color: var(--danger); }
-
-.admin-divider {
-  border: none;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  margin: 28px 0;
-}
-
-/* Pool snapshot — focused, scannable host dashboard. The rake tile is the
-   visual headline (gold gradient matching the winner badge from the
-   showdown modal so the colour language stays consistent across views).
-   The two flanking tiles are quieter info tiles so the rake stays dominant.
-   The breakdown grid is a compact per-table strip so the host can verify
-   each table's chips-in-play + pending house fee without scrolling. */
-.admin-pool {
-  background: var(--bg-1);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: var(--radius-lg);
-  padding: 18px 22px;
-  margin-bottom: 22px;
-  box-shadow: var(--shadow-sm);
-  animation: poolIn 260ms ease-out;
-}
-@keyframes poolIn {
-  from { transform: translateY(-4px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
-}
-.admin-pool-totals {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-  margin-bottom: 14px;
-}
-.admin-pool-tile {
-  background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: var(--radius-md);
-  padding: 14px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  transition: transform 100ms ease, border-color 100ms ease, box-shadow 100ms ease;
-  position: relative;
-  overflow: hidden;
-}
-.admin-pool-tile:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255,255,255,0.18);
-  box-shadow: var(--shadow-sm);
-}
-.admin-pool-tile-label {
-  font-size: 11px;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  font-weight: 700;
-}
-.admin-pool-tile-value {
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: 0.2px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-  /* Subtle fade-in on value update so the host's eye notices the change
-     without a jarring flash. */
-  transition: color 200ms ease, transform 200ms ease;
-}
-.admin-pool-tile-value.is-flash {
-  animation: poolFlash 700ms ease-out;
-}
-@keyframes poolFlash {
-  0%   { color: var(--accent); transform: scale(1.04); }
-  60%  { color: var(--accent); transform: scale(1); }
-  100% { color: inherit; }
-}
-.admin-pool-tile-sub {
-  font-size: 11px;
-  letter-spacing: 0.4px;
-}
-/* Rake tile — gold-accented so the host's rake balance reads as the
-   "profit" headline of the snapshot card. Matches the same gold gradient
-   used on the showdown modal winner badge for cross-view consistency. */
-.admin-pool-tile-rake {
-  background: linear-gradient(180deg, rgba(255,204,77,0.16), var(--bg-2));
-  border-color: rgba(255,204,77,0.40);
-}
-.admin-pool-tile-rake .admin-pool-tile-value { color: var(--accent); }
-.admin-pool-tile-rake .admin-pool-tile-label { color: var(--accent); }
-/* Pending tile — info-cyan accent so the "in-flight" balance is visually
-   distinct from both the rake tile (already credited) and the in-play
-   tile (still owned by players). */
-.admin-pool-tile-pending {
-  background: linear-gradient(180deg, rgba(92,205,255,0.10), var(--bg-2));
-  border-color: rgba(92,205,255,0.30);
-}
-.admin-pool-tile-pending .admin-pool-tile-value { color: var(--info); }
-.admin-pool-tile-pending .admin-pool-tile-label { color: var(--info); }
-
-/* Breakdown — compact table-style strip listing each live table's
-   chips-in-play + pending house fee. Compact (single-row per table,
-   no card chrome) so it doesn't compete with the sessions card grid
-   below. */
-.admin-pool-breakdown {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  background: rgba(0,0,0,0.18);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-}
-.admin-pool-breakdown-row {
-  display: grid;
-  grid-template-columns: 1.5fr auto auto auto;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 4px;
-  font-size: 13px;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
-}
-.admin-pool-breakdown-row:last-child { border-bottom: none; }
-.admin-pool-breakdown-row .apb-name {
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.admin-pool-breakdown-row .apb-stat {
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-.admin-pool-breakdown-row .apb-stat.live { color: var(--good); }
-.admin-pool-breakdown-row .apb-stat.fee  { color: var(--info); }
-.admin-pool-breakdown-row .apb-empty {
-  color: var(--text-mute);
-  font-style: italic;
-  text-align: center;
-  padding: 8px 4px;
-}
-.admin-pool-rake-empty {
-  color: var(--text-mute);
-  font-style: italic;
-  font-size: 13px;
-}
-
-@media (max-width: 720px) {
-  .admin-pool { padding: 14px 16px; }
-  .admin-pool-tile-value { font-size: 22px; }
-  .admin-pool-breakdown-row {
-    grid-template-columns: 1fr auto auto;
-    gap: 8px;
-    font-size: 12px;
-  }
-  .admin-pool-breakdown-row .apb-stat:nth-child(4) { display: none; }
-}
-@media (max-width: 480px) {
-  .admin-pool-totals { grid-template-columns: 1fr; }
-  .admin-pool-breakdown-row { grid-template-columns: 1fr auto; }
-  .admin-pool-breakdown-row .apb-stat:nth-child(3) { display: none; }
-}
-
-/* Player management table carried over from the prior admin modal —
-   tighten the cell widths + IS-Admin column so it reads as an
-   admin surface (gold border for isAdmin=true rows). */
-.admin-table-wrap { overflow-x: auto; }
-.admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.admin-table th, .admin-table td {
-  padding: 8px 10px; text-align: left;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-.admin-table th {
-  color: var(--text-dim); font-weight: 600;
-  text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;
-}
-.admin-table input[type=number] {
-  width: 80px;
-  background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: var(--radius-sm);
-  padding: 4px 6px;
-  color: var(--text);
-  outline: none;
-}
-.admin-table button {
-  background: var(--bg-3);
-  border: 1px solid rgba(255,255,255,0.08);
-  color: var(--text);
-  border-radius: var(--radius-sm);
-  padding: 4px 10px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: background 80ms, color 80ms, border-color 80ms;
-}
-.admin-table button:hover { background: var(--accent); color: #2a1d00; border-color: transparent; }
-.admin-table button.danger:hover { background: var(--danger); color: #fff; }
-.admin-table tr.is-admin-row {
-  background: linear-gradient(90deg, rgba(255,204,77,0.10), transparent);
-  border-left: 2px solid var(--accent);
-}
-.admin-table tr.is-admin-row td:first-child { color: var(--accent); font-weight: 700; }
-
-.admin-feedback { margin-top: 16px; min-height: 18px; }
-.admin-feedback.ok    { color: var(--good); }
-.admin-feedback.error { color: var(--danger); }
-
-@media (max-width: 720px) {
-  .admin-room { padding: 16px 12px 48px; }
-  .admin-room-header { gap: 10px; }
-  .admin-room-title h2 { font-size: 18px; }
-  .admin-sessions-grid { grid-template-columns: 1fr; }
-  .admin-editor-grid { grid-template-columns: 1fr 1fr; }
-  .admin-editor-actions { justify-content: stretch; }
-  .admin-editor-actions .primary-btn,
-  .admin-editor-actions .ghost-btn { flex: 1 1 calc(50% - 5px); }
-}
-@media (max-width: 480px) {
-  .admin-editor-grid { grid-template-columns: 1fr; }
-  .admin-editor-actions .primary-btn,
-  .admin-editor-actions .ghost-btn { flex: 1 1 100%; }
-  .admin-room-icon { font-size: 22px; padding: 8px 10px; }
-}
-
-.toast {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  background: var(--bg-1);
-  border: 1px solid rgba(255,255,255,0.08);
-  color: var(--text);
-  padding: 12px 18px;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  z-index: 300;
-  animation: toastIn 200ms ease-out;
-}
-.toast.error { border-color: rgba(255,92,92,0.5); color: #ffb8b8; }
-.toast.good  { border-color: rgba(92,217,122,0.5); color: var(--good); }
-@keyframes toastIn {
-  from { transform: translate(-50%, 20px); opacity: 0; }
-  to   { transform: translate(-50%, 0);     opacity: 1; }
-}
-
-/* ===== Self-panel (mobile-only your-hand area) =====
-   Hidden on desktop entirely. Below the stacked-mobile breakpoint the
-   layout flips from an around-oval table to a vertical stack: opponents
-   row -> felt (pot/community/phase/result) -> self panel -> action bar.
-   The .seat.is-self pill is also hidden from .seats in the same @media
-   block so self doesn't appear twice. */
-.self-panel { display: none; }
-
-/* ===== Chat panel =====
-   Per-table chat. Sized with flex:1/min/max-height so the panel is
-   comfortable on desktop (240px) and shrinks on phones (180px) while
-   staying usable. The input row is flex:0 to stay anchored to the
-   bottom; only the messages list scrolls. The .read-only class is
-   applied by JS when the viewer is in the table room but not seated,
-   dimming + disabling the input (spectators can read but not send). */
-.chat-panel {
-  background: var(--bg-1);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: var(--radius-md);
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  height: 240px;
-  min-height: 60px;
-  max-height: 320px;
-  overflow: hidden;
-}
-.chat-messages {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: 8px 12px;
-  font-size: 13px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-height: 0;
-}
-.chat-msg { line-height: 1.4; word-wrap: break-word; overflow-wrap: anywhere; }
-.chat-msg.chat-user .chat-from {
-  color: var(--accent);
-  font-weight: 700;
-}
-.chat-msg.chat-system {
-  color: var(--text-mute);
-  font-style: italic;
-  font-size: 12px;
-  text-align: center;
-}
-.chat-input-row {
-  display: flex;
-  gap: 6px;
-  padding: 8px 10px;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  flex: 0 0 auto;
-}
-.chat-input-row input {
-  flex: 1;
-  background: var(--bg-2);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: var(--radius-md);
-  padding: 8px 10px;
-  color: var(--text);
-  outline: none;
-}
-.chat-input-row input:focus { border-color: var(--accent); }
-.chat-input-row button { padding: 8px 14px; }
-.chat-panel.read-only .chat-input-row {
-  opacity: 0.5;
-  pointer-events: none;
-}
-
-@media (max-width: 720px) {
-  /* Smaller chat on phones so the poker table + self-panel above it stay
-     visible. Input bumped to 16px to prevent iOS Safari auto-zoom. */
-  .chat-panel { height: 180px; max-height: 220px; }
-  .chat-input-row input { font-size: 16px; }
-}
-@media (max-width: 480px) {
-  .chat-panel { height: 150px; }
-}
-
-/* ===== Responsive ===== */
-
-/* Tablet / small desktop — moderate compression. Pure desktop layout still
-   works here but we tighten padding + shrink seats slightly.
-   The 16px input rule applies here (not just at ≤720px) so tablet portrait
-   (721–900px) inputs don't trigger iOS Safari auto-zoom on focus. */
-@media (max-width: 900px) {
-  .top-bar { padding: 12px 16px; }
-  .poker-table { aspect-ratio: 4 / 3; }
+  /* Tighter card sizes on tiny phones */
+  .poker-table { aspect-ratio: 5 / 4; max-height: 50vh; }
   .seat { width: 110px; }
-  .seat .name { font-size: 12px; }
-  .empty-seat { width: 110px; padding: 12px 10px; }
-  .view { padding: 16px; }
-  /* 16px prevents iOS Safari auto-zoom on focus. The three explicit
-     overrides below restore the same specificity the original narrow rule
-     had: .form-row / .form-grid / .admin-table inputs all sit inside
-     selectors with higher specificity (0,2,0 or 0,2,1) than this broad
-     rule's (0,1,1), so without the overrides the base rules' 13/14/15px
-     font-size wins and iOS zoom still fires on those inputs. */
-  input[type=text], input[type=password], input[type=number], select, textarea { font-size: 16px; }
-  .form-row input[type=text], .form-row input[type=password] { font-size: 16px; }
-  .form-grid input { font-size: 16px; }
-  .admin-table input[type=number] { font-size: 16px; }
-  /* #raiseAmount is .bet-controls input[type=number] — same specificity
-     issue as the three above: the base rule sets 14px, the broad rule's
-     (0,1,1) loses, so on tablets (721-900px) this would still trigger
-     iOS Safari auto-zoom. */
-  .bet-controls input[type=number] { font-size: 16px; }
+  .empty-seat { width: 110px; min-height: 70px; }
+  .podium-card { max-width: 110px; min-height: 0 !important; padding: 18px 6px 12px; }
+  .podium-card .podium-rank { width: 30px; height: 30px; font-size: 14px; top: -12px; }
+  .podium-card .podium-medal { font-size: 22px; }
+  .podium-card .podium-points { font-size: 16px; }
+  .podium-card .podium-name { font-size: 12px; }
 }
 
-/* Tablet portrait + large phone — fully stacked layout, touch-friendly.
-   Inputs use 16px so iOS Safari doesn't auto-zoom on focus; action buttons
-   are >=48px tall to satisfy Material/HIG touch-target guidelines; the
-   around-oval seating is replaced with a flex-wrap opponents row + the
-   .self-panel below the felt so the viewer's own hole cards are big and
-   legible instead of crammed inside a tiny seat ring. */
+/* Admin table on mobile — convert each row to a card via [data-label]
+   attributes set in JS. Uses the `td::before` pattern to show the
+   column name next to the value, then collapses spacing. */
 @media (max-width: 720px) {
-  html, body { font-size: 15px; }
-
-  /* Top bar */
-  .top-bar { padding: 10px 12px; }
-  .brand-text { font-size: 14px; }
-  .brand-icon { font-size: 16px; }
-  .top-info { gap: 8px; }
-  .player-chip, .points-chip { padding: 5px 9px; font-size: 12px; }
-  .ghost-btn { padding: 7px 11px; font-size: 12px; }
-
-  /* Views + login */
-  .view { padding: 12px; }
-  .login-card { margin: 28px auto; padding: 24px 18px; }
-  .login-card h1 { font-size: 22px; }
-  /* Lobby */
-  .lobby-grid { grid-template-columns: 1fr; gap: 12px; }
-  .table-card { padding: 14px; }
-  .table-card .name { font-size: 16px; }
-  /* Full-width Join button on phone - bigger tap area for thumbs. */
-  .table-card .primary-btn { width: 100%; padding: 12px; }
-  .form-grid { grid-template-columns: 1fr 1fr; }
-
-  /* Table view — switch from absolute oval to stacked layout */
-  .poker-table {
-    aspect-ratio: auto;
-    min-height: 0;
-    border-width: 4px;
-    padding: 12px;
-    max-height: none;
-    display: block; /* was flex/center */
+  .admin-table thead { display: none; }
+  .admin-table, .admin-table tbody, .admin-table tr, .admin-table td {
+    display: block;
+    width: 100%;
   }
-  .table-felt {
-    position: static;
-    inset: auto;
-    width: auto;
-    height: auto;
-    border: 1px solid rgba(255,255,255,0.06);
+  .admin-table tr {
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: var(--radius-md);
-    padding: 14px;
-    gap: 12px;
-    background: rgba(0,0,0,0.18);
-    pointer-events: auto;
-  }
-  /* Opponents row above the felt. JS still computes around-oval coords via
-     seatPosition() so desktop.js stays untouched - we override those
-     positioning styles with !important below. */
-  .seats {
-    position: static;
-    inset: auto;
-    pointer-events: auto;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
-    margin-bottom: 14px;
-  }
-  .seat, .empty-seat {
-    /* !important overrides the JS-set inline position (left/top/transform
-       from seatPosition). The opposition row above the felt is the new
-       layout context. */
-    position: relative !important;
-    left: auto !important;
-    top: auto !important;
-    transform: none !important;
-    width: 100px;
-  }
-  /* The viewer is no longer in the opponents row - their info lives in
-     .self-panel below the felt so their own hole cards get a prominent
-     treatment instead of being crammed into a tiny seat ring. */
-  .seat.is-self { display: none; }
-  .empty-seat { padding: 12px 10px; }
-  .empty-seat .empty-seat-label { display: none; }
-  .seat .name { font-size: 11px; }
-  /* Card layout shrinks so opponent seat pills fit. */
-  .card { width: 48px; height: 70px; padding: 0; }
-  .card .corner.top    { top: 3px;     left: 4px; }
-  .card .corner.bottom { bottom: 3px;  right: 4px; }
-  .card .corner .rank  { font-size: 13px; }
-  .card .corner .suit  { font-size: 9px; }
-  .card .center-suit   { font-size: 24px; }
-  :root { --card-w: 48px; --card-h: 70px; }
-
-  /* Self-panel — the prominent "your hand" area on phones */
-  .self-panel {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    background: rgba(92,205,255,0.10);
-    border: 2px solid var(--info);
-    border-radius: var(--radius-lg);
     padding: 12px 14px;
-    margin: 12px 0;
-    box-shadow: 0 0 0 4px rgba(92,205,255,0.06);
+    margin-bottom: 10px;
+    box-shadow: var(--shadow-sm);
   }
-  /* Active-turn cue for self's "your hand" panel. The .seat.is-self pill is
-     hidden on mobile, so this recipe (same gold-glow as the desktop
-     .seat.is-active ring) keeps a visible cue when self's index matches
-     table.currentPlayerIndex. */
-  .self-panel.is-active {
-    border-color: var(--accent);
-    box-shadow:
-      0 0 0 4px rgba(255,204,77,0.15),
-      0 0 24px rgba(255,204,77,0.4);
+  .admin-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: none;
+    padding: 6px 0;
+    gap: 12px;
   }
-  .self-panel .self-info { flex: 1; min-width: 0; }
-  .self-panel .self-name { font-size: 16px; font-weight: 700; color: var(--text); }
-  .self-panel .self-stack { font-size: 20px; font-weight: 800; color: var(--accent); margin-top: 2px; }
-  .self-panel .self-status { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
-  .self-panel .self-marks { font-size: 11px; color: var(--info); margin-top: 4px; font-weight: 600; }
-  .self-panel .self-cards { display: flex; gap: 4px; }
-  /* Big cards in self-panel - override .card defaults with a friendlier
-     size for the viewer's own hole cards. */
-  .self-panel .card { width: 52px; height: 76px; }
-  .self-panel .card .corner.top { top: 4px; left: 5px; }
-  .self-panel .card .corner.bottom { bottom: 4px; right: 5px; }
-  .self-panel .card .corner .rank { font-size: 14px; }
-  .self-panel .card .corner .suit { font-size: 10px; }
-  .self-panel .card .center-suit { font-size: 26px; }
-
-  /* Action bar — touch-friendly buttons + larger raise input. */
-  .action-bar {
-    padding: 8px;
-    gap: 6px;
-    bottom: 8px;
+  .admin-table td:not(:last-child) { border-bottom: 1px dashed rgba(255,255,255,0.06); }
+  .admin-table td::before {
+    content: attr(data-label);
+    color: var(--text-dim);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.6px;
+    flex: 0 0 auto;
   }
-  .action-btn {
-    padding: 14px 10px;
-    font-size: 15px;
-    min-height: 48px;
-  }
-  .bet-controls { gap: 6px; }
-  .bet-controls input[type=number] {
-    width: 70px;
-    padding: 14px 8px;
-    font-size: 16px;
-    min-height: 48px;
-  }
-
-  /* Toast — relocate above the sticky action bar so it doesn't get
-     pinned underneath the buttons on phones. */
-  .toast { bottom: auto; top: 80px; }
-
-  /* Modal — full screen on mobile so passwords and admin tables are
-     readable without wasted side gutters. */
-  .modal-content {
-    width: 100vw;
-    height: 100vh;
-    max-width: none;
-    max-height: 100vh;
-    border-radius: 0;
-    padding: 16px;
-  }
-}
-
-/* Tiny phone — extra-compact spacing, action bar wraps to 2 rows. */
-@media (max-width: 480px) {
-  .top-bar { padding: 8px 10px; }
-  .view { padding: 10px; }
-
-  .lobby-grid { grid-template-columns: 1fr; gap: 10px; }
-  .form-grid { grid-template-columns: 1fr; }
-  .table-card { padding: 12px; }
-
-  /* Tighter opponents row + smaller pills.
-     Seat width 80px. Two card-small (40px each + 4px gap = 84px) used
-     to overflow the 80px seat now that cards live inside the same
-     .seat-ring as the name (post-renderSeat fix). Shrink the in-seat
-     card variants so the pair fits with a small breath of room. */
-  .seat, .empty-seat { width: 80px; }
-  .empty-seat { padding: 10px 6px; }
-  .empty-seat .empty-seat-icon { width: 18px; height: 18px; font-size: 12px; }
-  .seat .seat-ring { padding: 6px 6px; }
-  .seat .name { font-size: 10px; }
-  .seat .cards { gap: 2px; }
-  .seat .cards .card { width: 32px; height: 44px; }
-  .seat .cards .card .corner.top { top: 2px; left: 3px; }
-  .seat .cards .card .corner.bottom { bottom: 2px; right: 3px; }
-  .seat .cards .card .corner .rank { font-size: 11px; }
-  .seat .cards .card .corner .suit { font-size: 8px; }
-  .seat .cards .card .center-suit { font-size: 18px; }
-
-  /* Smaller self-panel cards and tighter typography. */
-  .self-panel { padding: 10px; gap: 8px; }
-  .self-panel .card { width: 44px; height: 64px; }
-  .self-panel .card .corner .rank { font-size: 12px; }
-  .self-panel .card .corner .suit { font-size: 8px; }
-  .self-panel .card .center-suit { font-size: 22px; }
-  .self-panel .self-name { font-size: 14px; }
-  .self-panel .self-stack { font-size: 17px; }
-
-  /* Action bar wraps: 4 primary buttons become a 2x2 grid, then bet
-     controls take a full row below so the numeric input + raise presets
-     have room without cramping. */
-  .action-bar {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-  .action-btn { flex: 1 1 calc(50% - 4px); }
-  .bet-controls {
-    flex: 1 1 100%;
-    /* Reset the base margin-left:auto so bet-controls doesn't stick to the
-       right edge of its own full-width row, leaving whitespace on the left. */
-    margin-left: 0;
-    flex-wrap: wrap;
-    margin-top: 4px;
-  }
-  .bet-controls input[type=number] { flex: 0 0 80px; font-size: 16px; }
-  .raise-presets { flex: 1; gap: 4px; }
-  .raise-presets button { flex: 1; font-size: 11px; padding: 8px 6px; }
+  .admin-table input[type=number] { width: 96px; }
 }
