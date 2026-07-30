@@ -63,6 +63,13 @@ const state = {
   // fallback only matters when the callback never arrives.
   adminLoginPending: false,
   adminLoginTimer: null,
+  // Owner-secret modal reentrancy state. Same pattern as
+  // adminLoginPending/adminLoginTimer above: gates rapid
+  // click/Enter repeats during the in-flight register call, with a
+  // 5s safety fallback so a missed server reply can't lock the
+  // modal open until page reload.
+  ownerSecretPending: false,
+  ownerSecretTimer: null,
   // prevStacks: per-render snapshot of seat.stack keyed by playerId.
   // Used purely for the cosmetic count-up/down animation in
   // renderSeat / populateSelfPanel. Resetting on leave-table / new
@@ -161,15 +168,33 @@ function tickCount(el, from, to, duration = 600) {
 // form after the first time, or by editing data.json), the flag is
 // stale but still hides the gate — purely UX. Clearing the device's
 // localStorage resets it.
-const LS_PASSWORD_CHANGED_KEY = 'poker.adminPasswordChanged';
-function hasPasswordChanged() {
-  try { return localStorage.getItem(LS_PASSWORD_CHANGED_KEY) === '1'; }
-  catch (e) { return false; }
+// (LS_PASSWORD_CHANGED_KEY + hasPasswordChanged/markPasswordChanged
+// + DEFAULT_ADMIN_PASSWORD soft-prompt helpers were removed when the
+// in-app password-rotation flow was retired: the admin password is
+// now a server-config value, rotated only via env edits + restart.
+// See the server.js admin_change_password handler removal comment
+// for the matching backend change.)
+
+// Owner-secret storage. Per-name localStorage slot. Server-side gate
+// decides which names are "reserved"; the SPA just remembers whatever
+// (name → token) pair the user successfully secured, and re-attaches
+// it on every subsequent register call (incl. socket reconnects).
+// The reserved name itself is NEVER spelled in client-side code —
+// the SPA simply stores/loads by the typed name, so the same flow
+// works for any name the server marks reserved.
+const LS_OWNER_TOKEN_PREFIX = 'poker.ownerToken::';
+function lsOwnerTokenKey(name) { return LS_OWNER_TOKEN_PREFIX + String(name || ''); }
+function getStoredOwnerToken(name) {
+  try { return localStorage.getItem(lsOwnerTokenKey(name)) || null; }
+  catch (e) { return null; }
 }
-function markPasswordChanged() {
-  try { localStorage.setItem(LS_PASSWORD_CHANGED_KEY, '1'); } catch (e) {}
+function setStoredOwnerToken(name, token) {
+  try {
+    if (token) localStorage.setItem(lsOwnerTokenKey(name), token);
+    else localStorage.removeItem(lsOwnerTokenKey(name));
+  } catch (e) {}
 }
-const DEFAULT_ADMIN_PASSWORD = 'natikok80'; // documented default; UI-only ref.
+
 
 
 function formatNumber(n) {
@@ -260,7 +285,14 @@ function selectRandomName(name) {
 async function doLogin() {
   const name = $('loginName').value.trim();
   if (!name) { showToast('Please enter a name', 'error'); return; }
-  socket.emit('register', { name }, res => {
+  // Pre-attach any stored per-name secret so a returning owner
+  // doesn't re-prompt on every device wake / socket reconnect. The
+  // stored value is just a string the SPA carries between sessions;
+  // the SERVER matches it against OWNER_TOKEN in server.js, and the
+  // SPA has no knowledge of which names are reserved (the server
+  // tells us via errorCode).
+  const storedToken = getStoredOwnerToken(name);
+  socket.emit('register', { name, token: storedToken || undefined }, res => {
     if (res && res.ok) {
       state.player = res.player;
       state.isAdmin = res.player.isAdmin === true;
@@ -270,6 +302,15 @@ async function doLogin() {
       setView('lobby');
       socket.emit('random_names'); // refresh names for next time
     } else {
+      // Owner-secret handshake: server signals via `errorCode` that
+      // this name is reserved and a secret is needed. Branch on the
+      // code (NOT on a magic error string) so a generic message
+      // change elsewhere doesn't accidentally trigger the modal.
+      const code = res && res.errorCode;
+      if (code === 'owner_login_required' || code === 'owner_login_failed') {
+        openOwnerSecretModal(name, code === 'owner_login_failed' ? 'failed' : 'required');
+        return;
+      }
       showToast(res && res.error ? res.error : 'Login failed', 'error');
     }
   });
@@ -321,6 +362,120 @@ function closeAdminModal() {
   $('adminActionFeedback').textContent = '';
 }
 
+// ----- Owner-secret modal -----
+//
+// Triggered when the server's register handler reports a reserved
+// name via errorCode 'owner_login_required' (cold: never sent a
+// token) or 'owner_login_failed' (retry: token was wrong). The
+// modal carries the originally typed name in a `data-name`
+// attribute so submitOwnerSecret() can re-attempt register with
+// the same target name. The SPA never holds a list of reserved
+// names — the server tells us when one was hit.
+//
+// Reentrancy: ownerSecretPending gates rapid click/Enter spam on
+// the submit button, mirror of the admin-modal
+// adminLoginPending pattern just above. Cleared by the register
+// callback OR by a 5s safety fallback so a mid-flight server
+// disconnect can't lock the modal open until page reload.
+function openOwnerSecretModal(typedName, errState /* 'required' | 'failed' */) {
+  const modal = $('ownerSecretModal');
+  if (!modal || !typedName) return;
+  const promptEl = $('ownerSecretPrompt');
+  if (promptEl) {
+    promptEl.textContent = errState === 'failed'
+      ? 'That secret was wrong — try again.'
+      : 'Enter the owner secret for this reserved name.';
+  }
+  const errEl = $('ownerSecretError');
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  if ($('ownerSecretInput')) $('ownerSecretInput').value = '';
+  modal.dataset.name = typedName;
+  modal.dataset.errState = errState || 'required';
+  modal.style.display = '';
+  setTimeout(() => { const i = $('ownerSecretInput'); if (i) i.focus(); }, 0);
+}
+
+function closeOwnerSecretModal() {
+  const modal = $('ownerSecretModal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  delete modal.dataset.name;
+  delete modal.dataset.errState;
+}
+
+function submitOwnerSecret() {
+  const modal = $('ownerSecretModal');
+  if (!modal || state.ownerSecretPending) return;
+  const typedName = modal.dataset.name;
+  const inputEl = $('ownerSecretInput');
+  const token = inputEl ? inputEl.value : '';
+  if (!typedName) return closeOwnerSecretModal();
+  if (!token) {
+    const errEl = $('ownerSecretError');
+    if (errEl) { errEl.textContent = 'Secret cannot be empty.'; errEl.style.display = ''; }
+    if (inputEl) inputEl.focus();
+    return;
+  }
+  const submitBtn = $('ownerSecretSubmitBtn');
+  if (submitBtn) submitBtn.disabled = true;
+  state.ownerSecretPending = true;
+  // Safety fallback mirror: if the server never replies the user
+  // would otherwise be locked out of the modal until page reload.
+  state.ownerSecretTimer = setTimeout(() => {
+    state.ownerSecretPending = false;
+    state.ownerSecretTimer = null;
+    if (submitBtn) submitBtn.disabled = false;
+  }, 5000);
+  // Store-on-commit: the secret is committed to localStorage ONLY
+  // when the register call succeeds (see the res.ok branch of the
+  // callback below). Submitting a wrong token must NOT clobber a
+  // previously-stored working secret. The server reply drives the
+  // write; the user just typed something we haven't validated yet.
+  socket.emit('register', { name: typedName, token }, res => {
+    if (submitBtn) submitBtn.disabled = false;
+    state.ownerSecretPending = false;
+    if (state.ownerSecretTimer) {
+      clearTimeout(state.ownerSecretTimer);
+      state.ownerSecretTimer = null;
+    }
+    if (res && res.ok) {
+      // Commit-on-success: only persist the secret to localStorage
+      // once the server validates it. Storing a wrong token before
+      // the server reply would mean a forced re-prompt + a stale
+      // localStorage value clinging to the typed name across page
+      // reloads. The doLogin() path stores on commit too — neither
+      // flow pre-commits before server validation.
+      setStoredOwnerToken(typedName, token);
+      state.player = res.player;
+      state.isAdmin = res.player.isAdmin === true;
+      try { localStorage.setItem('pokerName', state.player.name); } catch (e) {}
+      closeOwnerSecretModal();
+      updateTopBar();
+      syncAdminButtonVisibility();
+      setView('lobby');
+      socket.emit('random_names');
+    } else {
+      const code = res && res.errorCode;
+      if (code === 'owner_login_required' || code === 'owner_login_failed') {
+        // Keep the modal open. Use the server's code to drive the
+        // copy: 'required' for a cold-prompt first attempt, 'failed'
+        // when the user typed something that didn't match. Crucially:
+        // no setStoredOwnerToken call here — a wrong token must NOT
+        // clobber a previously-stored working secret.
+        if (inputEl) inputEl.value = '';
+        openOwnerSecretModal(typedName, code === 'owner_login_required' ? 'required' : 'failed');
+      } else if (res && res.error) {
+        closeOwnerSecretModal();
+        showToast(res.error, 'error');
+      } else {
+        closeOwnerSecretModal();
+        showToast('Login failed', 'error');
+      }
+    }
+  });
+}
+
+
 // JS-level pending flag so the Enter-key handler can also honour
 // the reentrancy guard (the button's disabled UI state doesn't help
 // when the user presses Enter on the password input). Stored on
@@ -366,32 +521,15 @@ function submitAdminPassword() {
       state.isAdmin = true;
       $('adminLoginSection').style.display = 'none';
 
-      // ISOLATED EXCEPTION (UX only): on the first successful login on
-      // this device, if the host hasn't yet changed the default
-      // password, show the first-time change panel and KEEP the player
-      // management section hidden. Purely client-side flag.
-      const firstTime = !hasPasswordChanged();
-      if (firstTime) {
-        const ftEl = $('adminFirstTimeChange');
-        const ctEl = $('adminContent');
-        if (ftEl) ftEl.style.display = '';
-        if (ctEl) ctEl.style.display = 'none';
-        // Clear previous feedback on (re)open
-        const errEl = $('fpAdminChangeError');
-        const okEl  = $('fpAdminChangeSuccess');
-        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
-        if (okEl)  { okEl.style.display = 'none';  okEl.textContent  = ''; }
-        if ($('fpAdminNewPassword')) $('fpAdminNewPassword').value = '';
-        setTimeout(() => { const i = $('fpAdminNewPassword'); if (i) i.focus(); }, 0);
-        showToast('Set a new admin password to continue', 'info');
-      } else {
-        const ftEl = $('adminFirstTimeChange');
-        const ctEl = $('adminContent');
-        if (ftEl) ftEl.style.display = 'none';
-        if (ctEl) ctEl.style.display = '';
-        setAdminFeedback('Unlocked. Manage players below.');
-        refreshAdminList();
-      }
+      // Reveal the player-management + global-defaults panel
+      // immediately on a successful admin_login. The legacy first-time
+      // "set a new password" interstitial was retired alongside the
+      // in-app change-password flow; the password is treated as
+      // already-set from the operator's standing server config.
+      const ctEl = $('adminContent');
+      if (ctEl) ctEl.style.display = '';
+      setAdminFeedback('Unlocked. Manage players below.');
+      refreshAdminList();
 
       // Pre-populate the global starting-stack input with the server's
       // current value so the host can see + tweak it without guessing.
@@ -404,67 +542,6 @@ function submitAdminPassword() {
         errEl.textContent = (res && res.error) ? res.error : 'Login failed';
         errEl.style.display = '';
       }
-    }
-  });
-}
-
-function submitChangePassword() {
-  const oldPwd = $('adminOldPassword').value;
-  const newPwd = $('adminNewPassword').value;
-  if (!oldPwd || !newPwd) {
-    setAdminFeedback('Fill both password fields.');
-    return;
-  }
-  socket.emit('admin_change_password', { oldPassword: oldPwd, newPassword: newPwd }, res => {
-    if (res && res.ok) {
-      $('adminOldPassword').value = '';
-      $('adminNewPassword').value = '';
-      setAdminFeedback('Password changed.');
-      // Once the user has successfully changed the password once via
-      // either path, the soft-prompt gate collapses automatically next
-      // time the modal is opened.
-      markPasswordChanged();
-    } else {
-      setAdminFeedback((res && res.error) ? res.error : 'Failed to change password');
-    }
-  });
-}
-
-// Soft-prompt gate state. `state.firstTimeSwapTimer` tracks the
-// post-success 700ms delay so closing the admin modal mid-window
-// doesn't leave a stale swap firing on a hidden modal.
-function submitFirstTimePassword() {
-  const newPwd = $('fpAdminNewPassword').value;
-  const errEl = $('fpAdminChangeError');
-  const okEl  = $('fpAdminChangeSuccess');
-  if (!newPwd || newPwd.length < 3 || newPwd.length > 200) {
-    if (errEl) { errEl.textContent = 'Password must be 3–200 characters.'; errEl.style.display = ''; }
-    if (okEl)  { okEl.style.display = 'none'; }
-    return;
-  }
-  socket.emit('admin_change_password', { oldPassword: DEFAULT_ADMIN_PASSWORD, newPassword: newPwd }, res => {
-    if (res && res.ok) {
-      markPasswordChanged();
-      if ($('fpAdminNewPassword')) $('fpAdminNewPassword').value = '';
-      if (okEl)  { okEl.textContent = 'Password updated — admin panel unlocked.'; okEl.style.display = ''; }
-      if (errEl) { errEl.style.display = 'none'; }
-      // Small delay before swapping panels so the success message is
-      // visible to the user.
-      setTimeout(() => {
-        // Guard: if the modal got closed during the swap window,
-        // skip the panel flip.
-        if (!$('adminModal') || $('adminModal').style.display === 'none') return;
-        const ftEl = $('adminFirstTimeChange');
-        const ctEl = $('adminContent');
-        if (ftEl) ftEl.style.display = 'none';
-        if (ctEl) ctEl.style.display = '';
-        setAdminFeedback('Password updated.');
-        refreshAdminList();
-        showToast('New password saved', 'good');
-      }, 700);
-    } else {
-      if (okEl)  { okEl.style.display = 'none'; }
-      if (errEl) { errEl.textContent = (res && res.error) ? res.error : 'Failed to change password'; errEl.style.display = ''; }
     }
   });
 }
@@ -2207,19 +2284,25 @@ socket.on('chat_update', ({ tableId, messages }) => {
     // flag so rapid Enter presses can't fire the same emit twice.
     if (e.key === 'Enter') submitAdminPassword();
   });
+
+  // Owner-secret modal wiring. Registered ONCE at module load (NOT
+  // inside the admin-password keydown callback above — that would
+  // re-register the same listeners on every keystroke and waste
+  // cycles). Defensive null checks let the SPA boot even with a
+  // partial HTML rollback (e.g. an old cached page that pre-dates
+  // the modal).
+  const _ownerSubmitBtn = $('ownerSecretSubmitBtn');
+  const _ownerCloseBtn  = $('ownerSecretCloseBtn');
+  const _ownerInput     = $('ownerSecretInput');
+  if (_ownerSubmitBtn) _ownerSubmitBtn.addEventListener('click', submitOwnerSecret);
+  if (_ownerCloseBtn)  _ownerCloseBtn.addEventListener('click', closeOwnerSecretModal);
+  if (_ownerInput) _ownerInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); submitOwnerSecret(); }
+  });
   $('adminModalRefreshPlayersBtn').addEventListener('click', refreshAdminList);
-  $('adminChangePasswordBtn').addEventListener('click', submitChangePassword);
-  // First-time password gate wiring (only meaningful on the first
-  // admin_login on this device). UI-only; uses default 'natikok80' as
-  // the "old" password since the host just authenticated with it.
-  if ($('fpAdminChangePasswordBtn')) {
-    $('fpAdminChangePasswordBtn').addEventListener('click', submitFirstTimePassword);
-  }
-  if ($('fpAdminNewPassword')) {
-    $('fpAdminNewPassword').addEventListener('keydown', e => {
-      if (e.key === 'Enter') submitFirstTimePassword();
-    });
-  }
+  // The legacy adminChangePasswordBtn + fpAdminChangePasswordBtn +
+  // fpAdminNewPassword Enter-key handlers were removed alongside the
+  // 'Change admin password' + first-time interstitial sections.
   // Click on the dark backdrop closes (same pattern as the
   // leaderboard modal). Inner content has stopPropagation via the
   // .modal-content wrapper to keep clicks inside the panel.

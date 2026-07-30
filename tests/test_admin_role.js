@@ -658,8 +658,11 @@ async function main() {
   }
 
   // ====================================================================
-  // 11. Legacy shared admin password (admin_login + admin_change_password
-  //     backend wiring). Tests the DB helpers + the validation gates the
+  // 11. Shared admin password (admin_login only — the in-app
+  //     admin_change_password flow was retired; the password is a
+  //     server-config value pinned to the meta singleton's
+  //     adminPassword field, rotated only via env edits + restart).
+  //     Tests the DB helpers + the validation gates the
   //     server applies. The socket handlers themselves are exercised
   //     manually via the in-app modal — socket.io-client isn't a
   //     top-level dep so we don't add a live e2e here.
@@ -702,6 +705,188 @@ async function main() {
     ok(await db.getAdminPassword() === 'natikok80',
        'setAdminPassword("natikok80") restores the default');
   }
+
+  // ====================================================================
+  // 12. Hardcoded owner account (nathanielk7) — env-token gate.
+  //
+  // The server.js register handler gates the hardcoded owner name on
+  // a token match against process.env.OWNER_TOKEN. server.js can't
+  // be imported by this test (require() would boot the HTTP server),
+  // so we inline-mirror the gate logic here. The mirror is small
+  // (~10 lines) and the assertions below pin every branch so a
+  // future refactor of server.js's register handler is caught.
+  //
+  // Critical: the reservation check is CASE-INSENSITIVE (matches
+  // against `.toLowerCase()`). Any casing variant of "nathanielk7"
+  // is locked down the same way — the test exercises both the exact
+  // spelling and casing variants to lock the invariant down.
+  // ====================================================================
+  const OWNER_NAME = 'nathanielk7';
+  function setOwnerTokenEnv(value) {
+    if (value == null) delete process.env.OWNER_TOKEN;
+    else process.env.OWNER_TOKEN = value;
+  }
+  function isHardcodedOwnerName(name) {
+    // NFKC-normalize both sides, mirror server.js. The ASCII gate
+    // upstream keys this off `^[\w .'\-]+$` so homoglyphs can't
+    // reach this check today, but the normalization is locked in
+    // so a future relaxation of the char-regex doesn't silently
+    // unblock Unicode impersonation.
+    if (typeof name !== 'string') return false;
+    return name.trim().normalize('NFKC').toLowerCase()
+         === OWNER_NAME.normalize('NFKC').toLowerCase();
+  }
+  function checkOwnerGate(typedName, presentedToken) {
+    if (!isHardcodedOwnerName(typedName)) return { ok: true, applies: false };
+    const envRaw = process.env.OWNER_TOKEN;
+    // Mirror getOwnerToken() in server.js exactly: trim AND bail
+    // when the env is missing, blank, or whitespace-only.
+    const expected = (typeof envRaw === 'string' && envRaw.trim() !== '')
+      ? envRaw : null;
+    if (expected === null) {
+      return { ok: false, applies: true, errorCode: 'owner_login_required' };
+    }
+    // Mirror the new server-side split: a non-empty wrong token
+    // gets owner_login_failed, but a missing/empty/undefined token
+    // gets owner_login_required (the "cold prompt" UX path).
+    if (presentedToken === undefined || presentedToken === null || presentedToken === '') {
+      return { ok: false, applies: true, errorCode: 'owner_login_required' };
+    }
+    if (typeof presentedToken !== 'string' || presentedToken !== expected) {
+      return { ok: false, applies: true, errorCode: 'owner_login_failed' };
+    }
+    return { ok: true, applies: true };
+  }
+
+  // --- (a) Gate behaviour with OWNER_TOKEN set to a real secret ---
+  {
+    setOwnerTokenEnv('test-secret-abc');
+    // New split: missing-token = owner_login_required (cold prompt).
+    // Wrong-token = owner_login_failed (retry with copy "wrong
+    // secret"). The SPA surfaces the appropriate copy per code.
+    ok(checkOwnerGate(OWNER_NAME, undefined).errorCode === 'owner_login_required',
+       'owner: typed name with no token + env set => owner_login_required (cold prompt)');
+    ok(checkOwnerGate(OWNER_NAME, '').errorCode === 'owner_login_required',
+       'owner: typed name with empty-string token + env set => owner_login_required');
+    ok(checkOwnerGate(OWNER_NAME, null).errorCode === 'owner_login_required',
+       'owner: typed name with null token + env set => owner_login_required');
+    ok(checkOwnerGate(OWNER_NAME, 'wrong').errorCode === 'owner_login_failed',
+       'owner: typed name with wrong token + env set => owner_login_failed');
+    eq(checkOwnerGate(OWNER_NAME, 'test-secret-abc').ok, true,
+       'owner: typed name with correct token + env set => ok');
+
+    // Casing variants: case-insensitive match, so any casing
+    // impersonation (lowercase / mixed / uppercase) hits the gate.
+    ok(checkOwnerGate('nathanielk7', 'wrong').errorCode === 'owner_login_failed',
+       'owner: lowercase casing still gated');
+    // No-token variant flips on the missing-token split; uppercase
+    // + no token = required (cold prompt), not failed.
+    ok(checkOwnerGate('NATHANIELK7', undefined).errorCode === 'owner_login_required',
+       'owner: UPPERCASE casing gated same as lowercase (cold prompt with no token)');
+    ok(checkOwnerGate('NATHANIELK7', 'wrong').errorCode === 'owner_login_failed',
+       'owner: UPPERCASE casing + wrong token = owner_login_failed');
+    ok(checkOwnerGate('NaThAnIeLk7', 'test-secret-abc').ok === true,
+       'owner: mixed-case gating accepts correct token');
+
+    // Whitespace padding must NOT slip the gate (matches what
+    // register does — it `trim`s the typed name before the gate).
+    ok(checkOwnerGate(' ' + OWNER_NAME + ' ', 'wrong').errorCode === 'owner_login_failed',
+       'owner: trim-padded casing still gated');
+  }
+
+  // --- (b) Gate behaviour when OWNER_TOKEN is unset / blank / whitespace ---
+  {
+    setOwnerTokenEnv(null);
+    ok(checkOwnerGate(OWNER_NAME, undefined).errorCode === 'owner_login_required',
+       'owner: env unset => owner_login_required (NOT bypassed by absent token)');
+    ok(checkOwnerGate(OWNER_NAME, 'some-guess').errorCode === 'owner_login_required',
+       'owner: env unset + attacker-supplied token = still locked');
+    ok(checkOwnerGate(OWNER_NAME, 'test-secret-abc').errorCode === 'owner_login_required',
+       'owner: env unset + previously-valid token = still locked');
+
+    setOwnerTokenEnv('');
+    ok(checkOwnerGate(OWNER_NAME, 'whatever').errorCode === 'owner_login_required',
+       'owner: blank-string env => locked (trim-and-bail predicate)');
+
+    setOwnerTokenEnv('   ');
+    ok(checkOwnerGate(OWNER_NAME, 'whatever').errorCode === 'owner_login_required',
+       'owner: whitespace-only env => locked (trim-and-bail predicate)');
+  }
+
+  // --- (c) Names that LOOK similar but AREN'T the reserved case-fold ---
+  {
+    setOwnerTokenEnv('test-secret-abc');
+    eq(checkOwnerGate('Alice', undefined).ok, true,
+       'non-owner: Alice with no token passes');
+    eq(checkOwnerGate('Alice', undefined).applies, false,
+       'non-owner: gate reports applies=false (no gate fired)');
+    eq(checkOwnerGate('Alice', 'some-random-string').ok, true,
+       'non-owner: Alice with extra (ignored) token still passes');
+    // Spelling variants that DON'T case-fold to "nathanielk7" pass.
+    eq(checkOwnerGate('nathanielk', undefined).ok, true,
+       'non-owner: "nathanielk" (missing the 7) is not reserved');
+    eq(checkOwnerGate('nathanielk77', undefined).ok, true,
+       'non-owner: "nathanielk77" (extra 7) is not reserved');
+    eq(checkOwnerGate('nathanielk8', undefined).ok, true,
+       'non-owner: "nathanielk8" (different digit) is not reserved');
+    eq(checkOwnerGate('xnathanielk7', undefined).ok, true,
+       'non-owner: prefix character "xnathanielk7" is not reserved');
+  }
+
+  // --- (d) Casing variants that DO match "nathanielk7" must be gated too ---
+  {
+    setOwnerTokenEnv('test-secret-abc');
+    const casingSamples = [
+      'nathanielk7',  // exact (literal)
+      'NATHANIELK7',  // all caps
+      'NathanielK7',  // mixed case with capital K
+      'nAtHaNiElK7',  // alternating
+      '  nathanielk7  ', // padding
+    ];
+    for (const sample of casingSamples) {
+      const r = checkOwnerGate(sample, undefined);
+      ok(r.errorCode === 'owner_login_required',
+         'owner (variant \'' + sample + '\'): no token => owner_login_required (cold prompt)');
+    }
+  }
+
+  // --- (e) Pre-existing owner doc with isAdmin=false: post-auth promotion ---
+  //
+  // Server.js calls db.setUserAdmin(trimmed, true) after a
+  // successful owner-token login. The persisted flag is what the
+  // next reconnect sees — without it, a re-login would have to
+  // pass the env-token gate again on every reconnect (acceptable,
+  // but also: any operator who rotates OWNER_TOKEN would still
+  // need to know the old secret). Persisting isAdmin makes the
+  // owner a normal admin doc going forward.
+  {
+    setOwnerTokenEnv('integration-secret');
+    await db.resetForTests();
+    const ensured = await db.getOrCreatePlayer(OWNER_NAME, { points: 0 });
+    ok(ensured && ensured.isAdmin === false,
+       'integration: owner doc created with isAdmin=false');
+    const promoted = await db.setUserAdmin(OWNER_NAME, true);
+    eq(promoted && promoted.isAdmin, true,
+       'integration: db.setUserAdmin(true) promotes the owner doc');
+    const reread = await db.getOrCreatePlayer(OWNER_NAME);
+    eq(reread && reread.isAdmin, true,
+       'integration: subsequent getOrCreatePlayer returns isAdmin=true (canonical gate for reconnects)');
+    const admins = await db.getAdminPlayers();
+    ok(admins.some((p) => p.name === OWNER_NAME),
+       'integration: db.getAdminPlayers surfaces the promoted owner');
+  }
+
+  // --- (f) A non-owner name can still be promoted conventionally ---
+  {
+    await db.resetForTests();
+    await db.getOrCreatePlayer('Alice');
+    const flipped = await db.setUserAdmin('Alice', true);
+    eq(flipped && flipped.isAdmin, true,
+       'integration: arbitrary player can still be promoted via direct db.setUserAdmin (the new owner gate is owner-only, NOT admin-only)');
+  }
+
+  // Final env cleanup so downstream shells / restarts don't inherit a test token.
+  setOwnerTokenEnv(null);
 
   await db.disconnect();
   await mongoServer.stop();

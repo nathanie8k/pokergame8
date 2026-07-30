@@ -18,6 +18,72 @@ const { RoomManager, loadPersistedSettingsIntoCache, getCachedSettingsFor } = re
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
+// ----- Permanent owner account (hardcoded username promotion) -----
+//
+// The literal name "nathanielk7" is reserved server-side: anyone typing
+// that name gets promoted to permanent admin upon successful register.
+// To prevent impersonation by anyone who happens to type the same
+// name, the register handler ALSO requires possession of an operator-
+// configured secret loaded from process.env.OWNER_TOKEN. Without the
+// secret (or with the secret set to anything else), the reserved name
+// rejects every attempt, regardless of any `isAdmin` flag that may
+// already be persisted on the Player doc for that name.
+//
+// The reserved name is intentionally NOT hardcoded in client-side code:
+// the SPA never spell-checks or pattern-matches the reserved name. The
+// server reports a structured `errorCode: 'owner_login_required'`
+// after a register attempt against the reserved name and the SPA
+// reacts by showing a one-time secret-input prompt. After first
+// success, the SPA stores the secret in localStorage and re-sends it
+// on every subsequent register (incl. socket reconnects) so the owner
+// never re-prompts.
+//
+// Safe-fail: if OWNER_TOKEN is unset (or blank/whitespace), the
+// reservation is treated as FULLY LOCKED — every register attempt
+// against the reserved name is rejected with the same error code as a
+// wrong-token attempt, and a warning is logged at boot. The operator
+// MUST set OWNER_TOKEN for the owner feature to function; a misconfig
+// can never inadvertently open the reserved name to free-text login.
+//
+// Generate OWNER_TOKEN with something like:
+//   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+// and store it in your deployment env (e.g. systemd EnvironmentFile,
+// Docker --env-file, Kubernetes Secret). Treat it like a root password.
+const OWNER_NAME = 'nathanielk7';
+
+function getOwnerToken() {
+  // Re-read env on every call so tests + boot-time reloads see the
+  // current value (process.env is mutable; capturing at module-load
+  // would freeze it). Trims; an empty/whitespace string is treated as
+  // unset. Returns null when absent/blank so the register handler can
+  // branch on a missing token without an empty-string-vs-absent
+  // distinction.
+  const raw = process.env.OWNER_TOKEN;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+function isHardcodedOwnerName(name) {
+  // Case-insensitive comparison on purpose: the SPA may send a name in
+  // any casing ("nathanielk7", "NathanielK7", "NATHANIELK7") and we
+  // want every variant to flow through the same secret-gate. MongoDB's
+  // unique index is case-sensitive, so a casing variant creates a
+  // separate doc — but the gate fires BEFORE getOrCreatePlayer, so the
+  // impostor variant never gets that far.
+  //
+  // Defense-in-depth: the register handler's character regex
+  // (^[\w .'\-]+$) rejects non-ASCII input today, so a Cyrillic
+  // homoglyph impersonation can't even reach this check. We still
+  // NFKC-normalize both sides so a future relaxation of the regex (or
+  // a downstream code path that bypasses it) doesn't silently expose
+  // a Unicode cross-mapping gap.
+  if (typeof name !== 'string') return false;
+  return name.trim().normalize('NFKC').toLowerCase()
+       === OWNER_NAME.normalize('NFKC').toLowerCase();
+}
+
+
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, { maxHttpBufferSize: 1e6 });
@@ -459,7 +525,7 @@ app.get('/api/leaderboard', async (_req, res) => {
 // ----- Socket.io handlers -----
 
 io.on('connection', (socket) => {
-  socket.on('register', async ({ name }, cb) => {
+  socket.on('register', async ({ name, token }, cb) => {
     try {
       const trimmed = String(name || '').trim();
       if (!trimmed) return cb && cb({ ok: false, error: 'Name required' });
@@ -479,6 +545,65 @@ io.on('connection', (socket) => {
         return cb && cb({ ok: false, error: 'Name reserved' });
       }
 
+      // Hardcoded owner reservation. Runs AFTER the standard name
+      // validation + HouseRake check but BEFORE getOrCreatePlayer, so
+      // a stale `isAdmin:true` on a pre-existing Player doc CANNOT be
+      // reached without first clearing this gate. The check is
+      // case-insensitive so any casing variant ("nathanielk7",
+      // "NathanielK7", ...) of the reserved name is locked down.
+      //
+      // Error code shape: dedicated `errorCode` so the SPA can
+      // distinguish "this name needs a secret" from generic
+      // validation errors and route the user to the secret-input
+      // prompt instead of a toast. Generic `error` text is included
+      // for users on devices / clients that don't branch on
+      // errorCode. Two distinct codes (owner_login_required vs
+      // owner_login_failed) let the SPA render a different copy on a
+      // retry attempt vs the first cold prompt.
+      const isReservedOwner = isHardcodedOwnerName(trimmed);
+      if (isReservedOwner) {
+        const expected = getOwnerToken();
+        // Two distinct rejection shapes so the SPA can render the
+        // correct copy on a "cold" first attempt vs a wrong-secret
+        // retry. owner_login_required ⇒ cold prompt copy ("Enter the
+        // owner secret for this reserved name."). owner_login_failed
+        // ⇒ wrong-secret copy on a subsequent attempt ("That secret
+        // was wrong — try again.").
+        if (expected == null) {
+          // Operator misconfig (env unset) — locked even if a SPA
+          // caller slides a malicious token through. Distinct from
+          // the empty-token branch so the SPA shows the cold prompt
+          // copy on the FIRST login.
+          return cb && cb({
+            ok: false,
+            errorCode: 'owner_login_required',
+            error: 'Reserved name — owner secret required',
+          });
+        }
+        if (token === undefined || token === null || token === '') {
+          // No token presented yet — cold prompt. We branch on
+          // empty/null/undefined before the typeof check so the SPA
+          // shows the right copy on the FIRST login attempt; later
+          // attempts that sent a wrong string fall through to
+          // owner_login_failed below.
+          return cb && cb({
+            ok: false,
+            errorCode: 'owner_login_required',
+            error: 'Reserved name — owner secret required',
+          });
+        }
+        if (typeof token !== 'string' || token !== expected) {
+          // Token is non-empty but doesn't match the env. Almost
+          // certainly a wrong-secret retry (or a brute-force
+          // attempt); SPA flips to the wrong-secret copy.
+          return cb && cb({
+            ok: false,
+            errorCode: 'owner_login_failed',
+            error: 'Reserved name — wrong secret',
+          });
+        }
+      }
+
       const points = await db.getStartingStack();
       const player = await db.getOrCreatePlayer(trimmed, { points });
       socket.data.playerName = player.name;
@@ -491,7 +616,38 @@ io.on('connection', (socket) => {
       // promote/downgrade this socket until it reconnects; that's an
       // intentional trade-off — see the spec note "no in-app
       // assignment logic needed".
-      socket.data.isAdmin = player.isAdmin === true;
+      //
+      // Owner override: if the typed name matched the reserved
+      // hardcoded owner AND the presented token was correct, force
+      // socket.data.isAdmin=true AND persist isAdmin=true on the doc
+      // via db.setUserAdmin so a future restart (with the same env)
+      // finds the doc already admin-promoted. The db.setUserAdmin call
+      // also handles a pre-existing doc with isAdmin:false (e.g. one
+      // created by tmp_set_admin.js on a prior deploy, or by a
+      // hostile first-signer who reached this handler via some future
+      // code path before this gate shipped).
+      if (isReservedOwner) {
+        try {
+          // Race-tolerant: db.setUserAdmin performs a single atomic
+          // findOneAndUpdate, so concurrent owner-token logins
+          // converge on isAdmin=true without read-modify-write races.
+          await db.setUserAdmin(trimmed, true);
+        } catch (err) {
+          console.error('owner setUserAdmin failed:', err && err.message);
+          // Don't fail the register — the socket-level promotion below
+          // still applies for THIS session. The next reconnect will
+          // pick up whatever the doc has at that point.
+        }
+        socket.data.isAdmin = true;
+        // Refresh the in-memory player mirror so any future handler
+        // that reads socket.data.player.isAdmin (currently none — the
+        // canonical gate is socket.data.isAdmin read by requireAdmin)
+        // sees the post-promotion value without waiting for a
+        // reconnect. Purely a consistency nudge.
+        socket.data.player = Object.assign({}, socket.data.player || {}, { isAdmin: true });
+      } else {
+        socket.data.isAdmin = player.isAdmin === true;
+      }
 
       if (!playerSockets.has(player.name)) playerSockets.set(player.name, new Set());
       playerSockets.get(player.name).add(socket.id);
@@ -897,32 +1053,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Change the shared admin password. Requires active admin session on
-  // this socket (set via admin_login OR via the register-time isAdmin
-  // gate). The old password is verified BEFORE the new one is
-  // persisted — a typo in the user's CURRENT password leaves the
-  // stored value untouched.
-  socket.on('admin_change_password', async ({ oldPassword, newPassword }, cb) => {
-    if (!requireAdmin(cb)) return;
-    if (typeof oldPassword !== 'string' || typeof newPassword !== 'string') {
-      return cb && cb({ ok: false, error: 'Bad payload' });
-    }
-    if (newPassword.length < 3 || newPassword.length > 200) {
-      return cb && cb({ ok: false, error: 'Password must be 3–200 characters' });
-    }
-    try {
-      const current = await db.getAdminPassword();
-      if (oldPassword !== current) {
-        return cb && cb({ ok: false, error: 'Current password is wrong' });
-      }
-      await db.setAdminPassword(newPassword);
-      return cb && cb({ ok: true });
-    } catch (err) {
-      console.error('admin_change_password error:', err);
-      return cb && cb({ ok: false, error: 'Server error' });
-    }
-  });
-
   // Bulk list every active table + its editable settings in one
   // payload. The admin panel uses this to populate its session-list
   // card grid; subsequent edits target a single tableId via
@@ -1077,8 +1207,13 @@ server.listen(PORT, HOST, () => {
   console.log('=================================================');
   console.log('  Friendly Poker server is up!');
   console.log('  Open: http://localhost:' + PORT);
-  console.log('  Admin: set is_admin=true on the Player doc in MongoDB.');
-  console.log('  No shared admin password — isAdmin flag is the only gate.');
+  if (getOwnerToken() == null) {
+    console.log('  Owner account: LOCKED (OWNER_TOKEN env unset).');
+    console.log('  Set OWNER_TOKEN (random hex, 32+ chars) to enable the owner-secret login.');
+  } else {
+    console.log('  Owner account: enabled (OWNER_TOKEN env set; secret kept server-side).');
+  }
+  console.log('  All other admin access uses the shared modal password.');
   console.log('=================================================');
 });
 

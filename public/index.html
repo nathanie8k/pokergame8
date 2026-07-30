@@ -251,33 +251,12 @@
           <div id="adminLoginError" class="admin-error-line" style="display:none"></div>
         </section>
 
-        <!-- ISOLATED EXCEPTION (UX only): on first successful admin_login
-             where the host hasn't yet changed the default password, this
-             section is shown and the player management stays hidden
-             until a new password is saved. Fully client-side flag in
-             localStorage; the server's admin_change_password handler is
-             untouched. After a successful change, the flag is set and
-             the section collapses. -->
-        <section id="adminFirstTimeChange" class="admin-first-time" style="display:none">
-          <div class="admin-first-time-banner">
-            <div class="admin-first-time-icon">🔒</div>
-            <div class="admin-first-time-text">
-              <strong>You're using the default password.</strong>
-              <div class="muted small">Set a new password to unlock player management.</div>
-            </div>
-          </div>
-          <div class="admin-first-time-form">
-            <label class="inline-label">
-              <span>New password (3–200 chars):</span>
-              <input id="fpAdminNewPassword" type="password" autocomplete="off" />
-            </label>
-            <button id="fpAdminChangePasswordBtn" class="primary-btn">Save new password</button>
-          </div>
-          <div id="fpAdminChangeError" class="muted small admin-feedback" style="display:none"></div>
-          <div id="fpAdminChangeSuccess" class="muted small admin-feedback ok" style="display:none"></div>
-        </section>
-
-        <!-- Authenticated contents (player table + change-password + starting-stack). -->
+        <!-- Authenticated contents (player management + global defaults).
+             The legacy first-time-password interstitial + the in-app
+             'Change admin password' section were removed when the
+             password became a server-config value (locked in via the
+             Meta singleton in src/database.js plus ops env edits).
+             Operators rotate by editing env + restarting the server. -->
         <section id="adminContent" class="admin-content" style="display:none">
 
           <section class="admin-section">
@@ -310,23 +289,6 @@
                 <input id="adminStartingStack" type="number" min="1" />
               </label>
               <button id="adminStartingSave" class="primary-btn">Save</button>
-            </div>
-          </section>
-
-          <section class="admin-section">
-            <header class="admin-section-header"><h4>Change admin password</h4></header>
-            <div class="form-row">
-              <label class="inline-label">
-                <span>Current password:</span>
-                <input id="adminOldPassword" type="password" autocomplete="off" />
-              </label>
-            </div>
-            <div class="form-row">
-              <label class="inline-label">
-                <span>New password (3–200 chars):</span>
-                <input id="adminNewPassword" type="password" autocomplete="off" />
-              </label>
-              <button id="adminChangePasswordBtn" class="primary-btn">Change</button>
             </div>
           </section>
 
@@ -394,6 +356,36 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== Owner-secret modal =====
+       Triggered when the server's `register` handler reports a
+       reserved name via errorCode 'owner_login_required' (cold:
+       no token was sent) or 'owner_login_failed' (retry: token was
+       wrong). The SPA never holds a list of reserved names — the
+       server tells us when one was hit, and this modal is the
+       single entry-point. The typed name is carried in `data-name`
+       on the modal root so submitOwnerSecret() can retry register
+       against the same target. Visual ergonomics mirror the existing
+       admin modal (#adminModal) for a consistent look. -->
+  <div id="ownerSecretModal" class="modal owner-secret" role="dialog" aria-modal="true" aria-labelledby="ownerSecretTitle" style="display:none">
+    <div class="modal-content owner-secret-content">
+      <header class="admin-modal-header">
+        <div class="admin-modal-title">
+          <span class="admin-modal-icon" aria-hidden="true">🔑</span>
+          <h3 id="ownerSecretTitle">Reserved name</h3>
+        </div>
+        <button class="close-btn" id="ownerSecretCloseBtn" title="Close">×</button>
+      </header>
+      <section class="owner-secret-section">
+        <p class="muted small" id="ownerSecretPrompt">Enter the owner secret for this reserved name.</p>
+        <div class="form-row admin-login-row">
+          <input id="ownerSecretInput" type="password" placeholder="Owner secret" autocomplete="off" />
+          <button id="ownerSecretSubmitBtn" class="primary-btn">Submit</button>
+        </div>
+        <div id="ownerSecretError" class="admin-error-line" style="display:none"></div>
+      </section>
     </div>
   </div>
 
