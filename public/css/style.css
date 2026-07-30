@@ -614,8 +614,12 @@ input, button, select, textarea { color: inherit; }
 .poker-table {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
-  max-height: 70vh;
+  /* Compact rounded-rect (not a wide horizontal oval). 1.2:1
+     width-to-height reads like a felt-oval shape but corners are
+     still recognizably square. max-height caps vertical so the
+     table fits above the fold on tall desktops too. */
+  aspect-ratio: 1.2 / 1;
+  max-height: 60vh;
   border-radius: var(--radius-xl);
   background:
     radial-gradient(ellipse 80% 70% at center, var(--table-felt-lit) 0%, var(--table-felt) 40%, var(--table-edge) 90%);
@@ -2007,10 +2011,99 @@ input, button, select, textarea { color: inherit; }
    (which is already position:relative from the default rule).
    Lives INSIDE .poker-table so it sits over the felt only — NEVER
    over the viewer's own cards (.self-panel) or the action
-   buttons / raise controls (#view-table's flex-column children
-   below the table). On non-table views the parent's display:none
-   hides the bubble naturally. Click handler toggles .is-open on
-   #chatPanel; CSS handles the slide-in overlay motion. */
+   buttons / raise controls on any view other than #view-table —
+   the element ends up hidden by the surrounding view's
+   display:none naturally. Click handler toggles .is-collapsed
+   on the strip; CSS handles the body reveal + caret rotation.
+   The legacy .chat-bubble + .chat-panel.is-open slide-in rules
+   are kept below as inert shims for any element that still has
+   the old classes (backward-compatible — no rendering change
+   because .chat-strip rules below come later in cascade). */
+
+/* CHAT-STRIP — collapsible compact bar that lives ABOVE the
+   poker-table inside #view-table's flex column. Two states:
+
+     .is-collapsed (default): chip header only rendered.
+       Reserved height ~40px. Sits above the table; never
+       covers it.
+
+     (no .is-collapsed) expanded: chip header stays at the
+       top, message list + input appear in chat-strip-body;
+       pushes .poker-table down via flex-shrink. No absolute
+       positioning over the felt.
+
+   Element IDs are preserved (#chatPanel / #chatBubbleBtn /
+   #chatMessages / #chatInput / #chatSendBtn) so client.js
+   wiring continues to find them. .chat-panel class is
+   retained alongside .chat-strip so legacy spectator
+   styles (.chat-panel.read-only etc.) keep applying via
+   cascade; the new .chat-strip layout rules below come
+   AFTER the legacy .chat-panel slide-in defaults in source
+   order, so they win. */
+.chat-strip {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.chat-strip-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.chat-strip-head:hover  { background: rgba(255,255,255,0.06); }
+.chat-strip-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chat-strip-title { flex: 1 1 auto; }
+.chat-strip-caret {
+  display: inline-block;
+  transition: transform 180ms var(--ease);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.chat-strip:not(.is-collapsed) .chat-strip-caret { transform: rotate(180deg); }
+.chat-strip-body {
+  display: none;
+  flex-direction: column;
+  padding: 8px 12px 10px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.20);
+}
+.chat-strip:not(.is-collapsed) .chat-strip-body { display: flex; }
+/* Desktop-side cap on the inner chat-messages list. The legacy
+   `.chat-panel .chat-messages { max-height: 80px }` rule no longer
+   matches (parent dropped the .chat-panel class) and the
+   mobile-only override below doesn't fire on wider viewports —
+   so a long desktop chat history would otherwise stretch the
+   strip unboundedly. Capping at 220px and scrolling keeps the
+   row compact without losing the conversation. */
+.chat-strip > .chat-strip-body > .chat-messages {
+  max-height: 220px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-strip-caret { transition: none; }
+}
+
+/* ---- Legacy slide-in chat-panel (inert shim kept for back-compat
+   with any element still carrying class .chat-panel; the new
+   chat-strip rules above win cascade for #chatPanel rendering). ---- */
 .chat-bubble {
   position: absolute;
   bottom: 14px;
@@ -2025,7 +2118,7 @@ input, button, select, textarea { color: inherit; }
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 5;       /* above seat-bet-chip (3) + seat-dealer-chip (4) */
+  z-index: 5;
   box-shadow: var(--shadow-md);
   transition: transform 120ms var(--ease), background 120ms, border-color 120ms;
   padding: 0;
@@ -2036,18 +2129,13 @@ input, button, select, textarea { color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .chat-bubble:hover { transform: none; }
 }
-
-/* Chat panel — default state (no .is-open class) is entirely
-   hidden. The earlier always-visible mobile chat-strip math is
-   overridden here (later in source order) so the panel only
-   appears when the bubble is tapped. */
 .chat-panel {
   display: none;
   position: fixed;
   z-index: 230;
-  top: calc(env(safe-area-inset-top, 0px) + 56px + 12px);    /* below top-bar */
+  top: calc(env(safe-area-inset-top, 0px) + 56px + 12px);
   right: calc(env(safe-area-inset-right, 0px) + 14px);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);    /* above action-bar */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
   width: min(340px, calc(100vw - 28px));
   max-width: 360px;
   padding: 12px;
@@ -2057,8 +2145,6 @@ input, button, select, textarea { color: inherit; }
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(14px);
   flex-direction: column;
-  /* Reset the legacy vertical-flow margin — fixed positioning makes
-     it moot. */
   margin-top: 0;
 }
 .chat-panel.is-open {
@@ -2167,12 +2253,19 @@ input, button, select, textarea { color: inherit; }
     flex: 0 0 auto;
     margin-bottom: 6px;
   }
+  /* Compact rounded-rect on mobile too — aspect 1.2:1 width-to-
+     height, capped at the parent's flex budget via max-height.
+     When the parent shrinks (chat expanded, raise expanded) the
+     table keeps its aspect ratio by reducing width; centered via
+     margin auto so it always sits centered between the chat-strip
+     above and the self-panel below. */
   #view-table > .poker-table {
     flex: 1 1 0;
-    min-height: 0;            /* critical: allows flex-shrink to win */
-    aspect-ratio: auto;        /* override the default 16:9 */
-    max-height: none;          /* override the default 70vh cap */
-    margin-top: 0;
+    min-height: 0;             /* critical: allows flex-shrink to win */
+    aspect-ratio: 1.2 / 1;      /* compact rounded-rect */
+    max-height: 100%;           /* shrink on tight heights; never overflow */
+    max-width: 100%;
+    margin: 0 auto;             /* center horizontally when width shrinks */
   }
   /* self-panel mobile tray — cards + name + stack + status row.
      natural content height drives the zone's reserved height
@@ -2277,36 +2370,55 @@ input, button, select, textarea { color: inherit; }
     display: none;
   }
 
-  /* Chat-bubble on mobile — keep the absolute positioning in the
-     default rule, just nudge it tighter to the table's bottom-right
-     corner with smaller footprint. */
-  .poker-table > .chat-bubble {
-    bottom: 10px;
-    right: 10px;
-    width: 44px;
-    height: 44px;
+  /* Chat-strip on mobile — its own flex child of #view-table,
+     sitting BETWEEN .table-info and .poker-table. Default
+     `.is-collapsed` reserves ~48px (chip header only). Expanded
+     state reserves ~110px total (header ~48 + body ~58 + margins),
+     pushing .poker-table DOWN via the flex-column's shrink budget
+     — never overlaps. Tightened after first review so the
+     expanded body doesn't crowd the poker-table shrink budget on
+     short phones. */
+  #view-table > .chat-strip {
+    flex: 0 0 auto;
+    margin: 4px 0;
   }
+  #view-table > .chat-strip > .chat-strip-head {
+    min-height: 32px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  #view-table > .chat-strip > .chat-strip-body {
+    max-height: 58px;
+    padding: 4px 8px 4px;
+  }
+  #view-table > .chat-strip > .chat-strip-body > .chat-messages {
+    max-height: 22px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 11px;
+    line-height: 1.2;
+  }
+  /* The input-row keeps a natural ~36-40px height inside the body,
+     so the body cap of 58 caps the visible vertical real estate
+     crisply. */
+  @media (max-height: 700px) {
+    /* Short phones: shrink body further so the .poker-table still
+       gets >200px even when chat AND raise are open simultaneously.
+       Head min-height 36 + padding 12 = 48px → meets iOS 44px tap
+       target on vertically-constrained devices (Galaxy S8 etc.). */
+    #view-table > .chat-strip > .chat-strip-body {
+      max-height: 46px;
+    }
+    #view-table > .chat-strip > .chat-strip-body > .chat-messages {
+      max-height: 14px;
+    }
+    #view-table > .chat-strip > .chat-strip-head {
+      min-height: 36px;
+      padding: 6px 12px;
+    }
+  }
+  /* Reduced-motion: caret rotation already disabled in the
+     default block; nothing else to do here. */
 
-  /* Chat-panel when .is-open: full-width slide-in dock from right
-     edge covers the table area but doesn't push it down
-     (position:fixed overlay). Constrained bottom so it never
-     extends over the .self-panel / .action-bar / .raise-row
-     zones below the table. The 290px = self-panel ~140 + action-
-     bar ~64 + raise-row ~64 + 22px cushion, plus the safe-area
-     bottom inset. The 22px cushion guarantees the player's own
-     cards stay visible above the panel face even on shorter
-     phones where .self-panel reaches its ~140px natural height.
-     On shorter phones the reserved zones still receive their
-     full height because .action-bar and .raise-row are
-     flex:0 0 auto (don't shrink). */
-  .chat-panel.is-open {
-    top: calc(env(safe-area-inset-top, 0px) + 56px + 8px);
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 290px);
-    width: 100vw;
-    max-width: none;
-    right: 0;
-    left: auto;
-    border-radius: 0;
-  }
 }
 

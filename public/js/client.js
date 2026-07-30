@@ -2114,16 +2114,23 @@ socket.on('chat_update', ({ tableId, messages }) => {
 
 // ---------- Wire up UI buttons ----------
   document.addEventListener('DOMContentLoaded', () => {
-    // Chat-bubble button (added by the redesigned table screen) toggles
-    // .is-open on the chat panel; CSS handles the slide-in overlay
-    // motion. Single click handler — no socket events, no game-state
-    // mutations. The button lives inside #view-table so the parent's
-    // display:none already hides it on non-table views.
+    // Chat-bubble button is now the CHAT-STRIP header toggle. Lives
+    // inside #view-table (between .table-info and .poker-table as its
+    // own flex child). Click handler toggles .is-collapsed on the
+    // .chat-strip wrapper; CSS handles the chip-body reveal + caret
+    // rotation. Single click handler — no socket events, no game-state
+    // mutations. aria-expanded is synced for AT users.
     const chatBubble = $('chatBubbleBtn');
     if (chatBubble) {
       chatBubble.addEventListener('click', () => {
         const panel = $('chatPanel');
-        if (panel) panel.classList.toggle('is-open');
+        if (!panel) return;
+        panel.classList.toggle('is-collapsed');
+        // aria-expanded tracks the inverse: collapsed => expanded=false.
+        chatBubble.setAttribute(
+          'aria-expanded',
+          panel.classList.contains('is-collapsed') ? 'false' : 'true'
+        );
       });
     }
     $('loginBtn').addEventListener('click', doLogin);
