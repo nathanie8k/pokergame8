@@ -198,10 +198,17 @@ function broadcastTable(tableId) {
     // publicView expects a stable viewer identifier that matches each seat's
     // `playerId` (the database id set when the player was seated). Passing the
     // NAME here made isSelf always evaluate false, which broke the viewer's
-    // own hole-card reveal AND the action-bar gating. Use the player id.
-    const viewerId = socket.data.player && socket.data.player.id;
+    // own hole-card reveal AND the action-bar gating. Use the player id as
+    // the primary identity, and pass the player's NAME alongside it as a
+    // defensive second argument to publicView's isSelf fallback (see
+    // src/rooms.js#publicView). The two-arg signature is purely additive
+    // — older callers that pass only viewerPlayerId keep working with
+    // the id-only check.
+    const viewer = socket.data.player;
+    const viewerId = viewer && viewer.id;
     if (!viewerId) continue;
-    socket.emit('table_state', { table: rooms.publicView(tableId, viewerId) });
+    const viewerName = viewer && viewer.name;
+    socket.emit('table_state', { table: rooms.publicView(tableId, viewerId, viewerName) });
   }
   broadcastLobby();
 }

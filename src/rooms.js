@@ -475,7 +475,20 @@ class RoomManager {
   // server.js broadcasts must pass `socket.data.player.id` here — passing the
   // name made `isSelf` always evaluate false for every viewer, which silently
   // hid the viewer's own hole cards AND disabled their action bar.
-  publicView(tableId, viewerPlayerId) {
+  //
+  // `viewerName` is an optional second argument that backs a defensive
+  // fallback on the `isSelf` check below. Primary identity is still the
+  // persistence-layer `id` (string from the JSON/mongo `id` field) — but
+  // if any future path ever produces a different shape (e.g. ObjectId
+  // wrapper seeping through from a new driver, or a fallback code path
+  // that hand-builds the player object), the name comparison lights up so
+  // the viewer's own cards still reveal correctly. Each socket has exactly
+  // one `socket.data.player.name` from the register-time lock-in, and
+  // `seat.name` was written from the same player object at seat time, so
+  // name equality is the canonical "same person viewing this seat"
+  // tiebreaker without opening a spoofing vector (a different socket
+  // can't carry a name that matches its own seat's name).
+  publicView(tableId, viewerPlayerId, viewerName) {
     const t = this.tables.get(tableId);
     if (!t) return null;
     // Showdown reveal window: the hand ended naturally with a real winner
@@ -509,7 +522,13 @@ class RoomManager {
       chatMessages: t.chatMessages || [],
       seats: t.seats.map((s, i) => {
         if (!s) return { idx: i, occupied: false };
-        const isSelf = s.playerId === viewerPlayerId;
+        // Defensive fallback to name match so the viewer's own hole cards
+        // still reveal if the persistence-layer id ever drifts in shape
+        // (ObjectId vs string, wrapper objects, etc.). See the function-
+        // level note above for the security argument. Primary identity is
+        // still the id check — name is purely a tiebreaker.
+        const isSelf = s.playerId === viewerPlayerId
+          || (!!viewerName && s.name === viewerName);
         // During showdown, reveal the holeCards of every non-folded seat
         // to every viewer. Folded seats still muck (holeCards=null). The
         // viewer themselves always sees their own cards (even if folded).
