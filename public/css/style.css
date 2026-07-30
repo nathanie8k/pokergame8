@@ -1594,7 +1594,10 @@ input, button, select, textarea { color: inherit; }
   }
   .self-panel.is-active {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(255,204,77,0.20), var(--shadow-md);
+    /* Glow ring removed — the previous 3px box-shadow ring ate into
+       short-phone (≤700px) poker-table real estate. The border-color
+       flip + activeThrob animation still mark the active state. */
+    box-shadow: var(--shadow-md);
     animation: activeThrob 1.4s ease-in-out infinite;
   }
   .self-info { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
@@ -1680,3 +1683,117 @@ input, button, select, textarea { color: inherit; }
   }
   .admin-table input[type=number] { width: 96px; }
 }
+
+/* ============================================================
+   Mobile-only fullscreen layout for the poker table screen
+   (max-width: 720px). Three fixed/flex regions stacked top→bottom,
+   none scrolls out of view:
+     - sticky top-bar    ~56px (existing)
+     - fixed chat-strip  ~110px collapsed, expands via :focus-within
+     - flex poker-table fills the middle
+     - fixed action-bar  ~80px (existing)
+   No JS toggling, no markup changes, no game-logic files touched.
+   Desktop layout is completely untouched.
+   ============================================================ */
+@media (max-width: 720px) {
+  /* Hide the hand-log on mobile — the chat strip supersedes it. */
+  .hand-log { display: none; }
+
+  /* The table view fills the visible safe viewport between the
+     sticky top-bar (top), the fixed chat strip (top, just below
+     top-bar), and the fixed action-bar (bottom). No vertical
+     scrolling at any point — the poker table flexes into the
+     remaining slot. */
+  #view-table {
+    /* Total height = full safe viewport. Uses 100dvh so the dynamic
+     viewport (excluding mobile browser chrome) is honored. */
+    height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    /* Add top padding so the content starts BELOW the fixed chat
+       strip. (.view provides left/right/bottom padding via the rule
+       above; this overrides only padding-top.) 56 = top-bar height,
+       110 = chat-strip collapsed, +8 visual gap. */
+    padding-top: calc(env(safe-area-inset-top, 0px) + 56px + 92px + 8px);
+  }
+  .table-info { flex: 0 0 auto; margin-bottom: 0; padding: 0; }
+  .table-info h2 { font-size: 16px; }
+
+  /* Override the existing aspect-ratio + max-height on .poker-table so
+     it absorbs the flex slot (fills all remaining space between the
+     fixed chat strip and the fixed action-bar). Same selector, same
+     specificity as earlier declarations; this rule is appended AFTER
+     them, so it wins in source order. */
+  .poker-table {
+    aspect-ratio: auto;
+    max-height: none;
+    height: auto;
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  /* Self-panel keeps its mobile visibility but becomes a compact
+     strip in the flex layout at the bottom of the table view. */
+  .self-panel {
+    flex: 0 0 auto;
+    margin-top: 12px;
+  }
+
+  /* CHAT STRIP — fixed at top, just below the sticky top-bar.
+     Default: COLLAPSED (~110px tall) showing the last few messages
+     + the input row. Tap into the input to expand (:focus-within
+     becomes true → max-height grows to ~65vh); tap anywhere else to
+     collapse. CSS-only — no JS required. */
+  .chat-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    /* Below the sticky top-bar. */
+    top: calc(env(safe-area-inset-top, 0px) + 56px);
+    z-index: 40;          /* below .action-bar (50) and .top-bar (100) */
+    margin: 0;
+    padding: 4px 12px;
+    max-height: 92px;
+    overflow: hidden;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    transition: max-height 220ms var(--ease), padding 220ms var(--ease);
+  }
+  .chat-panel:focus-within {
+    max-height: 65vh;
+    overflow: visible;
+    padding-bottom: 12px;
+  }
+  .chat-panel .chat-messages {
+    max-height: 40px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chat-panel:focus-within .chat-messages {
+    /* Leave room for the input row below. */
+    max-height: calc(65vh - 56px - 12px);
+  }
+  /* Keep input/button tap targets ≥40px even when collapsed. */
+  .chat-panel .chat-input-row input {
+    min-height: 40px;
+    font-size: 14px;
+    padding: 8px 10px;
+  }
+  .chat-panel .chat-input-row button {
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+  /* Collapse the default 8px margin-top on .chat-input-row — inside
+     the 92px-tall collapsed chat-strip the extra 8px was clipping the
+     bottom of the Send button. Tight phones (≤700px) need every
+     pixel above the action bar. */
+  .chat-panel .chat-input-row { margin-top: 0; }
+  /* Spectators also use the chat-panel (no input allowed). Keep dim
+     state; collapse max-height matching the input-less path. */
+  .chat-panel.read-only .chat-messages { max-height: 80px; }
+}
+
