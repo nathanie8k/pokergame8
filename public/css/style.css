@@ -1797,3 +1797,316 @@ input, button, select, textarea { color: inherit; }
   .chat-panel.read-only .chat-messages { max-height: 80px; }
 }
 
+/* ============================================================
+   Poker-table redesign — classic online poker-room layout.
+   VISUAL ONLY. No game-logic files touched. No socket events.
+   Cascade order: this block sits at the END of the stylesheet so
+   the rules below take precedence over the earlier defaults at
+   equal specificity.
+   ============================================================ */
+
+/* ---- Oval / kidney-shaped table viewed from a slight elevation.
+   The outer .poker-table container goes from rounded-rect to true
+   ellipse aspect. The inner .table-felt keeps the radial-gradient
+   but picks up a subtle rotateX keyframe so the far edge reads as
+   raised — "perspective from across the room" feel. No DOM mutation
+   is required for any of this — sibling .seats elements remain
+   positioned by the JS-driven seatPosition() math unchanged. ---- */
+.poker-table {
+  /* Kidney / oval aspect: 52% horizontal, 36% vertical radius gives
+     a wider-than-tall ellipse that reads as the classic casino
+     table silhouette. */
+  border-radius: 52% / 36%;
+  /* Layered radial fill replaced with a slightly larger / softer
+     version so the felt looks lit from above. */
+  background:
+    radial-gradient(ellipse 92% 78% at center, var(--table-felt-lit) 0%, var(--table-felt) 42%, var(--table-edge) 92%);
+}
+.table-felt {
+  /* Drop the dashed inner-felt ring (real casino felt has no inside
+     border). Replace with a soft inner shadow overlay for depth —
+     the dashed border replaced cleanly to avoid any bleed-through
+     with the radial-gradient backdrop. */
+  border: none;
+  box-shadow: inset 0 0 70px rgba(0,0,0,0.45);
+  /* Subtle far-edge tilt — rotates the inner felt a few degrees
+     around its X axis so cards laid at center appear to sit on a
+     plane receding into the back-rail. Honors reduced-motion. */
+  perspective: 1400px;
+  animation: feltTilt 14s ease-in-out infinite alternate;
+}
+@keyframes feltTilt {
+  from { transform: rotateX(-3.5deg); }
+  to   { transform: rotateX(2.5deg);  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .poker-table::before { animation: none; } /* keep the shimmer rule out */
+  .table-felt { animation: none; transform: none; }
+}
+
+/* ---- Pot total — promote to casino-warm display. Existing
+   .pot-amount element keeps the value; the new aura is a pure CSS
+   backdrop ellipse in the warm-gold accent. ---- */
+.pot-display { position: relative; }
+.pot-display::before {
+  /* Chip-stack aura behind the pot value — soft elliptical glow in
+     the warm-gold accent color that reads as the centre-of-table
+     highlight. Purely presentational; pointer-events:none so taps
+     fall through. */
+  content: "";
+  position: absolute;
+  inset: -18px -32px;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255,204,77,0.24), rgba(0,0,0,0) 70%);
+  filter: blur(8px);
+  pointer-events: none;
+}
+.pot-amount { font-size: 38px; }
+
+/* ---- Seat redesign: avatar circle + chips. ---- */
+
+/* Avatar circle — circular, dark felt-toned, centered initials.
+   Rendered as the FIRST child of the .seat-ring so it sits above
+   the name/stack rows. CSS-only marker (no SVG/image needed). */
+.seat-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  margin: 0 auto 6px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255,255,255,0.10), rgba(0,0,0,0) 60%),
+    linear-gradient(135deg, rgba(92,205,255,0.18), rgba(255,255,255,0.04));
+  border: 2px solid rgba(255,255,255,0.22);
+  color: var(--text);
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: 0.4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  text-transform: uppercase;
+  position: relative;
+  z-index: 1;
+  backdrop-filter: blur(2px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.seat.is-self .seat-avatar {
+  border-color: var(--info);
+  box-shadow: 0 0 0 3px rgba(92,205,255,0.25), 0 0 18px rgba(92,205,255,0.45);
+}
+.seat.is-active .seat-avatar {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255,204,77,0.25), 0 0 18px rgba(255,204,77,0.45);
+  animation: avatarPulse 1.4s ease-in-out infinite;
+}
+@keyframes avatarPulse {
+  0%, 100% { transform: scale(1);    }
+  50%      { transform: scale(1.07); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seat.is-active .seat-avatar { animation: none; }
+}
+
+/* Reflow .seat-ring into a vertical column so the avatar + name +
+   stack + status + cards stack top-to-bottom. We don't reset the
+   padding/border (kept from earlier turns). */
+.seat-ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.seat-ring .name {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.1;
+  max-width: 12ch;
+}
+/* Trim stack text — keep the slot, smaller wordmark under the avatar. */
+.seat-ring .stack { font-size: 12px; }
+
+/* Dealer chip ('D') — small circular badge that floats on the edge
+   of the seat at table.buttonIndex. Rendered as a sibling of the
+   .seat-ring inside .seat so CSS can position it absolutely
+   without disturbing the seat's own layout. */
+.seat-dealer-chip {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #fff7d4, #ffe27a 60%, #c9931f);
+  color: #2a1d00;
+  font-weight: 900;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(0,0,0,0.35);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.30) inset;
+  z-index: 4;
+  letter-spacing: -0.5px;
+  pointer-events: none;
+}
+
+/* Bet chip — small chip-stack indicator with the seat's contributed
+   amount, anchored toward the felt center (renders only when
+   contributed > 0). Never intercepts clicks on the seat. */
+.seat-bet-chip {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 36px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #2a1d00;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(0,0,0,0.35);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.18) inset;
+  z-index: 3;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Toned-down 'Sit here' empty-seat pill. Smaller, more transparent,
+   blends into the felt. The hover/focus-visible accent is preserved
+   from the earlier design so a discoverable affordance remains. */
+.empty-seat {
+  background: rgba(0,0,0,0.22);
+  border: 1px dashed rgba(255,255,255,0.18);
+  color: var(--text-mute);
+  font-size: 10px;
+  opacity: 0.85;
+  min-height: 56px;
+  padding: 10px 12px;
+}
+.empty-seat:hover,
+.empty-seat:focus-visible {
+  opacity: 1;
+  background: rgba(0,0,0,0.50);
+  border-color: var(--accent);
+  border-style: solid;
+  color: var(--accent);
+}
+
+/* ---- Chat redesign: bubble + slide-in panel. ---- */
+
+/* Chat-bubble icon — fixed bottom-right corner of the table screen.
+   The button lives inside #view-table so the parent's display:none
+   already hides it on non-table views. No JS gate needed beyond the
+   click handler that toggles .is-open on .chat-panel. */
+.chat-bubble {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);  /* above action-bar */
+  right: calc(env(safe-area-inset-right, 0px) + 14px);
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.20);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 240;
+  box-shadow: var(--shadow-md);
+  transition: transform 120ms var(--ease), background 120ms, border-color 120ms;
+  padding: 0;
+}
+.chat-bubble:hover { background: rgba(255,255,255,0.18); border-color: var(--accent); transform: translateY(-2px); }
+.chat-bubble:active { transform: translateY(0); }
+.chat-bubble:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble:hover { transform: none; }
+}
+
+/* Chat panel — default state (no .is-open class) is entirely
+   hidden. The earlier always-visible mobile chat-strip math is
+   overridden here (later in source order) so the panel only
+   appears when the bubble is tapped. */
+.chat-panel {
+  display: none;
+  position: fixed;
+  z-index: 230;
+  top: calc(env(safe-area-inset-top, 0px) + 56px + 12px);    /* below top-bar */
+  right: calc(env(safe-area-inset-right, 0px) + 14px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);    /* above action-bar */
+  width: min(340px, calc(100vw - 28px));
+  max-width: 360px;
+  padding: 12px;
+  background: rgba(7, 11, 9, 0.92);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(14px);
+  flex-direction: column;
+  /* Reset the legacy vertical-flow margin — fixed positioning makes
+     it moot. */
+  margin-top: 0;
+}
+.chat-panel.is-open {
+  display: flex;
+  animation: chatSlideIn 240ms var(--ease) both;
+}
+@keyframes chatSlideIn {
+  from { transform: translateX(40px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-panel.is-open { animation: none; }
+}
+
+/* ---- Mobile-only overrides (≤720px) ---- */
+@media (max-width: 720px) {
+  /* Drop the always-visible chat-strip math now that the new
+     chat-bubble + slide-in panel replaces it. The poker-table
+     gains ~92px of vertical real estate (chat-strip height gone).
+     !important isn't needed — same specificity rules and this
+     block is the LAST @media (max-width:720px) in the file. */
+  #view-table {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 56px + 8px);
+  }
+  /* On phones the chat-bubble sits higher so it clears the
+     self-panel tray (~120-150px tall in the mobile layout,
+     depending on stack length and status line) with generous
+     cushion. Bottom anchor leaves an extra ~16-20px gap above
+     the self-panel's top edge so the bubble never overlaps the
+     viewer's own cards (the spec's 'must not cover your cards'
+     invariant). 160px is comfortable on a 390x844 viewport; bump
+     further on smaller heights if needed. */
+  .chat-bubble {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 164px);
+    right: calc(env(safe-area-inset-right, 0px) + 12px);
+    width: 48px;
+    height: 48px;
+  }
+  /* Slide-in chat panel takes nearly full width on phones — better
+     thumb-typing surface. */
+  .chat-panel {
+    width: calc(100vw - 24px);
+    max-width: none;
+    right: 12px;
+  }
+  /* Trim seat-ring for the dense phone layout. Cards still draw at
+     56px wide (the existing .seat-ring .cards rule is unchanged). */
+  .seat-ring { min-width: 0; padding: 8px 8px; }
+  .seat-avatar { width: 42px; height: 42px; font-size: 13px; margin-bottom: 4px; }
+  .seat-bet-chip { min-width: 30px; height: 20px; font-size: 10px; }
+}
+@media (max-width: 480px) {
+  .seat-ring { padding: 6px 6px; }
+  .seat-avatar { width: 36px; height: 36px; font-size: 12px; }
+}
+

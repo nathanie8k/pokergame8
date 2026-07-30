@@ -179,6 +179,29 @@ function formatNumber(n) {
 
 function rankLabel(rank) { return RANK_NAMES[rank] || String(rank); }
 
+// Derive 1- or 2-letter initials from a display name for the seat
+// avatar circle. Purely cosmetic — never used for any identification
+// logic. Single-word names get just the first letter; multi-word names
+// get the first letter of the first + first letter of the second word;
+// missing/empty names get a safe "?" placeholder.
+function getInitials(name) {
+  if (!name || typeof name !== 'string') return '?';
+  // First normalise diacritics to ASCII so names like "Renée" or
+  // "José" don't get shredded by the ASCII-only strip below ("Renée"
+  // → "Renee" instead of "Rene"). Then strip non-[A-Za-z0-9_]
+  // characters to drop leading suit prefixes the random-name
+  // generator emits ("♠Lucky12", "♥Brave88") — purely cosmetic —
+  // and take the first letter of up to the first two surviving
+  // words. Empty / missing text falls back to a safe "?".
+  const normalised = name.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  const stripped = normalised.replace(/[^A-Za-z0-9_]+/g, ' ');
+  const parts = stripped.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  const first = parts[0].charAt(0) || '?';
+  const second = parts.length > 1 ? (parts[1].charAt(0) || '') : '';
+  return (first + second).toUpperCase();
+}
+
 // ---------- View switching ----------
 
 function setView(v) {
@@ -693,7 +716,12 @@ function renderSeat(seat, idx, table, total) {
   if (idx === table.sbIndex)     nameClasses.push('sb-mark');
   if (idx === table.bbIndex)     nameClasses.push('bb-mark');
 
+  // Avatar circle derives 1-2 capital letters from seat.name via the
+  // getInitials helper below. Purely cosmetic — the avatar is the
+  // redesigned seat-pill's primary visual; the name row now sits
+  // beneath it.
   const ringChildren = [
+    el('div', { class: 'seat-avatar', 'aria-hidden': 'true', text: getInitials(seat.name) }),
     el('div', { class: nameClasses.join(' '), text: seat.name }),
   ];
   // Stack display — animate value changes via tickCount (purely cosmetic).
@@ -750,6 +778,22 @@ function renderSeat(seat, idx, table, total) {
   // buildRing(...ringChildren) call below folds all siblings into one
   // ring so the seat reads as name + status + cards inside one pill.
   wrap.appendChild(buildRing(...ringChildren));
+  // Dealer chip — small circular "D" badge that floats on the edge of
+  // the seat at table.buttonIndex. Rendered as a sibling of the
+  // .seat-ring so CSS can position it independently. Purely cosmetic —
+  // the engine + every other UI surface already key off
+  // table.buttonIndex directly.
+  if (idx === table.buttonIndex) {
+    wrap.appendChild(el('div', { class: 'seat-dealer-chip', text: 'D', 'aria-label': 'Dealer button' }));
+  }
+  // Bet chip — small chip-stack indicator showing the seat's
+  // contributed amount, anchored toward the table center. Renders
+  // only when the seat has chips actively on the felt (contributed > 0).
+  // Purely cosmetic — the amount is consumed verbatim from the socket
+  // payload (no client-side math, no game-state read).
+  if (seat.contributed && seat.contributed > 0) {
+    wrap.appendChild(el('div', { class: 'seat-bet-chip', text: formatNumber(seat.contributed) }));
+  }
   // Showdown banner: a floating pill anchored above the seat that lights
   // up for the same undismissable showdown window the modal uses (10
   // seconds; same contract — no close path until the timer expires).
@@ -2063,9 +2107,20 @@ socket.on('chat_update', ({ tableId, messages }) => {
 });
 
 // ---------- Wire up UI buttons ----------
-
-document.addEventListener('DOMContentLoaded', () => {
-  $('loginBtn').addEventListener('click', doLogin);
+  document.addEventListener('DOMContentLoaded', () => {
+    // Chat-bubble button (added by the redesigned table screen) toggles
+    // .is-open on the chat panel; CSS handles the slide-in overlay
+    // motion. Single click handler — no socket events, no game-state
+    // mutations. The button lives inside #view-table so the parent's
+    // display:none already hides it on non-table views.
+    const chatBubble = $('chatBubbleBtn');
+    if (chatBubble) {
+      chatBubble.addEventListener('click', () => {
+        const panel = $('chatPanel');
+        if (panel) panel.classList.toggle('is-open');
+      });
+    }
+    $('loginBtn').addEventListener('click', doLogin);
   $('loginName').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   $('refreshNamesBtn').addEventListener('click', () => socket.emit('random_names'));
 

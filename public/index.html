@@ -181,6 +181,16 @@
         </div>
       </div>
 
+      <!-- Chat bubble — fixed bottom-right of the table screen.
+           Tap toggles the .is-open class on #chatPanel; CSS handles
+           the slide-in overlay motion and the open/close state.
+           No socket events or game state touched — purely a UI gate. -->
+      <button class="chat-bubble" id="chatBubbleBtn" type="button" aria-label="Open chat" title="Chat">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+        </svg>
+      </button>
+
       <div class="hand-log" id="handLog"></div>
     </section>
 
