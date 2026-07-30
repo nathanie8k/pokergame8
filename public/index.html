@@ -151,6 +151,19 @@
           <div class="hand-result" id="handResult" style="display:none"></div>
         </div>
         <div class="seats" id="seatsContainer"></div>
+        <!-- Chat bubble — moved INSIDE .poker-table so it positions
+             absolutely relative to the table area only (which has
+             position:relative). Anchored to the bottom-right corner
+             of the felt via CSS; never sits over the viewer's own
+             cards, the action buttons, or the raise controls (those
+             live OUTSIDE the .poker-table below it). The click
+             handler that toggles .is-open on #chatPanel stays the
+             same — only the DOM location changed. -->
+        <button class="chat-bubble" id="chatBubbleBtn" type="button" aria-label="Open chat" title="Chat">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+        </button>
       </div>
 
       <!-- Self-panel: highlighted on mobile (max-width: 720px) via CSS as
@@ -169,27 +182,32 @@
         </div>
       </div>
 
+      <!-- Action row: Fold / Check / Call / All-in only. The Raise
+           submit button lives one row BELOW this (in .raise-row),
+           alongside the slider + Min/2x/Pot/All presets. Splitting
+           them prevents the action-bar's flex-wrap from pushing
+           raise controls into the .self-panel (player's cards) zone
+           above. All element IDs preserved so client.js's
+           setupActionButtons + raise handlers continue to work
+           unchanged. -->
       <div class="action-bar" id="actionBar">
         <button class="action-btn fold"   data-action="fold">Fold</button>
         <button class="action-btn check"  data-action="check">Check</button>
         <button class="action-btn call"   data-action="call">Call</button>
         <button class="action-btn all-in" data-action="all_in">All-in</button>
-        <div class="bet-controls" id="betControls">
-          <button class="action-btn raise" id="raiseBtn">Raise</button>
-          <input id="raiseAmount" type="number" min="1" step="1" />
-          <div class="raise-presets" id="raisePresets"></div>
-        </div>
       </div>
 
-      <!-- Chat bubble — fixed bottom-right of the table screen.
-           Tap toggles the .is-open class on #chatPanel; CSS handles
-           the slide-in overlay motion and the open/close state.
-           No socket events or game state touched — purely a UI gate. -->
-      <button class="chat-bubble" id="chatBubbleBtn" type="button" aria-label="Open chat" title="Chat">
-        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-        </svg>
-      </button>
+      <!-- Raise controls row: number input + Min/2x/Pot/All presets
+           + Raise submit. Sibling of .action-bar — they no longer
+           share a single flex-wrap container, so the raise UI can
+           never overflow upward onto .self-panel. Mobile CSS places
+           this row BELOW the action row, the table area is the only
+           zone that flex-shrinks to accommodate. -->
+      <div class="raise-row" id="betControls">
+        <input id="raiseAmount" type="number" min="1" step="1" />
+        <div class="raise-presets" id="raisePresets"></div>
+        <button class="action-btn raise" id="raiseBtn">Raise</button>
+      </div>
 
       <div class="hand-log" id="handLog"></div>
     </section>

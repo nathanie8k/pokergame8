@@ -1371,6 +1371,12 @@ function setupActionButtons(selfSeat, t) {
   const maxRaise = selfSeat.stack + selfSeat.contributed;
 
   raiseBtn.disabled = selfSeat.stack <= 0 || maxRaise < minRaiseTotal;
+  // Mirror the disabled state on the .raise-row parent so its
+  // mobile-CSS :not(.is-active) collapse-rule hides the row when
+  // raise isn't legal. setupActionButtons is the only writer —
+  // the class is reset on every renderTable round. Purely cosmetic
+  // layout logic; no socket events touched.
+  $('betControls').classList.toggle('is-active', !raiseBtn.disabled);
   // When no one has bet yet (post-flop first action or a pre-flop limp scenario),
   // the existing "Raise" button takes a Bet role. Relabel it so the player
   // sees the correct poker term.

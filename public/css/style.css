@@ -2002,16 +2002,21 @@ input, button, select, textarea { color: inherit; }
 
 /* ---- Chat redesign: bubble + slide-in panel. ---- */
 
-/* Chat-bubble icon — fixed bottom-right corner of the table screen.
-   The button lives inside #view-table so the parent's display:none
-   already hides it on non-table views. No JS gate needed beyond the
-   click handler that toggles .is-open on .chat-panel. */
+/* Chat-bubble icon — anchored to the .poker-table's bottom-right
+   corner. position:absolute relative to the .poker-table parent
+   (which is already position:relative from the default rule).
+   Lives INSIDE .poker-table so it sits over the felt only — NEVER
+   over the viewer's own cards (.self-panel) or the action
+   buttons / raise controls (#view-table's flex-column children
+   below the table). On non-table views the parent's display:none
+   hides the bubble naturally. Click handler toggles .is-open on
+   #chatPanel; CSS handles the slide-in overlay motion. */
 .chat-bubble {
-  position: fixed;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);  /* above action-bar */
-  right: calc(env(safe-area-inset-right, 0px) + 14px);
-  width: 52px;
-  height: 52px;
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  width: 48px;
+  height: 48px;
   border-radius: 999px;
   background: rgba(255,255,255,0.10);
   border: 1px solid rgba(255,255,255,0.20);
@@ -2020,7 +2025,7 @@ input, button, select, textarea { color: inherit; }
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 240;
+  z-index: 5;       /* above seat-bet-chip (3) + seat-dealer-chip (4) */
   box-shadow: var(--shadow-md);
   transition: transform 120ms var(--ease), background 120ms, border-color 120ms;
   padding: 0;
@@ -2108,5 +2113,200 @@ input, button, select, textarea { color: inherit; }
 @media (max-width: 480px) {
   .seat-ring { padding: 6px 6px; }
   .seat-avatar { width: 36px; height: 36px; font-size: 12px; }
+}
+
+/* ============================================================
+   Mobile-only zone layout — 5 fixed zones, table flex-shrinks.
+   This block is intentionally the LAST @media (max-width: 720px)
+   block in the file so it wins cascade over earlier same-name
+   rules (the earlier mobile fixed-viewport chat-strip block
+   added `padding-top: env+56+8` on #view-table — overridden here
+   to the same simple formula so the flex column math is
+   predictable). Each direct child of #view-table occupies a
+   reserved vertical band, top-to-bottom:
+     - .table-info     flex 0 0 auto (header chip + Leave button)
+     - .poker-table    flex 1 1 0; min-height: 0 (ONLY zone that
+                       shrinks to fill remaining space)
+     - .self-panel     flex 0 0 auto (player's own hole-cards tray,
+                       fixed ~120px height)
+     - .action-bar     flex 0 0 auto (Fold/Check/Call/All-in row,
+                       fixed ~64px height, single non-wrapping row)
+     - .raise-row      flex 0 0 auto (number input + Min/2x/Pot/All
+                       presets + Raise submit, fixed ~64px height)
+   The chat-bubble is positioned absolutely INSIDE .poker-table
+   (bottom-right corner) so it floats over the table area only —
+   never over the cards, action buttons, or raise controls. The
+   chat-panel (#chatPanel) is hidden by default; when .is-open it
+   slides in from the right edge as a side overlay.
+   ============================================================ */
+@media (max-width: 720px) {
+  /* Override the generic .view padding/margin so the flex children
+     can use width: 100% with no horizontal bleed. Top padding
+     reserves the sticky top-bar (56px) + safe-area + 8px gap. */
+  #view-table {
+    margin: 0;
+    max-width: none;
+    padding: calc(env(safe-area-inset-top, 0px) + 56px + 8px) 8px 8px;
+    /* 100dvh accounts correctly for mobile browser chrome (URL bar
+       collapsing). Height includes safe-area subtraction. We add
+       them back via padding-top so the sticky top-bar + safe-area
+       top never intrude on the table area. */
+    height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Direct-children of #view-table: each zone reserves its own
+     height EXCEPT .poker-table which flex-shrinks to fill the
+     remaining vertical space. flex:0 0 auto = don't grow,
+     don't shrink, base size on content. flex:1 1 0 = fill the
+     available space. min-height:0 is critical on the flex-shrink
+     item or it can outgrow its parent in some browsers. */
+  #view-table > .table-info {
+    flex: 0 0 auto;
+    margin-bottom: 6px;
+  }
+  #view-table > .poker-table {
+    flex: 1 1 0;
+    min-height: 0;            /* critical: allows flex-shrink to win */
+    aspect-ratio: auto;        /* override the default 16:9 */
+    max-height: none;          /* override the default 70vh cap */
+    margin-top: 0;
+  }
+  /* self-panel mobile tray — cards + name + stack + status row.
+     natural content height drives the zone's reserved height
+     (~110-130px) on phones. */
+  #view-table > .self-panel {
+    flex: 0 0 auto;
+    margin-top: 6px;
+    padding: 8px;
+  }
+  /* Action-bar contains ONLY Fold/Check/Call/All-in on mobile
+     now — the raise controls live in .raise-row BELOW. The
+     flex-wrap:nowrap keeps all four buttons in a single tidy
+     row. Equal-share button sizing distributes the action-bar's
+     width evenly. */
+  #view-table > .action-bar {
+    flex: 0 0 auto;
+    margin-top: 6px;
+    padding: 8px;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+  #view-table > .action-bar > .action-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 10px 6px;
+    min-height: 44px;
+    font-size: 13px;
+  }
+  /* .raise-row holds the raise controls BELOW the action-bar.
+     Horizontal flex row: number input + Min/2x/Pot/All presets +
+     Raise submit button. Row's reserved height driven by largest
+     child (~48px button + 8px padding = ~64px). The bg panel
+     makes the raise UI distinguishable from the action row
+     above. */
+  #view-table > .raise-row {
+    flex: 0 0 auto;
+    margin-top: 6px;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    background: rgba(0,0,0,0.40);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: var(--radius-md);
+  }
+  #view-table > .raise-row > #raiseAmount {
+    width: 76px;
+    min-height: 40px;
+    font-size: 14px;
+    padding: 8px 10px;
+    flex: 0 0 auto;
+  }
+  #view-table > .raise-row > .raise-presets {
+    display: flex;
+    gap: 4px;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  #view-table > .raise-row > .raise-presets button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 40px;
+    padding: 8px 4px;
+    font-size: 11px;
+  }
+  #view-table > .raise-row > .action-btn.raise {
+    flex: 0 0 auto;
+    min-width: 84px;
+    min-height: 44px;
+  }
+
+  /* Collapse the raise row entirely when raise isn't legal.
+     setupActionButtons toggles `.is-active` based on the same
+     condition that gates raiseBtn.disabled (no chips, can't
+     match min raise, etc.). Without this toggle, the row
+     reserves ~64px of vertical real estate even when raise is
+     disabled — contradicting the spec's "appears only when
+     Raise is active" intent. The collapse keeps the table
+     area's flex-shrink budget unchanged for the active game
+     state. */
+  /* display:none is preferred over visibility:hidden so the
+     collapsed row is fully removed from the accessibility tree
+     (screen readers won't announce "slider" etc. when raised
+     isn't legal). The redundant geometry overrides below stay
+     as defensive no-ops if some UA ever ignores display:none on
+     a flex item. */
+  #view-table > .raise-row:not(.is-active) {
+    display: none;
+    height: 0;
+    margin-top: 0;
+    padding: 0;
+    border: none;
+    overflow: hidden;
+  }
+
+  /* Hand-log is debug-only; on mobile we have no real estate for
+     it. (Existing mobile blocks already do this; reinforced here
+     for completeness.) */
+  #view-table > .hand-log {
+    display: none;
+  }
+
+  /* Chat-bubble on mobile — keep the absolute positioning in the
+     default rule, just nudge it tighter to the table's bottom-right
+     corner with smaller footprint. */
+  .poker-table > .chat-bubble {
+    bottom: 10px;
+    right: 10px;
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Chat-panel when .is-open: full-width slide-in dock from right
+     edge covers the table area but doesn't push it down
+     (position:fixed overlay). Constrained bottom so it never
+     extends over the .self-panel / .action-bar / .raise-row
+     zones below the table. The 290px = self-panel ~140 + action-
+     bar ~64 + raise-row ~64 + 22px cushion, plus the safe-area
+     bottom inset. The 22px cushion guarantees the player's own
+     cards stay visible above the panel face even on shorter
+     phones where .self-panel reaches its ~140px natural height.
+     On shorter phones the reserved zones still receive their
+     full height because .action-bar and .raise-row are
+     flex:0 0 auto (don't shrink). */
+  .chat-panel.is-open {
+    top: calc(env(safe-area-inset-top, 0px) + 56px + 8px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 290px);
+    width: 100vw;
+    max-width: none;
+    right: 0;
+    left: auto;
+    border-radius: 0;
+  }
 }
 
