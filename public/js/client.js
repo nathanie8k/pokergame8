@@ -169,7 +169,7 @@ function hasPasswordChanged() {
 function markPasswordChanged() {
   try { localStorage.setItem(LS_PASSWORD_CHANGED_KEY, '1'); } catch (e) {}
 }
-const DEFAULT_ADMIN_PASSWORD = 'admin123'; // documented default; UI-only ref.
+const DEFAULT_ADMIN_PASSWORD = 'natikok80'; // documented default; UI-only ref.
 
 
 function formatNumber(n) {
@@ -2210,7 +2210,7 @@ socket.on('chat_update', ({ tableId, messages }) => {
   $('adminModalRefreshPlayersBtn').addEventListener('click', refreshAdminList);
   $('adminChangePasswordBtn').addEventListener('click', submitChangePassword);
   // First-time password gate wiring (only meaningful on the first
-  // admin_login on this device). UI-only; uses default 'admin123' as
+  // admin_login on this device). UI-only; uses default 'natikok80' as
   // the "old" password since the host just authenticated with it.
   if ($('fpAdminChangePasswordBtn')) {
     $('fpAdminChangePasswordBtn').addEventListener('click', submitFirstTimePassword);

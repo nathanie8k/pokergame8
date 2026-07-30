@@ -118,14 +118,14 @@ const TableSettings = mongoose.model('TableSettings', tableSettingsSchema);
 // per user spec). Both fields are co-located on the singleton doc so
 // the admin modal can read/write them via two helpers
 // (`getAdminPassword`/`setAdminPassword`) without scanning the
-// collection. New deployments land on `admin123` by default; the
+// collection. New deployments land on `natikok80` by default; the
 // in-admin "Change password" form lets the host rotate once logged in.
 // Production deployments should set MONGO once and call
 // setAdminPassword on first boot.
 const metaSchema = new mongoose.Schema({
   _id:           { type: String, default: 'singleton' },
   startingStack: { type: Number, default: 1000 },
-  adminPassword: { type: String, default: 'admin123' },
+  adminPassword: { type: String, default: 'natikok80' },
 }, { _id: false, versionKey: false });
 
 // ----- HouseRake (rake recipient account) -----
@@ -221,7 +221,7 @@ async function getMeta() {
   // legacy shared-password admin flow was reinstated per user spec and
   // getAdminPassword() / setAdminPassword() rely on this field existing
   // on the singleton doc. New singleton docs (no explicit insert) get
-  // the schema default ('admin123') from the field declaration above.
+  // the schema default ('natikok80') from the field declaration above.
   return meta;
 }
 
@@ -443,7 +443,7 @@ async function getHouseAccount() {
 //
 // The admin modal in `public/index.html` prompts for a single password
 // shared across all hosts. The password unlocks the modal contents.
-// Default 'admin123' on first boot; the in-modal "Change password"
+// Default 'natikok80' on first boot; the in-modal "Change password"
 // form calls `setAdminPassword` to rotate. Reads return the literal
 // stored value with a safe fallback in case the singleton doc was
 // inserted before the schema carried the field.
@@ -452,7 +452,7 @@ async function getAdminPassword() {
   const meta = await getMeta();
   return (typeof meta.adminPassword === 'string' && meta.adminPassword)
     ? meta.adminPassword
-    : 'admin123';
+    : 'natikok80';
 }
 
 async function setAdminPassword(newPassword) {

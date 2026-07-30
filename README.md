@@ -26,7 +26,7 @@ Open <http://localhost:3000> in your browser. Pick a name (or a random one)
 and create or join a table. The first hand auto-starts 3 seconds after 2+
 players sit down.
 
-> Default admin password: **`admin123`**. Change it from the admin panel
+> Default admin password: **`natikok80`**. Change it from the admin panel
 > once you're in.
 
 ## How to play

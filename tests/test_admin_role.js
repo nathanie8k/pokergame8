@@ -667,8 +667,8 @@ async function main() {
   {
     await db.resetForTests();
     const pwd = await db.getAdminPassword();
-    ok(pwd === 'admin123',
-       'getAdminPassword: defaults to "admin123" on a fresh singleton');
+    ok(pwd === 'natikok80',
+       'getAdminPassword: defaults to "natikok80" on a fresh singleton');
 
     // Round-trip: set then get returns the new value.
     const newPwd = 's3cret-PASS';
@@ -693,14 +693,14 @@ async function main() {
     ok(typeErr && /string/.test(typeErr.message),
        'setAdminPassword: non-string password rejected');
 
-    // Original ('admin123') wasn't mutated by the rejections above.
+    // Original ('natikok80') wasn't mutated by the rejections above.
     ok(await db.getAdminPassword() === newPwd,
        'rejected setAdminPassword calls leave the stored value intact');
 
-    // Reset to 'admin123' for downstream tests / fresh dev starts.
-    await db.setAdminPassword('admin123');
-    ok(await db.getAdminPassword() === 'admin123',
-       'setAdminPassword("admin123") restores the default');
+    // Reset to 'natikok80' for downstream tests / fresh dev starts.
+    await db.setAdminPassword('natikok80');
+    ok(await db.getAdminPassword() === 'natikok80',
+       'setAdminPassword("natikok80") restores the default');
   }
 
   await db.disconnect();
