@@ -539,20 +539,29 @@ function joinTable(tableId, seatIdx) {
 // ---------- Table view ----------
 
 function seatPosition(idx, total, maxSeats) {
-  // Place seats equally around the oval table, starting from the top going
-  // clockwise. Returns CSS position values.
-  if (total <= 1) return { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' };
-  const angle = -Math.PI / 2 + (2 * Math.PI * idx / total);
-  const xRad = 0.42;
-  const yRad = total >= 6 ? 0.34 : (total >= 4 ? 0.36 : 0.34);
-  const x = 50 + xRad * 100 * Math.cos(angle);
-  const y = 50 + yRad * 100 * Math.sin(angle);
-  return {
-    left: x.toFixed(2) + '%',
-    top:  y.toFixed(2) + '%',
-    transform: 'translate(-50%, -50%)',
-  };
+  // PURELY COSMETIC. Kept as a no-op for back-compat with callers
+  // that still Object.assign(wrap.style, seatPosition(...)); the
+  // CSS now positions seats via .seat[data-slot="N"] rules, and
+  // JS sets wrap.dataset.slot directly. Returning {} here means
+  // older inline style assignments are still safe (no-op).
+  return {};
 }
+
+// Map of maxSeats → list of slot indices that should be visible
+// around the felt. The viewer always lands at slot 0 (front,
+// bottom-center). Each step clockwise from the viewer fills the
+// next slot in the list. Slot 5 = top-center (directly opposite
+// viewer); slots 1/2 = viewer's left/right; slots 3/4 =
+// top-left/top-right. Used by renderTable loop + renderSeat to
+// pin every occupied/unoccupied seat at a fixed CSS coordinate
+// via data-slot.
+const SLOT_LAYOUTS = {
+  2: [0, 5],              // heads-up: viewer + opposite
+  3: [0, 1, 2],           // 3-max: viewer + 2 sides
+  4: [0, 1, 2, 5],        // 4-max: viewer + 2 sides + opposite
+  5: [0, 1, 2, 3, 4],     // 5-max: viewer + 2 sides + 2 top corners
+  6: [0, 1, 2, 3, 4, 5],  // 6-max: full ring
+};
 
 function renderTable() {
   const t = state.currentTable;
@@ -625,7 +634,18 @@ function renderTable() {
   seatsHost.innerHTML = '';
   const N = t.maxSeats;
   let playerSeatedHere = false;
-  t.seats.forEach((seat, i) => {
+  // Find the viewer's server-side seat index, then lay players out
+  // clockwise starting at the viewer's relative position so the
+  // viewer always lands at slot 0 (front, bottom-center). Server
+  // seat indices are positional around the table from the dealer;
+  // visual slots are fixed CSS coordinates (see SLOT_LAYOUTS).
+  const selfServerIdx = t.seats.findIndex(s => s.isSelf);
+  const visible = SLOT_LAYOUTS[N] || SLOT_LAYOUTS[6];
+  // relIdx = 0 → viewer; relIdx = 1 → next clockwise; ...
+  for (let relIdx = 0; relIdx < visible.length; relIdx++) {
+    const slotIdx   = visible[relIdx];
+    const serverIdx = (selfServerIdx + relIdx + N) % N;
+    const seat      = t.seats[serverIdx];
     // A seat with `removed` or `disconnected === true` is server-side a stale
     // occupant that the lobby's seatsTaken count already excludes — see
     // server.js#listTables and server.js#join_table. Render it as the same
@@ -635,33 +655,35 @@ function renderTable() {
     // and the server can still toast "Seat taken" if they tried to sit there.
     if (seat && seat.occupied && !seat.removed && !seat.disconnected) {
       if (seat.isSelf) playerSeatedHere = true;
-      const seatEl = renderSeat(seat, i, t, N);
+      const seatEl = renderSeat(seat, serverIdx, t, N);
+      seatEl.dataset.slot = String(slotIdx);
       seatsHost.appendChild(seatEl);
     } else {
       // Take-a-seat pill: subtle empty chair with a + icon and "Sit here" label.
       // The label is hidden on narrow viewports (≤480px via CSS) so it never
-      // truncates mid-character ("...ere").
+      // truncates mid-character ("...ere"). serverIdx is passed to the join
+      // API; slotIdx drives CSS positioning via data-slot.
       const emptyEl = el('div', {
         class: 'empty-seat',
         title: 'Click to sit here',
-        onclick: () => seatEmpty(i, t.id),
+        onclick: () => seatEmpty(serverIdx, t.id),
       }, [
         el('span', { class: 'empty-seat-icon', text: '+', 'aria-hidden': 'true' }),
         el('span', { class: 'empty-seat-label', text: 'Sit here' }),
       ]);
-      Object.assign(emptyEl.style, seatPosition(i, N));
+      emptyEl.dataset.slot = String(slotIdx);
       seatsHost.appendChild(emptyEl);
     }
-  });
+  }
 
   // Sit-out / Sit-in buttons for self
   const selfSeat = t.seats.find(s => s.occupied && s.isSelf);
-  // Self-panel: populated any time the viewer is seated so it's ready when
-  // the viewport narrows. CSS hides the element entirely on desktop and
-  // shows it as a prominent "your hand" card on phones/tablets, where the
-  // self seat is also hidden from the .seats row to keep the opponents
-  // strip from being cluttered by the viewer's own pill.
-  populateSelfPanel($('selfPanel'), selfSeat, t);
+  // Self-panel: now wraps BOTH populated cards AND a static action-bar
+  // (Fold/Check/Call/Raise/All-in). populateSelfPanel targets the inner
+  // #selfPanelCards div so the static action-bar isn't wiped on every
+  // renderTable pass. setupActionButtons continues to update the
+  // action-bar children's enabled/textContent — nothing else moves.
+  populateSelfPanel($('selfPanelCards'), selfSeat, t);
 
   $('sitOutBtn').style.display = (selfSeat && !selfSeat.folded && !selfSeat.allIn && !selfSeat.satOut && selfSeat.stack > 0) ? '' : 'none';
   // Sit-in only makes sense between hands (not folded / not all-in for current round).
@@ -709,7 +731,10 @@ function renderSeat(seat, idx, table, total) {
   if (isActive) classes.push('is-active');
   if (seat.isSelf) classes.push('is-self');
   const wrap = el('div', { class: classes.join(' ') });
-  Object.assign(wrap.style, seatPosition(idx, total));
+  // data-slot is set by the renderTable loop (which knows the viewer's
+  // relative position). Defensive default keeps the seat at slot 0 if
+  // renderSeat is called without the caller pre-setting data-slot.
+  wrap.dataset.slot = wrap.dataset.slot || '0';
 
   const nameClasses = ['name'];
   if (idx === table.buttonIndex) nameClasses.push('dealer-mark');
@@ -2114,23 +2139,31 @@ socket.on('chat_update', ({ tableId, messages }) => {
 
 // ---------- Wire up UI buttons ----------
   document.addEventListener('DOMContentLoaded', () => {
-    // Chat-bubble button is now the CHAT-STRIP header toggle. Lives
-    // inside #view-table (between .table-info and .poker-table as its
-    // own flex child). Click handler toggles .is-collapsed on the
-    // .chat-strip wrapper; CSS handles the chip-body reveal + caret
-    // rotation. Single click handler — no socket events, no game-state
-    // mutations. aria-expanded is synced for AT users.
+    // Chat-bubble button is now the RIGHT-EDGE chat-toggle tab. Lives
+    // INSIDE .poker-table (position:absolute against the table's right
+    // edge, not in any flex zone). Click handler toggles .is-open on
+    // #chatPanel \u2014 which is also inside .poker-table (position:
+    // absolute, slides in from the right via .is-open). aria-expanded
+    // tracks the open state for AT users. A separate #chatEdgeCloseBtn
+    // \u00d7\u00d7 inside the panel clears .is-open so users can dismiss the
+    // panel without reaching back to the right-edge tab. Both handlers
+    // are no-op safe if their target element isn't present yet.
     const chatBubble = $('chatBubbleBtn');
     if (chatBubble) {
       chatBubble.addEventListener('click', () => {
         const panel = $('chatPanel');
         if (!panel) return;
-        panel.classList.toggle('is-collapsed');
-        // aria-expanded tracks the inverse: collapsed => expanded=false.
-        chatBubble.setAttribute(
-          'aria-expanded',
-          panel.classList.contains('is-collapsed') ? 'false' : 'true'
-        );
+        const opened = panel.classList.toggle('is-open');
+        chatBubble.setAttribute('aria-expanded', opened ? 'true' : 'false');
+      });
+    }
+    const chatClose = $('chatEdgeCloseBtn');
+    if (chatClose) {
+      chatClose.addEventListener('click', () => {
+        const panel   = $('chatPanel');
+        const toggle  = $('chatBubbleBtn');
+        if (panel)  panel.classList.remove('is-open');
+        if (toggle) toggle.setAttribute('aria-expanded', 'false');
       });
     }
     $('loginBtn').addEventListener('click', doLogin);

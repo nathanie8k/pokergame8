@@ -2004,159 +2004,155 @@ input, button, select, textarea { color: inherit; }
   color: var(--accent);
 }
 
-/* ---- Chat redesign: bubble + slide-in panel. ---- */
+/* ---- Right-edge chat toggle + overlay panel ----
+   The chat now lives at the table's right edge instead of above
+   the table. .poker-table is position:relative, so the toggle +
+   overlay panel sit absolutely inside it — they CAN'T overlap
+   .self-panel or .raise-row below. */
 
-/* Chat-bubble icon — anchored to the .poker-table's bottom-right
-   corner. position:absolute relative to the .poker-table parent
-   (which is already position:relative from the default rule).
-   Lives INSIDE .poker-table so it sits over the felt only — NEVER
-   over the viewer's own cards (.self-panel) or the action
-   buttons / raise controls on any view other than #view-table —
-   the element ends up hidden by the surrounding view's
-   display:none naturally. Click handler toggles .is-collapsed
-   on the strip; CSS handles the body reveal + caret rotation.
-   The legacy .chat-bubble + .chat-panel.is-open slide-in rules
-   are kept below as inert shims for any element that still has
-   the old classes (backward-compatible — no rendering change
-   because .chat-strip rules below come later in cascade). */
-
-/* CHAT-STRIP — collapsible compact bar that lives ABOVE the
-   poker-table inside #view-table's flex column. Two states:
-
-     .is-collapsed (default): chip header only rendered.
-       Reserved height ~40px. Sits above the table; never
-       covers it.
-
-     (no .is-collapsed) expanded: chip header stays at the
-       top, message list + input appear in chat-strip-body;
-       pushes .poker-table down via flex-shrink. No absolute
-       positioning over the felt.
-
-   Element IDs are preserved (#chatPanel / #chatBubbleBtn /
-   #chatMessages / #chatInput / #chatSendBtn) so client.js
-   wiring continues to find them. .chat-panel class is
-   retained alongside .chat-strip so legacy spectator
-   styles (.chat-panel.read-only etc.) keep applying via
-   cascade; the new .chat-strip layout rules below come
-   AFTER the legacy .chat-panel slide-in defaults in source
-   order, so they win. */
-.chat-strip {
+/* Slim vertical toggle tab. Always visible. Centered vertically
+   against the right edge of .poker-table. Tap toggles .is-open
+   on #chatPanel. */
+.chat-edge-tab {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 80px;
   display: flex;
   flex-direction: column;
-  background: var(--bg-1);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-.chat-strip-head {
-  display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  background: transparent;
-  border: none;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 4px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-right: none;
+  border-radius: 14px 0 0 14px;
   color: var(--text);
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 0.6px;
   cursor: pointer;
-  text-align: left;
+  z-index: 4;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  transition: background 120ms, border-color 120ms;
 }
-.chat-strip-head:hover  { background: rgba(255,255,255,0.06); }
-.chat-strip-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.chat-strip-title { flex: 1 1 auto; }
-.chat-strip-caret {
-  display: inline-block;
-  transition: transform 180ms var(--ease);
-  color: var(--text-dim);
-  font-size: 11px;
+.chat-edge-tab:hover,
+.chat-edge-tab:focus-visible {
+  background: rgba(255, 204, 77, 0.15);
+  border-color: var(--accent);
+  outline: none;
 }
-.chat-strip:not(.is-collapsed) .chat-strip-caret { transform: rotate(180deg); }
-.chat-strip-body {
+.chat-edge-tab-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--text);
+  line-height: 1;
+}
+
+/* Chat overlay panel. Hidden by default; .is-open slides it in
+   from the right edge. Position:absolute inside .poker-table
+   means it can never extend beyond the felt's vertical bounds —
+   never covers .self-panel / .raise-row below. */
+.chat-edge-panel {
   display: none;
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 0;
+  max-width: 320px;
   flex-direction: column;
-  padding: 8px 12px 10px;
-  border-top: 1px solid rgba(255,255,255,0.08);
-  background: rgba(0,0,0,0.20);
+  background: rgba(7, 11, 9, 0.94);
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px 0 0 14px;
+  box-shadow: var(--shadow-lg);
+  z-index: 5;
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: width 220ms var(--ease);
 }
-.chat-strip:not(.is-collapsed) .chat-strip-body { display: flex; }
-/* Desktop-side cap on the inner chat-messages list. The legacy
-   `.chat-panel .chat-messages { max-height: 80px }` rule no longer
-   matches (parent dropped the .chat-panel class) and the
-   mobile-only override below doesn't fire on wider viewports —
-   so a long desktop chat history would otherwise stretch the
-   strip unboundedly. Capping at 220px and scrolling keeps the
-   row compact without losing the conversation. */
-.chat-strip > .chat-strip-body > .chat-messages {
-  max-height: 220px;
+.chat-edge-panel.is-open {
+  display: flex;
+  width: 75%;
+}
+.chat-edge-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.30);
+}
+.chat-edge-panel-title {
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.8px;
+  color: var(--accent);
+}
+.chat-edge-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.chat-edge-close:hover,
+.chat-edge-close:focus-visible {
+  background: rgba(255, 107, 107, 0.20);
+  border-color: var(--danger);
+  outline: none;
+}
+.chat-edge-panel > .chat-messages {
+  flex: 1 1 auto;
+  max-height: none;
+  padding: 8px 12px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
-@media (prefers-reduced-motion: reduce) {
-  .chat-strip-caret { transition: none; }
-}
-
-/* ---- Legacy slide-in chat-panel (inert shim kept for back-compat
-   with any element still carrying class .chat-panel; the new
-   chat-strip rules above win cascade for #chatPanel rendering). ---- */
-.chat-bubble {
-  position: absolute;
-  bottom: 14px;
-  right: 14px;
-  width: 48px;
-  height: 48px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.10);
-  border: 1px solid rgba(255,255,255,0.20);
-  color: var(--text);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 5;
-  box-shadow: var(--shadow-md);
-  transition: transform 120ms var(--ease), background 120ms, border-color 120ms;
-  padding: 0;
-}
-.chat-bubble:hover { background: rgba(255,255,255,0.18); border-color: var(--accent); transform: translateY(-2px); }
-.chat-bubble:active { transform: translateY(0); }
-.chat-bubble:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) {
-  .chat-bubble:hover { transform: none; }
-}
-.chat-panel {
-  display: none;
-  position: fixed;
-  z-index: 230;
-  top: calc(env(safe-area-inset-top, 0px) + 56px + 12px);
-  right: calc(env(safe-area-inset-right, 0px) + 14px);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
-  width: min(340px, calc(100vw - 28px));
-  max-width: 360px;
-  padding: 12px;
-  background: rgba(7, 11, 9, 0.92);
-  border: 1px solid rgba(255,255,255,0.16);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(14px);
-  flex-direction: column;
-  margin-top: 0;
-}
-.chat-panel.is-open {
+.chat-edge-panel > .chat-input-row {
   display: flex;
-  animation: chatSlideIn 240ms var(--ease) both;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.30);
 }
-@keyframes chatSlideIn {
-  from { transform: translateX(40px); opacity: 0; }
-  to   { transform: translateX(0);    opacity: 1; }
+.chat-edge-panel > .chat-input-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 36px;
+  background: rgba(0, 0, 0, 0.40);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.chat-edge-panel > .chat-input-row button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 12px;
+}
+.chat-edge-panel.read-only > .chat-input-row input,
+.chat-edge-panel.read-only > .chat-input-row button {
+  opacity: 0.45;
+  pointer-events: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  .chat-panel.is-open { animation: none; }
+  .chat-edge-panel { transition: none; }
 }
 
 /* ---- Mobile-only overrides (≤720px) ---- */
@@ -2370,55 +2366,259 @@ input, button, select, textarea { color: inherit; }
     display: none;
   }
 
-  /* Chat-strip on mobile — its own flex child of #view-table,
-     sitting BETWEEN .table-info and .poker-table. Default
-     `.is-collapsed` reserves ~48px (chip header only). Expanded
-     state reserves ~110px total (header ~48 + body ~58 + margins),
-     pushing .poker-table DOWN via the flex-column's shrink budget
-     — never overlaps. Tightened after first review so the
-     expanded body doesn't crowd the poker-table shrink budget on
-     short phones. */
-  #view-table > .chat-strip {
-    flex: 0 0 auto;
-    margin: 4px 0;
-  }
-  #view-table > .chat-strip > .chat-strip-head {
-    min-height: 32px;
-    padding: 6px 12px;
-    font-size: 13px;
-  }
-  #view-table > .chat-strip > .chat-strip-body {
-    max-height: 58px;
-    padding: 4px 8px 4px;
-  }
-  #view-table > .chat-strip > .chat-strip-body > .chat-messages {
-    max-height: 22px;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    font-size: 11px;
-    line-height: 1.2;
-  }
-  /* The input-row keeps a natural ~36-40px height inside the body,
-     so the body cap of 58 caps the visible vertical real estate
-     crisply. */
-  @media (max-height: 700px) {
-    /* Short phones: shrink body further so the .poker-table still
-       gets >200px even when chat AND raise are open simultaneously.
-       Head min-height 36 + padding 12 = 48px → meets iOS 44px tap
-       target on vertically-constrained devices (Galaxy S8 etc.). */
-    #view-table > .chat-strip > .chat-strip-body {
-      max-height: 46px;
-    }
-    #view-table > .chat-strip > .chat-strip-body > .chat-messages {
-      max-height: 14px;
-    }
-    #view-table > .chat-strip > .chat-strip-head {
-      min-height: 36px;
-      padding: 6px 12px;
-    }
-  }
+  /* The right-edge chat toggle lives inside .poker-table (position:
+     absolute) so it doesn't reserve any flex-column height on
+     mobile. Same for the .chat-edge-panel overlay (also absolute
+     inside .poker-table). Nothing to declare here — the chat's
+     vertical contribution is zero in the flex column budget. */
   /* Reduced-motion: caret rotation already disabled in the
      default block; nothing else to do here. */
 
+}
+
+/* =============================================================
+   Seat-position map — 6 fixed symmetric slots around the felt.
+
+     SLOT 0  top-center-ish... NO, slot 0 (the viewer) is at the
+     bottom-center (front), always — see SLOT 0 below.
+
+   The JS sets wrap.dataset.slot = N on each .seat / .empty-seat
+   element where N ∈ {0,1,2,3,4,5}. CSS positions each via the
+   rules below. The transform centers each pill at the exact
+   (left%, top%) coordinate so small seat widths don't drift.
+
+   Six slots: viewer always lands at slot 0 (front). The remaining
+   visible slots are filled by the next N-1 players clockwise;
+   unfilled slots make up the empty-seat count (with "Sit here"
+   click-handler). Which slots are visible is decided in JS via
+   SLOT_LAYOUTS[maxSeats]; the CSS below always defines all 6
+   positions so the DOM can include any of them.
+   ============================================================= */
+.seat,
+.empty-seat {
+  /* Reset inline positioning that earlier seatPosition() applied;
+     CSS takes over via data-slot selectors below. */
+  left: auto;
+  top: auto;
+  transform: translate(-50%, -50%);
+}
+.seat[data-slot="0"],
+.empty-seat[data-slot="0"] { left: 50%; top: 88%; }   /* front / viewer — pulled in from 96% so the pill bottom isn't clipped by .poker-table overflow:hidden */
+.seat[data-slot="1"],
+.empty-seat[data-slot="1"] { left:  8%; top: 60%; }   /* left */
+.seat[data-slot="2"],
+.empty-seat[data-slot="2"] { left: 92%; top: 60%; }   /* right */
+.seat[data-slot="3"],
+.empty-seat[data-slot="3"] { left: 20%; top: 14%; }   /* top-left — pulled in from 4% for the same reason */
+.seat[data-slot="4"],
+.empty-seat[data-slot="4"] { left: 80%; top: 14%; }   /* top-right */
+.seat[data-slot="5"],
+.empty-seat[data-slot="5"] { left: 50%; top:  6%; }   /* top-center — pulled in from 0% */
+
+/* Opponent seats — visibly smaller than the viewer so the table
+   reads as "you + opponents" with you primary. Avatar/name/stack
+   are shrunk; face-down card-backs are 22×32 each (was ~28×40). */
+.seat:not(.is-self) .seat-avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+}
+.seat:not(.is-self) .name {
+  font-size: 11px;
+  letter-spacing: 0.2px;
+}
+.seat:not(.is-self) .stack {
+  font-size: 11px;
+}
+.seat:not(.is-self) .seat-ring {
+  min-width: 72px;
+  padding: 4px 6px;
+}
+.seat:not(.is-self) .cards {
+  margin-top: 4px;
+  gap: 3px;
+}
+.seat:not(.is-self) .cards .card {
+  width: 22px;
+  height: 32px;
+  font-size: 11px;
+}
+.seat:not(.is-self) .empty-card {
+  width: 22px;
+  height: 32px;
+  border-radius: 4px;
+}
+
+/* Combined .self-panel: now contains BOTH the populated cards AND
+   the static action-bar in the same flex-row panel. flex:0 0 auto
+   keeps its natural height (driven by content); CSS no longer
+   fights for a fixed ~110px reserve. The right half folds in the
+   action-bar (Fold/Check/Call/Raise/All-in) which sits next to
+   the cards in the same panel. */
+.self-panel {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  padding: 8px;
+  background: var(--bg-1);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  margin-top: 6px;
+}
+.self-panel-cards {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 64px;
+}
+.self-panel-cards .self-cards {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+}
+.self-panel-cards .self-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Action-bar inline within .self-panel: 5 color-coded buttons.
+   Stretches to match cards height; font stays small so 5 buttons
+   + label + cards fit comfortably in a 64px-tall panel. */
+.self-panel > .action-bar {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+.self-panel > .action-bar > .action-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 56px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  background: rgba(0, 0, 0, 0.40);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.self-panel > .action-bar > .action-btn:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: var(--accent);
+}
+.self-panel > .action-bar > .action-btn.fold   { background: rgba(255, 107, 107, 0.18); border-color: var(--danger);  color: #ffd0d0; }
+.self-panel > .action-bar > .action-btn.check  { background: rgba(92, 217, 122, 0.16);  border-color: var(--good);    color: #c4f0d0; }
+.self-panel > .action-bar > .action-btn.call   { background: rgba(92, 205, 255, 0.16);  border-color: var(--info);    color: #cce8ff; }
+.self-panel > .action-bar > .action-btn.raise  { background: rgba(255, 204, 77, 0.20);  border-color: var(--accent);  color: var(--accent); }
+.self-panel > .action-bar > .action-btn.all-in { background: rgba(255, 155, 89, 0.18);  border-color: var(--warn);    color: #ffe0c4; }
+.self-panel > .action-bar > .action-btn:disabled {
+  /* Disabled buttons stay visible-but-greyed-out so the user always
+     sees the FULL action set (Fold/Check-or-Call/Raise/All-in) and
+     understands which one is unavailable in the current betting
+     context. display:none would create a half-state where the
+     .raise-row is hidden (via :not(.is-active) rule) but the
+     Raise button vanished — confusing UX. */
+  opacity: 0.40;
+  cursor: not-allowed;
+}
+.self-panel > .action-bar > .action-btn:not(:disabled):hover {
+  filter: brightness(1.12);
+}
+.self-panel > .action-bar.disabled { opacity: 0.7; }
+
+/* Raise sizing row: now sizing-only — #raiseAmount + Min/2x/Pot/All
+   presets. No Raise submit button (moved to action-bar above). The
+   row's display:none collapse rule (mobile @media) hides it when
+   raised isn't legal. */
+#view-table > .raise-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  padding: 6px 8px;
+  margin-top: 4px;
+  background: rgba(0, 0, 0, 0.40);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-md);
+}
+#view-table > .raise-row > #raiseAmount {
+  flex: 0 0 76px;
+  min-width: 0;
+  min-height: 40px;
+  font-size: 14px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.50);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: var(--text);
+}
+#view-table > .raise-row > .raise-presets {
+  flex: 1 1 0;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+#view-table > .raise-row > .raise-presets button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.40);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+}
+#view-table > .raise-row > .raise-presets button:hover {
+  background: rgba(255, 204, 77, 0.18);
+  border-color: var(--accent);
+}
+
+/* Reduce the abandon of the inline seat-positioning styles that the
+   refactor removed. Re-enforces that wrap.style.* are NOT applied
+   to seat elements anymore — purely defensive. */
+.seat[style*="left:"],
+.seat[style*="top:"],
+.empty-seat[style*="left:"],
+.empty-seat[style*="top:"] {
+  left: auto !important;
+  top: auto !important;
+}
+
+/* SHORT-PHONE OVERRIDE — Galaxy S8 (~700px tall viewport with both
+   chat AND raise open leaves the poker-table at ~310px height).
+   Edge slots (0/3/4/5) MUST be pulled further inward or their
+   pills (heights 70–110px) clip against .poker-table's
+   overflow:hidden. Slot 0 (viewer) drops 88%→78%; corners
+   (3/4) 14%→18%; top-center (5) 6%→14%. Bottom margin shrank to
+   ~13px / top margin ~8px even on the tightest viewport. */
+@media (max-height: 700px) {
+  .seat[data-slot="0"],
+  .empty-seat[data-slot="0"] { top: 78%; }
+  .seat[data-slot="3"],
+  .empty-seat[data-slot="3"] { top: 18%; }
+  .seat[data-slot="4"],
+  .empty-seat[data-slot="4"] { top: 18%; }
+  .seat[data-slot="5"],
+  .empty-seat[data-slot="5"] { top: 14%; }
 }
 

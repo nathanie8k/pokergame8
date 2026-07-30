@@ -126,8 +126,7 @@
       </div>
     </section>
 
-    <!-- ===== Table view ===== -->
-    <section id="view-table" class="view" style="display:none">
+    <!-- ===== Table view ===== -->    <section id="view-table" class="view" style="display:none">
       <div class="table-info">
         <div>
           <h2 id="tableName">Table</h2>
@@ -137,53 +136,6 @@
           <button id="sitOutBtn" class="ghost-btn" style="display:none">Sit out</button>
           <button id="sitInBtn"  class="ghost-btn" style="display:none">Sit in</button>
           <button id="leaveTableBtn" class="ghost-btn">Leave table</button>
-        </div>
-      </div>
-
-      <!-- Chat strip: collapsible compact bar ABOVE the poker-table
-           area (between .table-info and .poker-table). It is a flex
-           child of #view-table, occupying its own reserved vertical
-           zone — never absolute-positioned over the felt, never
-           overlapping the table. Default state is `.is-collapsed`
-           (chip header only, ~40px). Clicking the chip header
-           toggles `.is-collapsed` off, revealing the message list
-           + input; expanded state pushes .poker-table down via
-           flex-shrink instead of overlapping.
-
-           Element IDs preserved (#chatPanel, #chatBubbleBtn,
-           #chatMessages, #chatInput, #chatSendBtn) so client.js
-           continues to find them unchanged. The .chat-panel class
-           is intentionally kept alongside .chat-strip so the
-           legacy spectator-style rules (`.chat-panel.read-only`,
-           inner `.chat-messages` / `.chat-input-row` styles)
-           continue to apply via cascade. -->
-      <!-- Element class list is intentionally JUST .chat-strip + .is-collapsed.
-           Earlier iterations kept .chat-panel alongside .chat-strip so the
-           legacy `.chat-panel.read-only` spectator-dim rule still matched,
-           but cascade ordering let `.chat-panel { display: none; position:
-           fixed; }` win over the in-flow `.chat-strip` rules \u2014 hiding or
-           off-positioning the entire strip. Dropping the .chat-panel class
-           silences the legacy slide-in block entirely; spectator dim
-           (if needed later) can be re-introduced via a parallel
-           `.chat-strip.read-only` rule, decoupling the two concerns. -->
-      <div class="chat-strip is-collapsed" id="chatPanel">
-        <button class="chat-strip-head" id="chatBubbleBtn" type="button"
-                aria-expanded="false" aria-controls="chatMessages"
-                aria-label="Toggle chat panel">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
-                  fill="none" stroke="currentColor" stroke-width="2"
-                  stroke-linejoin="round" stroke-linecap="round"/>
-          </svg>
-          <span class="chat-strip-title">Chat</span>
-          <span class="chat-strip-caret" aria-hidden="true">▾</span>
-        </button>
-        <div class="chat-strip-body">
-          <div class="chat-messages" id="chatMessages"></div>
-          <div class="chat-input-row">
-            <input id="chatInput" type="text" placeholder="Say something..." maxlength="200" autocomplete="off" />
-            <button id="chatSendBtn" class="primary-btn">Send</button>
-          </div>
         </div>
       </div>
 
@@ -199,39 +151,73 @@
         </div>
         <div class="seats" id="seatsContainer"></div>
 
+        <!-- Right-edge chat toggle: slim vertical strip fixed to .poker-table's
+             right edge via position:absolute. Click handler toggles .is-open
+             on #chatPanel which expands the chat-edge-panel overlay. Element
+             id kept as chatBubbleBtn for click handler compatibility; class
+             retargeted to chat-edge-tab for the new CSS. Lives INSIDE the
+             poker-table so it physically CAN'T cover the self-panel / raise-row
+             below. -->
+        <button class="chat-edge-tab" id="chatBubbleBtn" type="button"
+                aria-expanded="false" aria-controls="chatPanel"
+                aria-label="Toggle chat panel" title="Chat">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                  fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+          <span class="chat-edge-tab-label">CHAT</span>
+        </button>
+        <!-- Chat overlay panel: position:absolute inside .poker-table, slides
+             in from the right when the tab is tapped. id="chatPanel" so
+             renderChat() + updateChatReadOnly() + the existing
+             chatInput/chatSendBtn IDs continue to find the message list and
+             input without further JS plumbing. -->
+        <div class="chat-edge-panel" id="chatPanel">
+          <div class="chat-edge-panel-head">
+            <span class="chat-edge-panel-title">Chat</span>
+            <button class="chat-edge-close" id="chatEdgeCloseBtn" type="button"
+                    aria-label="Close chat panel">×</button>
+          </div>
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-input-row">
+            <input id="chatInput" type="text" placeholder="Say something..." maxlength="200" autocomplete="off" />
+            <button id="chatSendBtn" class="primary-btn">Send</button>
+          </div>
+        </div>
       </div>
 
-      <!-- Self-panel: highlighted on mobile (max-width: 720px) via CSS as
-           "your hand" tray. Always populated by renderTable() so the
-           DOM is ready when the viewport narrows. No JS resize listener
-           needed since CSS handles the visibility switch. -->
-      <div class="self-panel" id="selfPanel"></div>
-
-<!-- Action row: Fold / Check / Call / All-in only. The Raise
-           submit button lives one row BELOW this (in .raise-row),
-           alongside the slider + Min/2x/Pot/All presets. Splitting
-           them prevents the action-bar's flex-wrap from pushing
-           raise controls into the .self-panel (player's cards) zone
-           above. All element IDs preserved so client.js's
-           setupActionButtons + raise handlers continue to work
-           unchanged. -->
-      <div class="action-bar" id="actionBar">
-        <button class="action-btn fold"   data-action="fold">Fold</button>
-        <button class="action-btn check"  data-action="check">Check</button>
-        <button class="action-btn call"   data-action="call">Call</button>
-        <button class="action-btn all-in" data-action="all_in">All-in</button>
+      <!-- Combined self-zone: cards + action buttons in ONE panel.
+           #selfPanel wrapper has TWO children:
+             .self-panel-cards — populated by populateSelfPanel() (the JS
+                                call-site now targets this inner div so the
+                                static action-bar isn't wiped on each
+                                renderTable pass). Contains the player's
+                                hole cards + name + stack + status.
+             .action-bar       — static Fold / Check / Call / Raise /
+                                All-in row. #raiseBtn moved here from the
+                                old raise-row. -->
+      <div class="self-panel" id="selfPanel">
+        <div class="self-panel-cards" id="selfPanelCards"></div>
+        <div class="action-bar" id="actionBar">
+          <button class="action-btn fold"   data-action="fold">Fold</button>
+          <button class="action-btn check"  data-action="check">Check</button>
+          <button class="action-btn call"   data-action="call">Call</button>
+          <button class="action-btn raise"  id="raiseBtn">Raise</button>
+          <button class="action-btn all-in" data-action="all_in">All-in</button>
+        </div>
       </div>
 
-      <!-- Raise controls row: number input + Min/2x/Pot/All presets
-           + Raise submit. Sibling of .action-bar — they no longer
-           share a single flex-wrap container, so the raise UI can
-           never overflow upward onto .self-panel. Mobile CSS places
-           this row BELOW the action row, the table area is the only
-           zone that flex-shrinks to accommodate. -->
+      <!-- Raise sizing row: ONLY the #raiseAmount input + Min/2x/Pot/All
+           presets. #raiseBtn was moved into the action-bar (above) so this
+           row is sizing-only — it sets the raise input that the tab-above
+           button consumes. Row stays display:none except when raise IS a
+           legal action (setupActionButtons toggles `.is-active` based on
+           the same predicate used for #raiseBtn.disabled — see the
+           `:not(.is-active)` mobile collapse rule). -->
       <div class="raise-row" id="betControls">
         <input id="raiseAmount" type="number" min="1" step="1" />
         <div class="raise-presets" id="raisePresets"></div>
-        <button class="action-btn raise" id="raiseBtn">Raise</button>
       </div>
 
       <div class="hand-log" id="handLog"></div>
