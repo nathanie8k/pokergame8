@@ -1128,6 +1128,8 @@ input, button, select, textarea { color: inherit; }
    Mobile-only "Your hand" panel
    ============================================================ */
 .self-panel { display: none; } /* shown on mobile only */
+.player-status-bar { display: none; } /* shown on mobile table-view only; hides desktop row that was split from .self-panel */
+.raise-price-label { display: none; } /* shown on mobile table-view only; desktop bet controls live in .bet-controls */
 
 /* ============================================================
    Leaderboard modal + podium + list
@@ -2786,12 +2788,16 @@ input, button, select, textarea { color: inherit; }
 
 /* ============================================================
    MOBILE TABLE VIEW REDESIGN (max-width: 720px)
-   High-contrast dark casino theme. Circular table, wood rail,
-   green gradient felt, gold accents, bold typography.
+   5 fixed non-overlapping zones, top to bottom:
+     S1 - Top header bar
+     S2 - Circular table with outer-ring seats + inner-center cards
+     S3 - Player status bar
+     S4 - Two-column: hole cards (left) + action grid (right)
+     S5 - Bet sizing row
    Uses #view-table parent selectors for high specificity.
    ============================================================ */
 @media (max-width: 720px) {
-  /* ---- GLOBAL RESETS for table view ---- */
+  /* ---- VIEWPORT ROOT ---- */
   #view-table.view {
     padding: 0;
     max-width: 100%;
@@ -2800,77 +2806,118 @@ input, button, select, textarea { color: inherit; }
     min-height: 100vh;
     min-height: 100dvh;
     background: #0a0a0a;
+    overflow-x: hidden;
   }
 
-  /* ---- TOP BAR: dark, compact ---- */
-  #topBar {
-    padding: 8px 14px;
+  /* Show the player-status-bar only on mobile table view */
+  #view-table .player-status-bar {
+    display: flex;
+  }
+
+  /* ==========================================================
+     SECTION 1: TOP HEADER BAR (fixed height, dark background)
+     Scoped to body.is-table-view so the compact top-bar only
+     applies when the player is at the table, not login/lobby.
+     ========================================================== */
+  body.is-table-view #topBar {
+    padding: 6px 12px;
     background: #0d0d0d;
     border-bottom: 1px solid rgba(255,255,255,0.08);
-    box-shadow: 0 1px 8px rgba(0,0,0,0.5);
+    box-shadow: 0 1px 6px rgba(0,0,0,0.5);
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 44px;
   }
-  #topBar .brand-icon { font-size: 15px; letter-spacing: 1px; }
-  #topBar .brand-text { font-size: 14px; }
-  #topBar .player-chip {
-    padding: 6px 10px;
-    font-size: 12px;
-    background: rgba(255,255,255,0.08);
-    border-color: rgba(255,255,255,0.15);
-  }
-  #topBar .points-chip {
-    padding: 6px 10px;
-    font-size: 12px;
-  }
-  #topBar .ghost-btn {
-    padding: 6px 10px;
+  body.is-table-view #topBar .brand { gap: 6px; flex-shrink: 0; }
+  body.is-table-view #topBar .brand-icon { font-size: 13px; letter-spacing: 1px; }
+  body.is-table-view #topBar .brand-text { font-size: 13px; }
+  body.is-table-view #topBar .top-info { gap: 6px; flex-shrink: 0; }
+  body.is-table-view #topBar .player-chip {
+    padding: 5px 9px;
     font-size: 11px;
-    min-height: 32px;
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.15);
+    border-radius: 999px;
+    font-weight: 700;
+    white-space: nowrap;
   }
+  body.is-table-view #topBar .points-chip {
+    padding: 5px 9px;
+    font-size: 11px;
+    border-radius: 999px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  body.is-table-view #topBar .ghost-btn {
+    padding: 5px 8px;
+    font-size: 10px;
+    min-height: 28px;
+    white-space: nowrap;
+  }
+  body.is-table-view #topBar #leaderboardBtn,
+  body.is-table-view #topBar #adminBtn { display: none !important; }
 
-  /* ---- TABLE INFO HEADER: compact ---- */
+  /* ---- SUB-HEADER: table name + blinds + leave ---- */
   #view-table .table-info {
     margin: 0;
-    padding: 8px 14px;
+    padding: 5px 12px;
     background: #0d0d0d;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
   }
-  #view-table .table-info h2 {
-    font-size: 16px;
-    color: var(--accent);
-  }
-  #view-table .table-info .muted { font-size: 10px; color: #6c7c75; }
+  #view-table .table-info h2 { font-size: 13px; color: var(--accent); margin: 0; }
+  #view-table .table-info .muted { font-size: 9px; color: #5a6b63; }
+  #view-table .table-actions { gap: 4px; }
   #view-table .table-actions .ghost-btn {
-    padding: 6px 12px;
-    font-size: 11px;
-    min-height: 32px;
+    padding: 5px 8px;
+    font-size: 10px;
+    min-height: 28px;
     background: rgba(255,255,255,0.06);
-    border-color: rgba(255,255,255,0.15);
-    color: #ccc;
+    border-color: rgba(255,255,255,0.12);
+    color: #aaa;
   }
 
-  /* ---- POKER TABLE: circular, wood rail, green felt ---- */
+  /* ==========================================================
+     SECTION 2: TABLE AREA (circular, outer-ring seats only)
+     ========================================================== */
+  #view-table .table-chat-row {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px 8px;
+    min-height: 0;
+  }
+
   #view-table .poker-table {
-    flex: 1 1 auto;
+    position: relative;
     width: 92vw;
-    max-width: 400px;
+    max-width: 380px;
     aspect-ratio: 1 / 1;
     max-height: none;
-    margin: 12px auto;
+    margin: 0 auto;
     border-radius: 50%;
-    border: 14px solid #5c3a1e;
+    border: 12px solid #5c3a1e;
     outline: none;
     background:
-      radial-gradient(ellipse 60% 60% at 45% 45%, #1d9e5f 0%, #157a45 35%, #0e5c32 65%, #0a3d22 100%);
+      radial-gradient(ellipse 60% 60% at 48% 48%, #22a866 0%, #17804d 35%, #0e5c32 65%, #0a4124 100%);
     box-shadow:
-      inset 0 0 60px rgba(0,0,0,0.5),
-      0 4px 30px rgba(0,0,0,0.6),
+      inset 0 0 50px rgba(0,0,0,0.5),
+      0 4px 28px rgba(0,0,0,0.6),
       0 0 0 3px #3d2613,
-      0 0 0 7px #2a1a0c;
-    overflow: visible;
+      0 0 0 6px #2a1a0c;
+    flex: 0 0 auto;
     animation: none;
+    overflow: visible;
   }
   #view-table .poker-table::before {
-    /* Subtle felt shimmer, kept for texture */
     content: "";
     position: absolute; inset: 0;
     pointer-events: none;
@@ -2879,254 +2926,280 @@ input, button, select, textarea { color: inherit; }
     animation: feltShimmer 12s ease-in-out infinite;
     border-radius: 50%;
   }
-  /* Inner felt ring accent */
   #view-table .poker-table::after {
     content: "";
     position: absolute;
-    inset: 10px;
-    border: 2px solid rgba(255,255,255,0.04);
+    inset: 8px;
+    border: 1.5px solid rgba(255,255,255,0.04);
     border-radius: 50%;
     pointer-events: none;
   }
 
-  /* ---- TABLE FELT CENTER ---- */
+  /* ---- FELT CENTER (pot + community cards + phase, inset from edges) ---- */
   #view-table .table-felt {
     position: absolute;
-    inset: 0;
-    width: 100%; height: 100%;
+    inset: 18%;
+    width: auto; height: auto;
     border: none;
     border-radius: 50%;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     pointer-events: none;
   }
 
-  /* ---- POT DISPLAY ---- */
+  /* POT: above community cards */
   #view-table .pot-label {
-    color: rgba(255,255,255,0.5);
-    font-size: 10px;
+    color: rgba(255,255,255,0.45);
+    font-size: 9px;
     letter-spacing: 3px;
     text-transform: uppercase;
     font-weight: 700;
+    margin-bottom: 0;
   }
   #view-table .pot-amount {
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 900;
     color: #ffd54f;
-    text-shadow: 0 0 20px rgba(255,204,77,0.5), 0 2px 8px rgba(0,0,0,0.7);
+    text-shadow: 0 0 16px rgba(255,204,77,0.45), 0 1px 4px rgba(0,0,0,0.7);
   }
 
-  /* ---- COMMUNITY CARDS on table ---- */
+  /* COMMUNITY CARDS: 5-slot row, exactly centered */
   #view-table .community-cards {
-    min-height: 64px;
-    gap: 6px;
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    align-items: center;
+    min-height: 0;
   }
   #view-table .community-cards .card {
-    width: 52px;
-    height: 74px;
+    width: 44px;
+    height: 62px;
+    border-radius: 6px;
   }
-  #view-table .community-cards .card .corner .rank { font-size: 16px; }
-  #view-table .community-cards .card .corner .suit { font-size: 10px; }
-  #view-table .community-cards .card .center-suit { font-size: 32px; }
+  #view-table .community-cards .card .corner.top { top: 4px; left: 4px; }
+  #view-table .community-cards .card .corner.bottom { bottom: 4px; right: 4px; }
+  #view-table .community-cards .card .corner .rank { font-size: 14px; }
+  #view-table .community-cards .card .corner .suit { font-size: 9px; }
+  #view-table .community-cards .card .center-suit { font-size: 26px; }
   #view-table .community-cards .empty-card {
-    width: 52px;
-    height: 74px;
-    border-radius: 7px;
-    background: rgba(0,0,0,0.25);
-    border: 1px dashed rgba(255,255,255,0.12);
+    width: 44px;
+    height: 62px;
+    border-radius: 6px;
+    background: rgba(0,0,0,0.2);
+    border: 1px dashed rgba(255,255,255,0.1);
   }
 
-  /* ---- PHASE DISPLAY: "WAITING FOR PLAYERS" banner ---- */
+  /* PHASE LABEL: below community cards */
   #view-table .phase-display {
-    color: rgba(255,255,255,0.7);
-    letter-spacing: 4px;
-    font-size: 10px;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 3px;
+    font-size: 9px;
     font-weight: 700;
-    padding: 6px 16px;
-    border: 1px solid rgba(255,255,255,0.12);
+    padding: 4px 12px;
+    border: 1px solid rgba(255,255,255,0.1);
     border-radius: 999px;
-    background: rgba(0,0,0,0.4);
-    position: absolute;
-    bottom: 18%;
-    left: 50%;
-    transform: translateX(-50%);
+    background: rgba(0,0,0,0.35);
+    position: static;
     white-space: nowrap;
-    z-index: 4;
+    z-index: auto;
   }
+  #view-table .phase-display::before { display: none; }
 
-  /* ---- HAND RESULT ---- */
+  /* HAND RESULT overlay */
   #view-table .hand-result {
     position: absolute;
-    bottom: 22%;
+    bottom: 25%;
     left: 50%;
     transform: translateX(-50%);
     margin: 0;
-    padding: 8px 18px;
-    font-size: 13px;
+    padding: 6px 14px;
+    font-size: 11px;
     z-index: 5;
+    max-width: 80%;
+    white-space: nowrap;
   }
 
-  /* ---- SEATS: dashed circle empty seats ---- */
-  #view-table .seats .empty-seat {
-    width: 70px;
-    min-height: 70px;
-    padding: 8px 4px;
-    border-radius: 50%;
-    background: rgba(0,0,0,0.25);
-    border: 1.5px dashed rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.45);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    font-size: 9px;
-    letter-spacing: 1.5px;
-    transition: border-color 200ms, background 200ms, color 200ms, box-shadow 200ms;
+  /* ---- SEATS: outer ring positions only (never inside inner 35%) ---- */
+  #view-table .seats {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
   }
-  #view-table .seats .empty-seat .empty-seat-icon {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    border: 1.5px dashed rgba(255,255,255,0.35);
-    color: rgba(255,255,255,0.5);
-    font-size: 14px;
-    font-weight: 700;
-    line-height: 22px;
-  }
-  #view-table .seats .empty-seat .empty-seat-label {
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-  }
-  #view-table .seats .empty-seat:hover,
-  #view-table .seats .empty-seat:focus-visible {
-    background: rgba(0,0,0,0.45);
-    border-color: var(--accent);
-    border-style: solid;
-    color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(255,204,77,0.2), 0 0 18px rgba(255,204,77,0.3);
-    transform: scale(1.06);
-    outline: none;
-  }
-
-  /* ---- OCCUPIED SEATS on circle ---- */
   #view-table .seats .seat {
-    width: 90px;
+    position: absolute;
+    width: 80px;
+    text-align: center;
+    pointer-events: auto;
+    transition: transform 200ms var(--ease);
   }
   #view-table .seats .seat .seat-ring {
-    border-radius: 50%;
-    padding: 6px 8px;
-    background: rgba(0,0,0,0.6);
+    border-radius: 14px;
+    padding: 4px 6px;
+    background: rgba(0,0,0,0.65);
     border: 1.5px solid rgba(255,255,255,0.1);
   }
-  #view-table .seats .seat .name {
+  #view-table .seats .seat .seat-avatar {
+    width: 28px;
+    height: 28px;
     font-size: 12px;
-    color: #fff;
+  }
+  #view-table .seats .seat .name {
+    font-size: 10px;
+    color: #ddd;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 70px;
   }
   #view-table .seats .seat .stack {
-    font-size: 11px;
+    font-size: 10px;
+    font-weight: 800;
   }
-  #view-table .seats .seat .cards { gap: 2px; margin-top: 4px; }
-  #view-table .seats .seat .cards .card,
-  #view-table .seats .seat .cards .card.card-small {
-    width: 32px;
-    height: 46px;
+  #view-table .seats .seat .status { font-size: 9px; }
+  #view-table .seats .seat .cards { gap: 2px; margin-top: 3px; }
+  #view-table .seats .seat .cards .card {
+    width: 28px;
+    height: 40px;
+    border-radius: 4px;
   }
-  #view-table .seats .seat .cards .card.card-small .corner .rank { font-size: 11px; }
-  #view-table .seats .seat .cards .card.card-small .corner .suit { font-size: 7px; }
-  #view-table .seats .seat .cards .card.card-small .center-suit { font-size: 18px; }
+  #view-table .seats .seat .cards .card .corner.top { top: 2px; left: 3px; }
+  #view-table .seats .seat .cards .card .corner .rank { font-size: 10px; }
+  #view-table .seats .seat .cards .card .corner .suit { font-size: 7px; }
+  #view-table .seats .seat .cards .card .center-suit { font-size: 16px; }
   #view-table .seats .seat.is-active .seat-ring {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(255,204,77,0.25), 0 0 20px rgba(255,204,77,0.5);
+    box-shadow: 0 0 0 2px rgba(255,204,77,0.3), 0 0 14px rgba(255,204,77,0.4);
   }
   #view-table .seats .seat.is-self .seat-ring {
     border-color: var(--info);
     box-shadow: 0 0 0 2px rgba(92,205,255,0.3);
   }
 
-  /* ---- SEAT POSITIONING on circle ---- */
-  /* Slot 0: bottom-center (viewer) */
+  /* Empty seats: dashed circle */
+  #view-table .seats .empty-seat {
+    position: absolute;
+    width: 64px;
+    min-height: 64px;
+    padding: 6px 3px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.2);
+    border: 1.5px dashed rgba(255,255,255,0.18);
+    color: rgba(255,255,255,0.4);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    font-size: 8px;
+    letter-spacing: 1.5px;
+    pointer-events: auto;
+    cursor: pointer;
+    transition: border-color 200ms, background 200ms, color 200ms, box-shadow 200ms;
+  }
+  #view-table .seats .empty-seat .empty-seat-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px dashed rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.45);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 20px;
+  }
+  #view-table .seats .empty-seat .empty-seat-label {
+    font-size: 7px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+  }
+  #view-table .seats .empty-seat:hover,
+  #view-table .seats .empty-seat:focus-visible {
+    background: rgba(0,0,0,0.4);
+    border-color: var(--accent);
+    border-style: solid;
+    color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(255,204,77,0.2), 0 0 14px rgba(255,204,77,0.25);
+    transform: scale(1.04);
+    outline: none;
+  }
+
+  /* SEAT POSITIONS: 6 fixed anchor points on outer ring */
   #view-table .seats .seat[data-slot="0"],
   #view-table .seats .empty-seat[data-slot="0"] {
-    top: auto; bottom: -30px;
+    top: auto;
+    bottom: -24px;
     left: 50%;
     transform: translateX(-50%);
   }
-  /* Slot 1: bottom-right */
   #view-table .seats .seat[data-slot="1"],
   #view-table .seats .empty-seat[data-slot="1"] {
-    top: auto; bottom: 8%;
-    right: -28px;
-  }
-  /* Slot 2: top-right */
-  #view-table .seats .seat[data-slot="2"],
-  #view-table .seats .empty-seat[data-slot="2"] {
-    top: 12%;
+    top: auto;
+    bottom: 8%;
     right: -20px;
   }
-  /* Slot 3: top-left */
+  #view-table .seats .seat[data-slot="2"],
+  #view-table .seats .empty-seat[data-slot="2"] {
+    top: 10%;
+    right: -16px;
+  }
   #view-table .seats .seat[data-slot="3"],
   #view-table .seats .empty-seat[data-slot="3"] {
-    top: 12%;
-    left: -20px;
+    top: 10%;
+    left: -16px;
   }
-  /* Slot 4: bottom-left */
   #view-table .seats .seat[data-slot="4"],
   #view-table .seats .empty-seat[data-slot="4"] {
-    top: auto; bottom: 8%;
-    left: -28px;
+    top: auto;
+    bottom: 8%;
+    left: -20px;
   }
-  /* Slot 5: top-center */
   #view-table .seats .seat[data-slot="5"],
   #view-table .seats .empty-seat[data-slot="5"] {
-    top: -30px;
+    top: -26px;
     left: 50%;
     transform: translateX(-50%);
   }
 
-  /* Hide self seat on circle (shown in self-panel instead) */
-  #view-table .seats .seat.is-self[data-slot="0"] {
-    display: none;
-  }
+  /* Hide self seat at slot 0 */
+  #view-table .seats .seat.is-self[data-slot="0"] { display: none; }
 
-  /* ---- CHAT TAB ---- */
+  /* CHAT TAB: right edge of table */
   #view-table .chat-edge-tab {
     position: absolute;
-    right: -24px;
+    right: -22px;
     top: 50%;
     transform: translateY(-50%);
-    width: 32px;
-    height: 90px;
-    border-radius: 8px;
+    width: 28px;
+    height: 80px;
+    border-radius: 6px;
     background: rgba(0,0,0,0.7);
-    border: 1px solid rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.1);
     writing-mode: vertical-rl;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    font-size: 10px;
+    gap: 4px;
+    font-size: 8px;
     font-weight: 700;
     letter-spacing: 2px;
-    color: rgba(255,255,255,0.5);
+    color: rgba(255,255,255,0.4);
     z-index: 5;
   }
-  #view-table .chat-edge-tab svg { width: 14px; height: 14px; }
-  #view-table .chat-edge-tab-label { font-size: 9px; letter-spacing: 2px; }
+  #view-table .chat-edge-tab svg { width: 12px; height: 12px; }
+  #view-table .chat-edge-tab-label { font-size: 7px; letter-spacing: 2px; }
 
-  /* ---- CHAT PANEL: slide-in overlay ---- */
+  /* CHAT PANEL: fixed slide-in overlay */
   #view-table .chat-edge-panel {
     position: fixed;
     top: 0;
     right: 0;
     width: 0;
     height: 100%;
-    max-width: 300px;
+    max-width: 280px;
     background: #111;
     border-left: 1px solid rgba(255,255,255,0.1);
     z-index: 150;
@@ -3136,156 +3209,202 @@ input, button, select, textarea { color: inherit; }
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   #view-table .chat-edge-panel.is-open {
-    width: 260px;
+    width: 240px;
     padding: 0;
   }
 
-  /* ---- SELF PANEL: bottom section ---- */
-  #view-table .self-panel {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    padding: 16px 14px 20px;
-    background: #0d0d0d;
-    border-top: 1px solid rgba(255,255,255,0.08);
+  /* ==========================================================
+     SECTION 3: PLAYER STATUS BAR (below table, full width)
+     ========================================================== */
+  #view-table .player-status-bar {
     flex: 0 0 auto;
-    margin-top: 0;
+    padding: 6px 14px;
+    background: #0d0d0d;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    flex-wrap: wrap;
   }
-  #view-table .self-panel.is-active {
-    border-top-color: var(--accent);
-  }
-
-  /* ---- PLAYER INFO: compact ---- */
-  #view-table .self-panel-info {
+  #view-table .player-status-bar .self-panel-info {
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 10px;
-    flex: 0 0 auto;
-    min-width: auto;
-    max-width: none;
-    font-size: 13px;
-    color: #ccc;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 12px;
   }
-  #view-table .self-name {
-    font-size: 14px;
+  #view-table .player-status-bar .self-name {
+    font-size: 13px;
     font-weight: 800;
     color: #fff;
+    white-space: nowrap;
   }
-  #view-table .self-stack {
-    font-size: 13px;
+  #view-table .player-status-bar .self-stack {
+    font-size: 12px;
     font-weight: 700;
     color: var(--accent);
+    white-space: nowrap;
   }
-  #view-table .self-marks {
+  #view-table .player-status-bar .self-marks {
     font-size: 10px;
+    color: rgba(255,255,255,0.45);
+    white-space: nowrap;
+  }
+  #view-table .player-status-bar .self-status {
+    font-size: 11px;
     color: var(--text-mute);
   }
 
-  /* ---- PLAYER HOLE CARDS: large, centered ---- */
-  #view-table .self-panel-cards {
-    display: flex;
-    gap: 14px;
-    justify-content: center;
+  /* ==========================================================
+     SECTION 4: HAND CARDS (left 42%) + ACTION GRID (right 58%)
+     ========================================================== */
+  #view-table .self-panel {
     flex: 0 0 auto;
+    padding: 10px 10px 0;
+    background: #0d0d0d;
   }
-  #view-table .self-panel-cards .card {
-    width: 80px;
-    height: 114px;
-    border-radius: 11px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
+  #view-table .self-panel.is-active {
+    border-top: 2px solid var(--accent);
   }
-  #view-table .self-panel-cards .card .corner .rank { font-size: 22px; }
-  #view-table .self-panel-cards .card .corner .suit { font-size: 14px; }
-  #view-table .self-panel-cards .card .center-suit { font-size: 48px; }
 
-  /* ---- ACTION BAR: bold white text, NO chrome ---- */
+  #view-table .hand-action-row {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    align-items: stretch;
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+  }
+
+  /* LEFT: hole cards (42% width) */
+  #view-table .hand-cards-col {
+    flex: 0 0 auto;
+    width: 42%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+  }
+  #view-table .hand-cards-col .self-panel-cards {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+  }
+  #view-table .hand-cards-col .self-panel-cards .card {
+    width: 70px;
+    height: 100px;
+    border-radius: 9px;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
+  }
+  #view-table .hand-cards-col .self-panel-cards .card .corner .rank { font-size: 18px; }
+  #view-table .hand-cards-col .self-panel-cards .card .corner .suit { font-size: 12px; }
+  #view-table .hand-cards-col .self-panel-cards .card .center-suit { font-size: 38px; }
+
+  /* DIVIDER between columns */
+  #view-table .action-divider {
+    flex: 0 0 auto;
+    width: 1px;
+    background: rgba(255,255,255,0.1);
+    margin: 4px 6px;
+    align-self: stretch;
+  }
+
+  /* RIGHT: action button grid (2 col x 3 row) */
+  #view-table .action-grid-col {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
   #view-table .action-bar {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 0;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+    gap: 6px;
     width: 100%;
-    max-width: 380px;
-    margin: 0 auto;
-    padding: 0;
+    padding: 4px;
     background: none;
     border: none;
     border-radius: 0;
     box-shadow: none;
     backdrop-filter: none;
     animation: none;
+    margin: 0;
   }
-  #view-table .action-bar.disabled {
-    opacity: 0.4;
-  }
+  #view-table .action-bar.disabled { opacity: 0.45; }
+
+  /* Grid placement:
+     Row 1: Call (col 1) | Raise (col 2)
+     Row 2: Check (col 1) | Fold (col 2)
+     Row 3: All-in (spans both) */
+  #view-table .action-btn.call   { grid-row: 1; grid-column: 1; }
+  #view-table .action-btn.raise  { grid-row: 1; grid-column: 2; }
+  #view-table .action-btn.check  { grid-row: 2; grid-column: 1; }
+  #view-table .action-btn.fold   { grid-row: 2; grid-column: 2; }
+  #view-table .action-btn.all-in { grid-row: 3; grid-column: 1 / span 2; }
+
+  /* Action button: dark rounded rect, subtle border */
   #view-table .action-btn {
-    background: none !important;
-    border: none !important;
+    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+    border-radius: 10px !important;
     box-shadow: none !important;
-    border-radius: 0;
-    padding: 14px 8px;
-    min-height: 52px;
-    font-size: 15px;
+    padding: 10px 6px;
+    min-height: 46px;
+    font-size: 13px;
     font-weight: 800;
-    letter-spacing: 0.5px;
-    color: #fff;
+    letter-spacing: 0.4px;
+    color: #ddd;
     text-align: center;
-    flex: 1 1 0;
     opacity: 1;
     filter: none;
-    transition: color 150ms, opacity 150ms;
+    transition: background 120ms, border-color 120ms, color 120ms;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
   }
   #view-table .action-btn:hover:not(:disabled) {
-    color: var(--accent);
+    background: rgba(255,255,255,0.12) !important;
+    border-color: rgba(255,255,255,0.3) !important;
+    color: #fff;
     transform: none;
-    background: none !important;
     box-shadow: none !important;
   }
-  /* Reorder buttons: Call / Raise / Check on row 1; All-in / Fold on row 2 */
-  #view-table .action-btn.call   { order: 1; }
-  #view-table .action-btn.raise  { order: 2; }
-  #view-table .action-btn.check  { order: 3; }
-  #view-table .action-btn.all-in { order: 4; }
-  #view-table .action-btn.fold   { order: 5; }
-  #view-table .action-btn:active:not(:disabled) {
-    transform: scale(0.96);
-  }
+  #view-table .action-btn:active:not(:disabled) { transform: scale(0.97); }
   #view-table .action-btn:disabled {
-    opacity: 0.25;
+    opacity: 0.3;
     color: #555;
+    background: rgba(255,255,255,0.02) !important;
+    border-color: rgba(255,255,255,0.06) !important;
     filter: none;
     cursor: not-allowed;
   }
-  /* Remove color-coded chrome on mobile */
   #view-table .action-btn.fold,
   #view-table .action-btn.check,
   #view-table .action-btn.call,
   #view-table .action-btn.raise,
-  #view-table .action-btn.all-in {
-    color: #fff;
-    background: none !important;
-    border: none !important;
-  }
-  #view-table .action-btn.fold:disabled,
-  #view-table .action-btn.check:disabled,
-  #view-table .action-btn.call:disabled,
-  #view-table .action-btn.raise:disabled,
-  #view-table .action-btn.all-in:disabled {
-    color: #444;
-  }
+  #view-table .action-btn.all-in { color: #ddd; }
 
-  /* ---- BET SIZING ROW: Price + shortcuts ---- */
+  /* ==========================================================
+     SECTION 5: BET SIZING ROW (below section 4)
+     ========================================================== */
   #view-table .raise-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
-    max-width: 380px;
-    margin: 4px auto 0;
-    padding: 8px 0;
-    background: none;
-    border: none;
+    max-width: 460px;
+    margin: 0 auto;
+    padding: 8px 10px;
+    background: #0d0d0d;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    flex: 0 0 auto;
     flex-wrap: nowrap;
   }
   #view-table .raise-row.is-active {
@@ -3295,58 +3414,68 @@ input, button, select, textarea { color: inherit; }
   #view-table .raise-row:not(.is-active) {
     display: none !important;
   }
+  #view-table .raise-row > .raise-price-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.45);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
   #view-table .raise-row > #raiseAmount {
-    width: 72px;
-    min-height: 42px;
+    width: 64px;
+    min-height: 38px;
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 8px;
     color: #fff;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
-    padding: 8px 10px;
+    padding: 6px 8px;
     text-align: center;
     flex: 0 0 auto;
   }
   #view-table .raise-row > .raise-presets {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     flex: 1 1 0;
     min-width: 0;
   }
   #view-table .raise-row > .raise-presets button {
     flex: 1 1 0;
     min-width: 0;
-    min-height: 42px;
-    padding: 8px 6px;
-    font-size: 13px;
+    min-height: 38px;
+    padding: 6px 4px;
+    font-size: 11px;
     font-weight: 800;
-    background: none;
-    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
     border-radius: 8px;
-    color: rgba(255,255,255,0.7);
-    transition: color 150ms, border-color 150ms;
+    color: rgba(255,255,255,0.6);
+    transition: color 150ms, border-color 150ms, background 150ms;
   }
   #view-table .raise-row > .raise-presets button:hover {
     color: #fff;
     border-color: var(--accent);
-    background: rgba(255,204,77,0.08);
+    background: rgba(255,204,77,0.1);
   }
 
-  /* ---- HAND LOG: hide on mobile ---- */
-  #view-table .hand-log {
-    display: none;
-  }
+  /* ---- HAND LOG hidden on mobile ---- */
+  #view-table .hand-log { display: none; }
 
-  /* ---- TABLE-CHAT-ROW: simplified ---- */
-  #view-table .table-chat-row {
-    flex: 0 0 auto;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    min-height: 0;
-    margin-top: 0;
-    padding: 0;
+  /* ---- Narrowest device tweaks ---- */
+  @media (max-width: 360px) {
+    #view-table .poker-table { width: 96vw; }
+    #view-table .hand-cards-col { width: 40%; }
+    #view-table .hand-cards-col .self-panel-cards .card {
+      width: 60px;
+      height: 86px;
+    }
+    #view-table .hand-cards-col .self-panel-cards .card .corner .rank { font-size: 15px; }
+    #view-table .hand-cards-col .self-panel-cards .card .corner .suit { font-size: 10px; }
+    #view-table .hand-cards-col .self-panel-cards .card .center-suit { font-size: 32px; }
+    #view-table .action-btn { font-size: 11px; padding: 8px 4px; min-height: 42px; }
+    #view-table .action-bar { gap: 4px; }
   }
 }
-

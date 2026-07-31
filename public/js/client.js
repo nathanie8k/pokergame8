@@ -227,6 +227,9 @@ function getInitials(name) {
 
 function setView(v) {
   state.view = v;
+  // Toggle is-table-view body class so mobile CSS can scope compact
+  // top-bar rules to ONLY the table view (not login/lobby).
+  if (document.body) document.body.classList.toggle('is-table-view', v === 'table');
   // Include view-admin here so the Admin Room button's setView('admin')
   // call actually un-hides the section. Without this entry the forEach
   // loop iterates only the public-game views and never touches
