@@ -3259,11 +3259,13 @@ input, button, select, textarea { color: inherit; }
   }
 
   /* ==========================================================
-     SECTION 4: HAND CARDS (left 42%) + ACTION GRID (right 58%)
+     SECTION 4: HAND CARDS (left, fluid) + ACTION GRID (right, fluid)
+     Uses clamp() so both columns shrink proportionally on narrow
+     screens instead of cards overflowing into the button area.
      ========================================================== */
   #view-table .self-panel {
     flex: 0 0 auto;
-    padding: 10px 10px 0;
+    padding: 10px 8px 0;
     background: #0d0d0d;
   }
   #view-table .self-panel.is-active {
@@ -3273,50 +3275,58 @@ input, button, select, textarea { color: inherit; }
   #view-table .hand-action-row {
     display: flex;
     flex-direction: row;
-    gap: 0;
-    align-items: stretch;
     width: 100%;
     max-width: 460px;
     margin: 0 auto;
+    align-items: stretch;
+    gap: 0;
+    /* Safe-area padding so buttons are never clipped by iOS home indicator */
+    padding-bottom: env(safe-area-inset-bottom, 8px);
+    box-sizing: border-box;
   }
 
-  /* LEFT: hole cards (42% width) */
+  /* LEFT: hole cards — fluid width, overflow-guarded */
   #view-table .hand-cards-col {
     flex: 0 0 auto;
-    width: 42%;
+    width: clamp(110px, 36%, 150px);
+    padding: 2px;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 4px;
+    overflow: hidden;  /* cards must NEVER bleed into button area */
   }
   #view-table .hand-cards-col .self-panel-cards {
     display: flex;
-    gap: 8px;
+    gap: clamp(4px, 1.5vw, 8px);
     justify-content: center;
     align-items: center;
   }
   #view-table .hand-cards-col .self-panel-cards .card {
-    width: 70px;
-    height: 100px;
-    border-radius: 9px;
-    box-shadow: 0 3px 12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
+    /* Cards scale down on narrow screens so they always fit within their column */
+    width: clamp(46px, 13vw, 68px);
+    height: clamp(66px, 18.5vw, 98px);
+    border-radius: 8px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.1);
   }
-  #view-table .hand-cards-col .self-panel-cards .card .corner .rank { font-size: 18px; }
-  #view-table .hand-cards-col .self-panel-cards .card .corner .suit { font-size: 12px; }
-  #view-table .hand-cards-col .self-panel-cards .card .center-suit { font-size: 38px; }
+  #view-table .hand-cards-col .self-panel-cards .card .corner .rank { font-size: clamp(13px, 3.5vw, 18px); }
+  #view-table .hand-cards-col .self-panel-cards .card .corner .suit { font-size: clamp(8px, 2.2vw, 12px); }
+  #view-table .hand-cards-col .self-panel-cards .card .center-suit { font-size: clamp(24px, 8vw, 38px); }
 
-  /* DIVIDER between columns */
+  /* DIVIDER — strict visual separation between cards and buttons */
   #view-table .action-divider {
     flex: 0 0 auto;
     width: 1px;
-    background: rgba(255,255,255,0.1);
-    margin: 4px 6px;
+    background: rgba(255,255,255,0.12);
+    margin: 4px clamp(3px, 1vw, 6px);
     align-self: stretch;
   }
 
-  /* RIGHT: action button grid (2 col x 3 row) */
+  /* RIGHT: action button grid — takes remaining space, min-width:0 prevents overflow */
   #view-table .action-grid-col {
     flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -3324,10 +3334,10 @@ input, button, select, textarea { color: inherit; }
   #view-table .action-bar {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr 1fr;
-    gap: 6px;
+    grid-template-rows: auto auto;
+    gap: clamp(4px, 1.5vw, 6px);
     width: 100%;
-    padding: 4px;
+    padding: 0;
     background: none;
     border: none;
     border-radius: 0;
@@ -3338,27 +3348,36 @@ input, button, select, textarea { color: inherit; }
   }
   #view-table .action-bar.disabled { opacity: 0.45; }
 
-  /* Grid placement:
-     Row 1: Call (col 1) | Raise (col 2)
-     Row 2: Check (col 1) | Fold (col 2)
-     Row 3: All-in (spans both) */
+  /* Grid placement (2-row, Call & Check share cell):
+     Row 1: [Call  OR  Check] [Raise/Bet]
+     Row 2: [Fold] [All-in]
+     Call and Check are mutually exclusive (JS disables one);
+     visibility:collapse on the disabled one makes the cell
+     appear to hold only the enabled button. */
   #view-table .action-btn.call   { grid-row: 1; grid-column: 1; }
+  #view-table .action-btn.check  { grid-row: 1; grid-column: 1; }
   #view-table .action-btn.raise  { grid-row: 1; grid-column: 2; }
-  #view-table .action-btn.check  { grid-row: 2; grid-column: 1; }
-  #view-table .action-btn.fold   { grid-row: 2; grid-column: 2; }
-  #view-table .action-btn.all-in { grid-row: 3; grid-column: 1 / span 2; }
+  #view-table .action-btn.fold   { grid-row: 2; grid-column: 1; }
+  #view-table .action-btn.all-in { grid-row: 2; grid-column: 2; }
 
-  /* Action button: dark rounded rect, subtle border */
+  /* Collapse the disabled Call/Check so the grid cell shows
+     only the enabled button — no wasted dim row. */
+  #view-table .action-btn.call:disabled,
+  #view-table .action-btn.check:disabled { visibility: collapse; }
+
+  /* Action button: responsive sizing with clamp() — shrinks font+padding
+     on narrow screens to keep all buttons visible and tappable */
   #view-table .action-btn {
     background: rgba(255,255,255,0.06) !important;
     border: 1px solid rgba(255,255,255,0.15) !important;
     border-radius: 10px !important;
     box-shadow: none !important;
-    padding: 10px 6px;
-    min-height: 46px;
-    font-size: 13px;
+    padding: clamp(6px, 1.5vw, 10px) clamp(2px, 1vw, 6px);
+    min-height: clamp(38px, 10vw, 46px);
+    min-width: 0;
+    font-size: clamp(10px, 3vw, 13px);
     font-weight: 800;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.2px;
     color: #ddd;
     text-align: center;
     opacity: 1;
@@ -3368,6 +3387,9 @@ input, button, select, textarea { color: inherit; }
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
   }
   #view-table .action-btn:hover:not(:disabled) {
     background: rgba(255,255,255,0.12) !important;
@@ -3379,17 +3401,18 @@ input, button, select, textarea { color: inherit; }
   #view-table .action-btn:active:not(:disabled) { transform: scale(0.97); }
   #view-table .action-btn:disabled {
     opacity: 0.3;
-    color: #555;
+    color: #666;
     background: rgba(255,255,255,0.02) !important;
     border-color: rgba(255,255,255,0.06) !important;
     filter: none;
     cursor: not-allowed;
   }
+  /* All button color overrides — same text color, distinguished by border tint */
   #view-table .action-btn.fold,
   #view-table .action-btn.check,
-  #view-table .action-btn.call,
-  #view-table .action-btn.raise,
-  #view-table .action-btn.all-in { color: #ddd; }
+  #view-table .action-btn.call { color: #ddd; }
+  #view-table .action-btn.raise { color: #ffd97a; }
+  #view-table .action-btn.all-in { color: #ff9b59; }
 
   /* ==========================================================
      SECTION 5: BET SIZING ROW (below section 4)
@@ -3464,18 +3487,10 @@ input, button, select, textarea { color: inherit; }
   /* ---- HAND LOG hidden on mobile ---- */
   #view-table .hand-log { display: none; }
 
-  /* ---- Narrowest device tweaks ---- */
+  /* ---- Narrowest device tweaks (clamp() handles most scaling; poker table + gap tweaks only) ---- */
   @media (max-width: 360px) {
     #view-table .poker-table { width: 96vw; }
-    #view-table .hand-cards-col { width: 40%; }
-    #view-table .hand-cards-col .self-panel-cards .card {
-      width: 60px;
-      height: 86px;
-    }
-    #view-table .hand-cards-col .self-panel-cards .card .corner .rank { font-size: 15px; }
-    #view-table .hand-cards-col .self-panel-cards .card .corner .suit { font-size: 10px; }
-    #view-table .hand-cards-col .self-panel-cards .card .center-suit { font-size: 32px; }
-    #view-table .action-btn { font-size: 11px; padding: 8px 4px; min-height: 42px; }
-    #view-table .action-bar { gap: 4px; }
+    #view-table .action-bar { gap: 3px; }
+    #view-table .hand-action-row { padding-bottom: env(safe-area-inset-bottom, 6px); }
   }
 }
