@@ -17,6 +17,7 @@
     <div class="top-info" id="topInfo" style="display:none">
       <span class="player-chip" id="playerChip"></span>
       <span class="points-chip" id="pointsChip"></span>
+      <button class="ghost-btn" id="changeNameBtn" title="Change your display name (once every 30 days)">✎ Name</button>
       <button class="ghost-btn" id="leaderboardBtn" title="View top players">★ Leaderboard</button>
       <!-- Admin entry point: visible to everyone. Click-handler
            navigates to #adminModal (the shared-password modal). The
@@ -297,6 +298,27 @@
       </div>
     </div>
   </main>
+
+  <!-- Name change modal — lets players change their display name once
+       every 30 days. The 30-day cooldown is enforced server-side via
+       Player.lastNameChangeAt. The client shows remaining days when locked. -->
+  <div id="nameChangeModal" class="modal name-change" role="dialog" aria-modal="true" aria-labelledby="nameChangeTitle" style="display:none">
+    <div class="modal-content name-change-content">
+      <header class="modal-header">
+        <h3 id="nameChangeTitle">Change display name</h3>
+        <button class="close-btn" id="nameChangeCloseBtn" title="Close">×</button>
+      </header>
+      <section class="name-change-section">
+        <p class="muted small" id="nameChangeInfo">Your current name: <strong id="nameChangeCurrent"></strong></p>
+        <p class="muted small" id="nameChangeCooldown" style="display:none"></p>
+        <div class="form-row name-change-row">
+          <input id="nameChangeInput" type="text" maxlength="20" placeholder="Enter new name (2-20 characters)" autocomplete="off" />
+          <button id="nameChangeSubmitBtn" class="primary-btn">Save</button>
+        </div>
+        <div id="nameChangeError" class="error-text" style="display:none"></div>
+      </section>
+    </div>
+  </div>
 
   <!-- Toast — slides in from the top with a show() class added by JS. -->
   <div id="toast" class="toast"></div>

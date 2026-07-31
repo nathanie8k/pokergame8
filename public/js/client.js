@@ -1086,6 +1086,90 @@ function seatEmpty(seatIdx, tableId) {
   });
 }
 
+// ---------- Name change (once per 30 days) ----------
+
+function openNameChangeModal() {
+  const modal = $('nameChangeModal');
+  if (!modal || !state.player) return;
+  const player = state.player;
+  $('nameChangeCurrent').textContent = player.name;
+  $('nameChangeInput').value = '';
+  $('nameChangeError').style.display = 'none';
+  $('nameChangeSubmitBtn').disabled = false;
+
+  // Check cooldown from the player data (server sends lastNameChangeAt in hello + register).
+  const cooldownEl = $('nameChangeCooldown');
+  cooldownEl.style.display = 'none';
+  if (player.lastNameChangeAt) {
+    const msSinceChange = Date.now() - player.lastNameChangeAt;
+    const daysRemaining = Math.ceil(30 - (msSinceChange / (24 * 60 * 60 * 1000)));
+    if (daysRemaining > 0) {
+      cooldownEl.textContent = 'You changed your name recently. You can change it again in ' + daysRemaining + ' day' + (daysRemaining === 1 ? '' : 's') + '.';
+      cooldownEl.style.display = '';
+      $('nameChangeSubmitBtn').disabled = true;
+    }
+  }
+
+  modal.style.display = '';
+  setTimeout(() => { const i = $('nameChangeInput'); if (i) i.focus(); }, 0);
+}
+
+function closeNameChangeModal() {
+  const modal = $('nameChangeModal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  $('nameChangeInput').value = '';
+  $('nameChangeError').style.display = 'none';
+}
+
+function submitNameChange() {
+  const newName = $('nameChangeInput').value.trim();
+  const errEl = $('nameChangeError');
+  errEl.style.display = 'none';
+  if (!newName) {
+    errEl.textContent = 'Please enter a new name.';
+    errEl.style.display = '';
+    return;
+  }
+  if (newName.length < 2) {
+    errEl.textContent = 'Name must be at least 2 characters.';
+    errEl.style.display = '';
+    return;
+  }
+  if (newName.length > 20) {
+    errEl.textContent = 'Name must be at most 20 characters.';
+    errEl.style.display = '';
+    return;
+  }
+  if (!/^[\w .'\-]+$/.test(newName)) {
+    errEl.textContent = 'Name contains invalid characters.';
+    errEl.style.display = '';
+    return;
+  }
+  if (newName.toLowerCase() === (state.player && state.player.name || '').toLowerCase()) {
+    errEl.textContent = 'New name must differ from your current name.';
+    errEl.style.display = '';
+    return;
+  }
+
+  const submitBtn = $('nameChangeSubmitBtn');
+  submitBtn.disabled = true;
+  socket.emit('change_name', { newName }, res => {
+    submitBtn.disabled = false;
+    if (res && res.ok) {
+      state.player = res.player;
+      state.isAdmin = res.player.isAdmin === true;
+      try { localStorage.setItem('pokerName', res.player.name); } catch (e) {}
+      updateTopBar();
+      closeNameChangeModal();
+      showToast('Name changed to ' + res.player.name, 'good');
+    } else {
+      errEl.textContent = (res && res.error) ? res.error : 'Name change failed';
+      errEl.style.display = '';
+    }
+  });
+}
+
 function leaveCurrentTable() {
   socket.emit('leave_table', null, res => {
     if (res && res.ok) {
@@ -2291,6 +2375,15 @@ socket.on('chat_update', ({ tableId, messages }) => {
     $('loginBtn').addEventListener('click', doLogin);
   $('loginName').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   $('refreshNamesBtn').addEventListener('click', () => socket.emit('random_names'));
+
+  // Name change modal
+  $('changeNameBtn').addEventListener('click', openNameChangeModal);
+  $('nameChangeCloseBtn').addEventListener('click', closeNameChangeModal);
+  $('nameChangeSubmitBtn').addEventListener('click', submitNameChange);
+  $('nameChangeInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitNameChange(); });
+  $('nameChangeModal').addEventListener('click', (e) => {
+    if (e.target === $('nameChangeModal')) closeNameChangeModal();
+  });
 
   $('leaderboardBtn').addEventListener('click', openLeaderboard);
   $('leaderboardCloseBtn').addEventListener('click', closeLeaderboard);
