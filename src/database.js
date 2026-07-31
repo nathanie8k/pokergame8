@@ -83,11 +83,29 @@ const playerSchema = new mongoose.Schema({
   // assignment logic). Existing docs that pre-date this field will read
   // as `false` because mongoose applies the default at read time.
   isAdmin:     { type: Boolean, default: false, index: true },
+  // When the player last changed their display name (0 = never).
+  // Enforced at 30-day cooldown by the change_name socket handler.
+  lastNameChangeAt: { type: Number, default: 0 },
   created:     { type: Number, default: () => Date.now() },
   updated:     { type: Number, default: 0 },
 }, { versionKey: false });
 
 const Player = mongoose.model('Player', playerSchema);
+
+// ----- Admin action log -----
+//
+// Every admin mutation (add/set points, kick, toggle admin, remove,
+// session settings edit) is recorded here for audit purposes. Read-
+// only from the admin panel; never affects gameplay logic.
+const adminActionLogSchema = new mongoose.Schema({
+  adminName:    { type: String, required: true, index: true },
+  targetName:   { type: String, default: '' },
+  action:       { type: String, required: true },
+  details:      { type: String, default: '' },
+  timestamp:    { type: Number, default: () => Date.now(), index: true },
+}, { versionKey: false });
+
+const AdminActionLog = mongoose.model('AdminActionLog', adminActionLogSchema);
 
 // Per-table settings, persisted by table NAME (see file header for why
 // name > tableId). Used by the admin panel's "edit session settings" flow;
@@ -174,6 +192,7 @@ async function connect(uri) {
   await Player.syncIndexes();
   await Meta.syncIndexes();
   await TableSettings.syncIndexes();
+  await AdminActionLog.syncIndexes();
 }
 
 async function disconnect() {
@@ -192,6 +211,7 @@ async function resetForTests() {
   await Player.syncIndexes();
   await Meta.syncIndexes();
   await TableSettings.syncIndexes();
+  await AdminActionLog.syncIndexes();
 }
 
 // ----- Meta helpers -----
@@ -681,6 +701,110 @@ async function loadAllTableSettings() {
   return TableSettings.find({}).lean();
 }
 
+// ----- Name change (once per 30 days) -----
+//
+// Renames a player's display name while preserving their id, points,
+// stats, and admin status. The old name's Player doc is replaced by a
+// new doc with the target name via atomic findOneAndUpdate on the old
+// name. If the new name is already taken, returns { ok: false }.
+//
+// The 30-day cooldown is enforced BEFORE the rename attempt — the
+// caller (server.js change_name handler) reads the doc first and can
+// short-circuit with a clear "X days remaining" message without ever
+// calling this helper.
+async function changePlayerName(oldName, newName) {
+  if (!oldName || !newName) return { ok: false, error: 'Both old and new names required' };
+  await connect();
+  const trimmedNew = String(newName).trim();
+  if (trimmedNew.length < 2 || trimmedNew.length > 20) {
+    return { ok: false, error: 'Name must be 2-20 characters' };
+  }
+  if (!/^[\w .'\-]+$/.test(trimmedNew)) {
+    return { ok: false, error: 'Invalid characters in name' };
+  }
+  if (isReservedHouseAccountName(trimmedNew)) {
+    return { ok: false, error: 'Name reserved' };
+  }
+  if (trimmedNew.toLowerCase() === String(oldName).trim().toLowerCase()) {
+    return { ok: false, error: 'New name must differ from current name' };
+  }
+  // Check if the new name is already taken by another player.
+  const existing = await Player.findOne({ name: trimmedNew }).lean();
+  if (existing) return { ok: false, error: 'Name already taken' };
+
+  // Atomic rename via findOneAndUpdate on the old name doc.
+  // The unique index on `name` will reject if the new name collides
+  // (e.g., a concurrent registration snagged the name between our
+  // existence check above and this update). Catch E11000 and return
+  // a clean error instead of throwing.
+  const now = Date.now();
+  try {
+    const updated = await Player.findOneAndUpdate(
+      { name: oldName },
+      [{ $set: { name: trimmedNew, lastNameChangeAt: now, updated: now } }],
+      { new: true, updatePipeline: true }
+    );
+    if (!updated) return { ok: false, error: 'Player not found' };
+    return { ok: true, player: updated.toObject() };
+  } catch (err) {
+    if (err && err.code === 11000) {
+      return { ok: false, error: 'Name already taken' };
+    }
+    throw err;
+  }
+}
+
+// ----- Player stats (personal history) -----
+//
+// Returns a stats snapshot for the given player: current points,
+// games played, wins, and win rate. The data is read-only and comes
+// from fields already tracked on the Player doc. No new data entry
+// is needed — gamesPlayed/wins are bumped by the engine on each
+// completed hand.
+async function getPlayerStats(name) {
+  if (!name) return null;
+  await connect();
+  const p = await Player.findOne({ name }).lean();
+  if (!p) return null;
+  const gamesPlayed = Math.floor(p.gamesPlayed || 0);
+  const wins = Math.floor(p.wins || 0);
+  return {
+    name: p.name,
+    id: p.id,
+    points: Math.floor(p.points || 0),
+    gamesPlayed,
+    wins,
+    winRate: gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 1000) / 10 : 0,
+    lastSeenAt: p.lastSeenAt || 0,
+    created: p.created || 0,
+    isAdmin: p.isAdmin === true,
+    lastNameChangeAt: p.lastNameChangeAt || 0,
+  };
+}
+
+// ----- Admin action log -----
+
+async function logAdminAction(adminName, targetName, action, details) {
+  if (!adminName || !action) return;
+  await connect();
+  await AdminActionLog.create({
+    adminName: String(adminName),
+    targetName: String(targetName || ''),
+    action: String(action),
+    details: String(details || ''),
+    timestamp: Date.now(),
+  });
+}
+
+async function getAdminActionLog(limit) {
+  await connect();
+  const cap = Math.max(1, Math.min(500, limit || 100));
+  return AdminActionLog.find({})
+    .sort({ timestamp: -1 })
+    .limit(cap)
+    .lean();
+}
+
 module.exports = {
   // Lifecycle
   connect,
@@ -720,4 +844,11 @@ module.exports = {
   loadAllTableSettings,
   // Validation helper (exposed for the server's admin route to reuse)
   validateTableSettings,
+  // Name change
+  changePlayerName,
+  // Player stats
+  getPlayerStats,
+  // Admin action log
+  logAdminAction,
+  getAdminActionLog,
 };

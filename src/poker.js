@@ -305,6 +305,16 @@ function countPlayablePlayers(table) {
   return table.seats.filter(s => s && !s.removed && s.stack > 0).length;
 }
 
+// Returns true when the seat at `seatIdx` can legally check (current
+// bet is fully matched — nothing left to call). Used by the auto-fold
+// turn timer to prefer check over fold for disconnected/idle players.
+function canCheck(table, seatIdx) {
+  const seat = table.seats[seatIdx];
+  if (!seat || seat.removed || seat.folded || seat.allIn || seat.satOut) return false;
+  if (table.phase === PHASE.WAITING || table.phase === PHASE.HAND_OVER) return false;
+  return (table.currentBet - seat.contributed) <= 0;
+}
+
 // ----- Lifecycle -----
 
 function startHand(table) {
@@ -1014,4 +1024,5 @@ module.exports = {
   advancePhase,
   checkBustedRefund,
   collectPendingHouseFees,
+  canCheck,
 };

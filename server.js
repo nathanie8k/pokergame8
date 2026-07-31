@@ -211,6 +211,111 @@ setInterval(async () => {
   }
 }, AFK_KICK_INTERVAL_MS);
 
+// ----- Auto-fold timer for disconnected/idle players -----
+//
+// When a seated player is disconnected and it becomes their turn,
+// a 25-second countdown starts. If they don't act or reconnect
+// before the timer fires, they auto-Fold (or auto-Check if legal).
+// Keyed by `tableId:seatIdx` so a reconnect cancels the timer.
+const TURN_TIMEOUT_MS = 25 * 1000;
+const turnTimers = new Map(); // "tableId|seatIdx" -> { timer, tableId, seatIdx }
+
+function cancelTurnTimer(tableId, seatIdx) {
+  const key = tableId + '|' + seatIdx;
+  const entry = turnTimers.get(key);
+  if (entry && entry.timer) {
+    clearTimeout(entry.timer);
+    turnTimers.delete(key);
+  }
+}
+
+function scheduleTurnTimer(tableId, seatIdx) {
+  cancelTurnTimer(tableId, seatIdx);
+  const key = tableId + '|' + seatIdx;
+  const timer = setTimeout(() => {
+    turnTimers.delete(key);
+    const t = rooms.get(tableId);
+    if (!t) return;
+    const seat = t.seats[seatIdx];
+    if (!seat) return;
+    // Only fire if it's still this seat's turn and they're disconnected.
+    if (t.currentPlayerIndex !== seatIdx) return;
+    if (!seat.disconnected) return;
+    if (t.phase === poker.PHASE.WAITING || t.phase === poker.PHASE.HAND_OVER) return;
+    // Prefer check if legal; otherwise fold.
+    const canCheck = poker.canCheck(t, seatIdx);
+    const actionType = canCheck ? 'check' : 'fold';
+    const result = poker.applyAction(t, seatIdx, actionType);
+    if (result && result.ok) {
+      rooms.addSystemMessage(tableId, seat.name + ' timed out — auto-' + actionType + 'ed');
+      broadcastChat(tableId);
+      broadcastTable(tableId);
+      if (t.phase === poker.PHASE.HAND_OVER) {
+        rooms.emitBustedRefundIfAny(tableId);
+        broadcastChat(tableId);
+        scheduleNextHand(tableId);
+      }
+    }
+  }, TURN_TIMEOUT_MS);
+  turnTimers.set(key, { timer, tableId, seatIdx });
+}
+
+// Called from broadcastTable after every table_state push — if the
+// current player's seat is disconnected and they haven't timed out
+// yet, arm the timer.
+function ensureTurnTimerArmed(tableId) {
+  const t = rooms.get(tableId);
+  if (!t) return;
+  const ci = t.currentPlayerIndex;
+  if (ci < 0) return;
+  const seat = t.seats[ci];
+  if (!seat || !seat.disconnected) return;
+  if (t.phase === poker.PHASE.WAITING || t.phase === poker.PHASE.HAND_OVER) return;
+  const key = tableId + '|' + ci;
+  if (!turnTimers.has(key)) {
+    scheduleTurnTimer(tableId, ci);
+  }
+}
+
+// ----- Rate limiting -----
+//
+// Simple in-memory rate limiter: per-player (by name) and per-IP
+// counters with timestamps. Tracks: table creation, table joins,
+// and chat messages. Also logs IP collisions for manual review.
+const rateLimitMap = new Map(); // "playerName|action" -> { count, windowStart }
+const ipSeatMap = new Map();    // "tableId|ip" -> Set<playerName>
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+
+function checkRateLimit(playerName, action, maxPerWindow) {
+  const key = playerName + '|' + action;
+  const now = Date.now();
+  let entry = rateLimitMap.get(key);
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    entry = { count: 1, windowStart: now };
+    rateLimitMap.set(key, entry);
+    return true;
+  }
+  if (entry.count >= maxPerWindow) return false;
+  entry.count++;
+  return true;
+}
+
+function logIpCollision(tableId, playerName, ip) {
+  if (!ip) return;
+  const key = tableId + '|' + ip;
+  let set = ipSeatMap.get(key);
+  if (!set) {
+    set = new Set();
+    ipSeatMap.set(key, set);
+  }
+  const wasNew = !set.has(playerName);
+  set.add(playerName);
+  if (wasNew && set.size >= 2) {
+    const names = Array.from(set).join(', ');
+    console.log('[COLLISION] IP ' + ip + ' seated at table ' + tableId + ' with accounts: ' + names);
+  }
+}
+
 // ----- Random name generator -----
 const ADJ = [
   'Lucky','Brave','Wild','Clever','Happy','Jolly','Sneaky','Bold','Daring',
@@ -277,6 +382,8 @@ function broadcastTable(tableId) {
     socket.emit('table_state', { table: rooms.publicView(tableId, viewerId, viewerName) });
   }
   broadcastLobby();
+  // Arm the auto-fold timer if the current actor is disconnected.
+  ensureTurnTimerArmed(tableId);
 }
 
 function broadcastAllTables() {
@@ -522,6 +629,30 @@ app.get('/api/leaderboard', async (_req, res) => {
   }
 });
 
+// Table invite link — redirects to the SPA with a hash so the client
+// can auto-join the table. Example: /table/t1 → redirects to /#table=t1
+app.get('/table/:tableId', (req, res) => {
+  const tableId = req.params.tableId;
+  // Only redirect if the table actually exists.
+  const t = rooms.get(tableId);
+  if (!t) {
+    return res.status(404).send('Table not found');
+  }
+  res.redirect('/#table=' + encodeURIComponent(tableId));
+});
+
+// Player profile JSON (for shareable profile links / lightweight lookup).
+// Returns name + points only — full stats require authentication.
+app.get('/api/player/:name', async (req, res) => {
+  try {
+    const stats = await db.getPlayerStats(req.params.name);
+    if (!stats) return res.status(404).json({ error: 'Not found' });
+    res.json({ name: stats.name, points: stats.points });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
 // ----- Socket.io handlers -----
 
 io.on('connection', (socket) => {
@@ -660,7 +791,25 @@ io.on('connection', (socket) => {
       db.incrementStats(player.name, { seenAt: Date.now() })
         .catch((err) => console.error('register stats error:', err));
 
-      socket.emit('hello', { player });
+      // #7: Reconnect support — if the player was previously seated
+      // at a table and disconnected/removed, include reconnect info
+      // in the hello payload so the client can auto-rejoin.
+      let reconnectInfo = null;
+      for (const t of rooms.tables.values()) {
+        for (let i = 0; i < t.seats.length; i++) {
+          const s = t.seats[i];
+          if (s && s.playerId === player.id && (s.disconnected || s.removed)) {
+            // Only offer reconnect if the seat still has chips
+            // and the table hasn't been auto-deleted.
+            if (s.stack > 0) {
+              reconnectInfo = { tableId: t.id, seatIdx: i };
+              break;
+            }
+          }
+        }
+        if (reconnectInfo) break;
+      }
+      socket.emit('hello', { player, reconnectInfo });
       cb && cb({ ok: true, player });
       broadcastLobby();
     } catch (err) {
@@ -672,6 +821,10 @@ io.on('connection', (socket) => {
 
   socket.on('create_table', ({ name, smallBlind, bigBlind, maxSeats }, cb) => {
     if (!socket.data.player) return cb && cb({ ok: false, error: 'Not logged in' });
+    // Rate limit: max 3 table creations per minute per player.
+    if (!checkRateLimit(socket.data.player.name, 'create_table', 3)) {
+      return cb && cb({ ok: false, error: 'Too many tables — slow down' });
+    }
     if (!socket.data.isTableCreator) socket.data.isTableCreator = true;
     // Defence-in-depth: refuse a table whose display name COLLIDES
     // with the reserved HouseRake identity. Without this, a host
@@ -704,6 +857,10 @@ io.on('connection', (socket) => {
   socket.on('join_table', ({ tableId, seatIdx }, cb) => {
     const player = socket.data.player;
     if (!player) return cb && cb({ ok: false, error: 'Not logged in' });
+    // Rate limit: max 10 join attempts per minute per player.
+    if (!checkRateLimit(player.name, 'join_table', 10)) {
+      return cb && cb({ ok: false, error: 'Too many requests — slow down' });
+    }
     // Defence-in-depth: register already rejects HouseRake-as-name, but a
     // future code path that hand-builds a socket.data.player (e.g. an
     // admin override, a fixture, or a handcrafted test socket) could
@@ -723,6 +880,29 @@ io.on('connection', (socket) => {
     }
     if (socket.data.tableId === tableId) {
       return cb && cb({ ok: false, error: 'Already joined' });
+    }
+    // #3/#7: Check if the player is ALREADY seated at this table.
+    // If they're reconnecting (seat exists with same playerId, removed
+    // or disconnected), re-attach to their EXISTING seat rather than
+    // creating a new one.
+    for (let i = 0; i < t.seats.length; i++) {
+      const s = t.seats[i];
+      if (!s || s.playerId !== player.id) continue;
+      if (!s.removed) {
+        return cb && cb({ ok: false, error: "You're already seated at this table" });
+      }
+      // Reconnect case: seat exists, playerId matches, seat is
+      // removed/disconnected. Re-attach to this exact seat.
+      s.removed = false;
+      s.disconnected = false;
+      socket.join('table_' + tableId);
+      socket.data.tableId = tableId;
+      socket.data.seatIdx = i;
+      // Cancel any stale turn timer for this reconnected seat.
+      cancelTurnTimer(tableId, i);
+      broadcastTable(tableId);
+      tryStartHand(tableId);
+      return cb && cb({ ok: true, seatIdx: i, reconnected: true });
     }
     let targetSeat;
     if (typeof seatIdx === 'number' && seatIdx >= 0 && seatIdx < t.seats.length) {
@@ -747,6 +927,9 @@ io.on('connection', (socket) => {
     socket.join('table_' + tableId);
     socket.data.tableId = tableId;
     socket.data.seatIdx = targetSeat;
+    // Log IP collision check
+    const clientIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address || '';
+    logIpCollision(tableId, player.name, String(clientIp).split(',')[0].trim());
     broadcastTable(tableId);
     tryStartHand(tableId);
     cb && cb({ ok: true, seatIdx: targetSeat });
@@ -880,6 +1063,10 @@ io.on('connection', (socket) => {
   socket.on('chat_message', ({ tableId, text }, cb) => {
     const player = socket.data.player;
     if (!player) return cb && cb({ ok: false, error: 'Not logged in' });
+    // Rate limit: max 20 chat messages per minute per player.
+    if (!checkRateLimit(player.name, 'chat', 20)) {
+      return cb && cb({ ok: false, error: 'Slow down' });
+    }
     // Per-socket rate limit: 500ms between sends. Prevents leaning-on-Enter
     // spam from causing broadcast storms + client-side repaint lag. The
     // HTML maxlength=200 attribute already caps paste length on the client;
@@ -944,6 +1131,79 @@ io.on('connection', (socket) => {
     cb && cb({ names: generateNames(8) });
   });
 
+  // ----- Name change (once per 30 days) -----
+  socket.on('change_name', async ({ newName }, cb) => {
+    const player = socket.data.player;
+    if (!player) return cb && cb({ ok: false, error: 'Not logged in' });
+    const trimmed = String(newName || '').trim();
+    if (!trimmed) return cb && cb({ ok: false, error: 'Name required' });
+
+    // 30-day cooldown: check the server-side timestamp.
+    const currentPlayer = await db.getPlayer(player.name);
+    if (currentPlayer && currentPlayer.lastNameChangeAt) {
+      const msSinceChange = Date.now() - currentPlayer.lastNameChangeAt;
+      const daysRemaining = Math.ceil(30 - (msSinceChange / (24 * 60 * 60 * 1000)));
+      if (daysRemaining > 0) {
+        return cb && cb({ ok: false, error: 'Name change locked for ' + daysRemaining + ' more day' + (daysRemaining === 1 ? '' : 's') });
+      }
+    }
+
+    const result = await db.changePlayerName(player.name, trimmed);
+    if (!result.ok) return cb && cb({ ok: false, error: result.error });
+
+    // Update all tracking structures with the new name.
+    const oldName = player.name;
+    const newPlayer = result.player;
+    socket.data.player = newPlayer;
+    socket.data.playerName = newPlayer.name;
+
+    // Update playerSockets: move socket from old name's set to new name's set.
+    const oldSet = playerSockets.get(oldName);
+    if (oldSet) {
+      oldSet.delete(socket.id);
+      if (oldSet.size === 0) playerSockets.delete(oldName);
+    }
+    if (!playerSockets.has(newPlayer.name)) playerSockets.set(newPlayer.name, new Set());
+    playerSockets.get(newPlayer.name).add(socket.id);
+    socketToPlayer.set(socket.id, newPlayer.name);
+
+    // Update any seated seat's name on tables.
+    for (const t of rooms.tables.values()) {
+      for (const s of t.seats) {
+        if (s && s.playerId === newPlayer.id) {
+          s.name = newPlayer.name;
+        }
+      }
+    }
+
+    socket.emit('hello', { player: newPlayer });
+    cb && cb({ ok: true, player: newPlayer });
+    broadcastLobby();
+    if (socket.data.tableId) broadcastTable(socket.data.tableId);
+  });
+
+  // ----- Player stats (personal history) -----
+  socket.on('get_player_stats', async ({ name }, cb) => {
+    const player = socket.data.player;
+    if (!player) return cb && cb({ ok: false, error: 'Not logged in' });
+    const targetName = name || player.name;
+    const stats = await db.getPlayerStats(targetName);
+    if (!stats) return cb && cb({ ok: false, error: 'Player not found' });
+    // #10: Private stats — only the player themselves sees full stats.
+    // Others get just name + points.
+    const isSelf = player.id === stats.id;
+    cb && cb({
+      ok: true,
+      stats: isSelf ? stats : { name: stats.name, points: stats.points, isAdmin: stats.isAdmin },
+      isSelf,
+    });
+  });
+
+  // ----- Table invite link -----
+  // Client opens a direct link like /table/t1 and the server redirects
+  // to the SPA with a hash fragment so the client can auto-join.
+  // The HTTP route is registered below; this is here for documentation.
+
   // ----- Admin handlers -----
   //
   // Every admin_* socket below reads `socket.data.isAdmin`, which is
@@ -978,6 +1238,7 @@ io.on('connection', (socket) => {
     const p = await db.setPoints(name, points);
     if (!p) return cb && cb({ ok: false, error: 'No such player' });
     await applyAdminPointsChangeToSeats(name, p.points);
+    db.logAdminAction(socket.data.player.name, name, 'set_points', 'Set points to ' + points).catch(() => {});
     cb && cb({ ok: true, player: p });
   });
 
@@ -986,26 +1247,22 @@ io.on('connection', (socket) => {
     const p = await db.addPoints(name, delta);
     if (!p) return cb && cb({ ok: false, error: 'No such player' });
     await applyAdminPointsChangeToSeats(name, p.points);
+    db.logAdminAction(socket.data.player.name, name, 'add_points', 'Added ' + delta + ' points').catch(() => {});
     cb && cb({ ok: true, player: p });
   });
 
   socket.on('admin_remove', async ({ name }, cb) => {
     if (!requireAdmin(cb)) return;
-    // Block deletion of the HouseRake ledger: it's the persistent
-    // record of every rake credit ever issued. Deleting it would wipe
-    // rake history (no admin-facing surface to recover it) and the
-    // engine would auto-recreate a fresh 0-balance doc on the next
-    // hand via getOrCreatePlayer, silently losing the audit trail.
     if (db.isReservedHouseAccountName(name)) {
       return cb && cb({ ok: false, error: 'HouseRake is a system account and cannot be removed' });
     }
     await db.deletePlayer(name);
-    // Also clear from any seat.
     for (const t of rooms.tables.values()) {
       for (let i = 0; i < t.seats.length; i++) {
         if (t.seats[i] && t.seats[i].name === name) t.seats[i] = null;
       }
     }
+    db.logAdminAction(socket.data.player.name, name, 'remove_player', 'Player deleted').catch(() => {});
     broadcastAllTables();
     cb && cb({ ok: true });
   });
@@ -1017,6 +1274,69 @@ io.on('connection', (socket) => {
   socket.on('admin_set_starting_stack', async ({ amount }, cb) => {
     if (!requireAdmin(cb)) return;
     await db.setStartingStack(amount);
+    db.logAdminAction(socket.data.player.name, '', 'set_starting_stack', 'Set to ' + amount).catch(() => {});
+    cb && cb({ ok: true });
+  });
+
+  // ----- Admin kick -----
+  //
+  // Removes a player from their current table/seat immediately. The
+  // kicked player keeps their points; they're just removed from the
+  // table. A real-time notification is sent via their socket.
+  socket.on('admin_kick', ({ name }, cb) => {
+    if (!requireAdmin(cb)) return;
+    if (!name) return cb && cb({ ok: false, error: 'Player name required' });
+
+    // Find which table+seat this player occupies.
+    let foundTableId = null;
+    let foundSeatIdx = null;
+    for (const t of rooms.tables.values()) {
+      for (let i = 0; i < t.seats.length; i++) {
+        if (t.seats[i] && t.seats[i].name === name && !t.seats[i].removed) {
+          foundTableId = t.id;
+          foundSeatIdx = i;
+          break;
+        }
+      }
+      if (foundTableId) break;
+    }
+    if (!foundTableId) return cb && cb({ ok: false, error: 'Player not seated at any table' });
+
+    const t = rooms.get(foundTableId);
+    // Mid-hand fold if they're the current actor.
+    if (t && t.phase !== poker.PHASE.WAITING && t.phase !== poker.PHASE.HAND_OVER) {
+      if (t.currentPlayerIndex === foundSeatIdx) {
+        poker.applyAction(t, foundSeatIdx, 'fold');
+      } else if (t.seats[foundSeatIdx]) {
+        t.seats[foundSeatIdx].folded = true;
+      }
+    }
+
+    // Notify the kicked player via any of their sockets.
+    const set = playerSockets.get(name);
+    if (set) {
+      for (const sid of set) {
+        const s = io.sockets.sockets.get(sid);
+        if (s && s.data.tableId === foundTableId) {
+          s.emit('kicked_from_table', { tableId: foundTableId, reason: 'You were removed from the table by an admin' });
+          s.leave('table_' + foundTableId);
+          s.data.tableId = null;
+          s.data.seatIdx = null;
+        }
+      }
+    }
+
+    rooms.unseat(foundTableId, foundSeatIdx);
+    rooms.clearChatIfEmpty(foundTableId);
+    db.logAdminAction(socket.data.player.name, name, 'kick', 'Kicked from table ' + foundTableId).catch(() => {});
+    if (t && t.phase === poker.PHASE.HAND_OVER) {
+      rooms.emitBustedRefundIfAny(foundTableId);
+      broadcastChat(foundTableId);
+      scheduleNextHand(foundTableId);
+    } else {
+      broadcastTable(foundTableId);
+    }
+    broadcastLobby();
     cb && cb({ ok: true });
   });
 
@@ -1108,6 +1428,7 @@ io.on('connection', (socket) => {
         .catch(() => {}); // best-effort
       return cb && cb({ ok: false, error: 'Persist failed: ' + err.message });
     }
+    db.logAdminAction(socket.data.player.name, t.name, 'update_session', 'Updated table settings').catch(() => {});
     // Live broadcast: the in-memory state has already mutated, so a
     // broadcastTable loop lets every viewer (including the admin's
     // own socket) see the updated blinds in the lobby card + the
@@ -1153,6 +1474,13 @@ io.on('connection', (socket) => {
     });
   });
 
+  // #12: Admin action log viewer.
+  socket.on('admin_action_log', async ({ limit }, cb) => {
+    if (!requireAdmin(cb)) return;
+    const log = await db.getAdminActionLog(limit || 100);
+    cb && cb({ ok: true, log });
+  });
+
   socket.on('disconnect', () => {
     const name = socketToPlayer.get(socket.id);
     if (name) {
@@ -1171,25 +1499,20 @@ io.on('connection', (socket) => {
       if (t && t.seats[sidx]) {
         const seat = t.seats[sidx];
         seat.disconnected = true;
-        if (t.phase !== poker.PHASE.WAITING && t.phase !== poker.PHASE.HAND_OVER) {
-          seat.removed = true;
-          if (t.currentPlayerIndex === sidx) {
-            poker.applyAction(t, sidx, 'fold');
-            // Mid-hand disconnect-folds can resolve the hand via fold-out,
-            // which lets `awardPot` push the pot into another seat's stack.
-            // Save every seat so a crash here doesn't revert the disconnected
-            // crash-recovery to the pre-fold snapshot for the winner.
-            saveStacksToDB(t).catch((err) => console.error('save stacks on disconnect fold:', err));
-            broadcastTable(tid);
-          } else {
-            seat.folded = true;
-          }
-        } else {
+        // #6: Don't immediately fold mid-hand — the turn timer will
+        // auto-fold after 25 seconds if they don't reconnect.
+        // Between-hand disconnects still mark removed immediately.
+        if (t.phase === poker.PHASE.WAITING || t.phase === poker.PHASE.HAND_OVER) {
           seat.removed = true;
         }
+        // Cancel any existing turn timer for this seat.
+        cancelTurnTimer(tid, sidx);
+        // Persist stacks on disconnect so a server crash doesn't lose
+        // the disconnected player's chip state.
+        saveStacksToDB(t).catch((err) => console.error('save stacks on disconnect:', err));
       }
-      // Clear chat when the disconnected player was the last seated one.
       rooms.clearChatIfEmpty(tid);
+      broadcastTable(tid);
     }
     broadcastLobby();
   });

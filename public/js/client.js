@@ -15,26 +15,17 @@ const SUIT_COLOR = { s: 'black', h: 'red', d: 'red', c: 'black' };
 const state = {
   socket:        null,
   player:        null,       // { id, name, points, isAdmin }
-  // `isAdmin` mirrors `player.isAdmin` after register. Kept as a top-
-  // level field so renderAdminView() can read it without first
-  // checking that `player` is still defined (defensive against a
-  // stale state.player reference during async renders).
   isAdmin:       false,
-  tables:        [],         // lobby view: [{ id, name, seatsTaken, maxSeats, phase, handInProgress }]
-  currentTable:  null,       // full table state if joined
-  // Admin room state. `adminRoom.sessions` is the most recent
-  // admin_list_sessions payload (used to re-render after a settings
-  // save). `adminRoom.editorTableId` is the currently-open editor's
-  // tableId (null when collapsed). `_house` caches the admin-house
-  // info from admin_get_house_info so the header chip doesn't re-fetch
-  // on every view re-render.
+  tables:        [],
+  currentTable:  null,
   adminRoom: {
     sessions: [],
     editorTableId: null,
-    house: null,         // { name, id, points } | null | 'missing'
+    house: null,
+    actionLog: null,     // latest admin_action_log payload
   },
-  leaderboardData: null,     // last /api/leaderboard payload, used for re-renders
-  view:          'login',    // 'login' | 'lobby' | 'table' | 'admin'
+  leaderboardData: null,
+  view:          'login',    // 'login' | 'lobby' | 'table' | 'admin' | 'profile' | 'stats'
   toastTimer:    null,
   toastType:     null,
   pendingError:  null,
@@ -63,6 +54,11 @@ const state = {
   // fallback only matters when the callback never arrives.
   adminLoginPending: false,
   adminLoginTimer: null,
+  // Profile / stats modals
+  profileModalPlayer: null,
+  statsModalPlayer: null,
+  // Notification permission (asked once)
+  notificationsAsked: false,
   // Owner-secret modal reentrancy state. Same pattern as
   // adminLoginPending/adminLoginTimer above: gates rapid
   // click/Enter repeats during the in-flight register call, with a
@@ -2192,9 +2188,30 @@ socket.on('connect', () => {
   } catch (e) {}
 });
 
-socket.on('hello', ({ player }) => {
+socket.on('hello', ({ player, reconnectInfo }) => {
   state.player = player;
+  state.isAdmin = player.isAdmin === true;
   updateTopBar();
+  syncAdminButtonVisibility();
+  // #7: Reconnect support — if the server tells us we were seated before,
+  // auto-rejoin that table. Only fires once (cleared after use).
+  if (reconnectInfo) {
+    socket.emit('join_table', { tableId: reconnectInfo.tableId, seatIdx: reconnectInfo.seatIdx }, res => {
+      if (res && res.ok) {
+        setView('table');
+        showToast('Reconnected to your seat', 'good');
+      }
+    });
+  }
+  // #9: Handle pending table invite link (set from hash on page load).
+  if (window._pendingTableInvite) {
+    const tableId = window._pendingTableInvite;
+    delete window._pendingTableInvite;
+    socket.emit('join_table', { tableId, seatIdx: null }, res => {
+      if (res && res.ok) setView('table');
+      else showToast(res && res.error ? res.error : 'Could not join table', 'error');
+    });
+  }
 });
 
 socket.on('lobby_update', ({ tables }) => {
@@ -2215,6 +2232,22 @@ socket.on('server_message', ({ level, text }) => {
 socket.on('disconnect', () => {
   showToast('Disconnected. Reconnecting...', 'error');
 });
+
+// #2: Kicked from table by admin — notified in real-time via socket.
+socket.on('kicked_from_table', ({ reason }) => {
+  state.currentTable = null;
+  clearShowdown();
+  showToast(reason || 'You were removed from the table', 'error');
+  setView('lobby');
+});
+
+// #9: Handle table invite hash links on page load.
+function handleTableInviteHash() {
+  const hash = window.location.hash;
+  const m = hash && hash.match(/^#table=(.+)$/);
+  if (m) window._pendingTableInvite = decodeURIComponent(m[1]);
+}
+handleTableInviteHash();
 
 socket.on('chat_update', ({ tableId, messages }) => {
   // Server sends the full history (not deltas) so reconnecting sockets
