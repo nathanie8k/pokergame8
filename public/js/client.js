@@ -2561,7 +2561,39 @@ function renderAdminSessionsGrid(sessions) {
       onclick: () => openAdminEditor(s.id),
     });
     card.appendChild(editBtn);
+    // Delete button — only for non-default tables (default tables are permanent).
+    if (!s.default) {
+      const delBtn = el('button', {
+        class: 'link-btn admin-delete-btn',
+        text: 'Delete',
+        title: 'Delete this table permanently',
+        onclick: () => confirmDeleteTable(s),
+      });
+      card.appendChild(delBtn);
+    }
     grid.appendChild(card);
+  });
+}
+
+function confirmDeleteTable(session) {
+  // Guard: refuse if players are seated.
+  if (session.seatsTaken > 0) {
+    showToast("Can't delete a table with active players — remove or kick all players first", 'error');
+    return;
+  }
+  const ok = window.confirm('Delete "' + session.name + '"? This cannot be undone. Any persisted settings for this table will be permanently removed.');
+  if (!ok) return;
+  socket.emit('admin_delete_table', { tableId: session.id }, (res) => {
+    if (res && res.ok) {
+      showToast('Table "' + session.name + '" deleted', 'good');
+      // If the admin is currently editing this table, close the editor.
+      if (state.adminRoom.editorTableId === session.id) {
+        closeAdminEditor();
+      }
+      fetchAdminSessions();
+    } else {
+      showToast(res && res.error ? res.error : 'Failed to delete table', 'error');
+    }
   });
 }
 

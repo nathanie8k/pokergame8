@@ -1438,6 +1438,44 @@ io.on('connection', (socket) => {
     cb && cb({ ok: true, settings: applied.settings });
   });
 
+  // ----- Admin delete table -----
+  //
+  // Permanently deletes a table. Refuses if there are active (non-removed)
+  // seated players or a hand is in progress, with a clear error message.
+  // Admin must manually remove/kick all players first. On success the
+  // table is removed from the in-memory RoomManager, its persisted
+  // settings are deleted from MongoDB, the lobby is re-broadcast so the
+  // card disappears for every connected client, and the admin action is
+  // logged for audit.
+  socket.on('admin_delete_table', async ({ tableId }, cb) => {
+    if (!requireAdmin(cb)) return;
+    const t = rooms.get(tableId);
+    if (!t) return cb && cb({ ok: false, error: 'No such table' });
+    // Refuse if any actively-seated (non-removed) players occupy the table.
+    const activeSeats = t.seats.filter((s) => s && !s.removed);
+    if (activeSeats.length > 0) {
+      return cb && cb({ ok: false, error: "Can't delete a table with active players — remove or kick all players first" });
+    }
+    // Cancel any pending next-hand timer so a deferred startHand doesn't
+    // fire after the table is gone.
+    if (rooms.nextHandTimers.has(tableId)) {
+      clearTimeout(rooms.nextHandTimers.get(tableId));
+      rooms.nextHandTimers.delete(tableId);
+    }
+    // Persist stacks for any removed-but-still-referenced seats.
+    await saveStacksToDB(t);
+    // Drop persisted settings from MongoDB (best-effort — the in-memory
+    // removal is the authoritative delete).
+    db.deleteTableSettings(t.name).catch((err) => console.error('deleteTableSettings error:', err));
+    // Remove from in-memory state.
+    rooms.remove(tableId);
+    // Log the admin action for audit.
+    db.logAdminAction(socket.data.player.name, t.name, 'delete_table', 'Table deleted').catch(() => {});
+    // Refresh the lobby so the card disappears for all connected clients.
+    broadcastLobby();
+    cb && cb({ ok: true });
+  });
+
   // Returns the HouseRake ledger account + balance for the admin panel
   // header. The header reads "House: HouseRake • <balance> pts" so the
   // host can see the running rake total AT A GLANCE — without this
