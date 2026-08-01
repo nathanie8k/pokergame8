@@ -1626,7 +1626,7 @@ input, button, select, textarea { color: inherit; }
   /* Bottom padding accounts for the fixed action bar (~80px) + presets
      row + safe-area padding. Tighter than the earlier 200px so the
      visual gap below the felt is minimal. */
-  .view { padding: 16px 14px 130px; }
+  .view { padding: 16px 14px 16px; }
   .top-bar { padding: 12px 16px; }
   .brand-text { font-size: 15px; }
   .top-info { gap: 8px; }
@@ -2322,20 +2322,25 @@ input, button, select, textarea { color: inherit; }
     max-width: 100%;
     margin: 0 auto;             /* center horizontally when width shrinks */
   }
+  /* self-panel + action-bar + raise-row are now inside .table-felt
+     (absolute-positioned in the lower band). The old child-combinator
+     rules below no longer match and are kept as documentation. */
+  /* [DEAD] #view-table > .self-panel { ... } — moved inside .table-felt */
+  /* [DEAD] #view-table > .action-bar { ... } — moved inside .table-felt */
   /* self-panel mobile tray — cards + name + stack + status row.
      natural content height drives the zone's reserved height
      (~110-130px) on phones. */
-  #view-table > .self-panel {
+  /* #view-table > .self-panel {
     flex: 0 0 auto;
     margin-top: 6px;
     padding: 8px;
-  }
+  } */
   /* Action-bar contains ONLY Fold/Check/Call/All-in on mobile
      now — the raise controls live in .raise-row BELOW. The
      flex-wrap:nowrap keeps all four buttons in a single tidy
      row. Equal-share button sizing distributes the action-bar's
      width evenly. */
-  #view-table > .action-bar {
+  /* #view-table > .action-bar {
     flex: 0 0 auto;
     margin-top: 6px;
     padding: 8px;
@@ -2349,14 +2354,14 @@ input, button, select, textarea { color: inherit; }
     padding: 10px 6px;
     min-height: 44px;
     font-size: 13px;
-  }
+  } */
   /* .raise-row holds the raise controls BELOW the action-bar.
      Horizontal flex row: number input + Min/2x/Pot/All presets +
      Raise submit button. Row's reserved height driven by largest
      child (~48px button + 8px padding = ~64px). The bg panel
      makes the raise UI distinguishable from the action row
      above. */
-  #view-table > .raise-row {
+  /* #view-table > .raise-row {
     flex: 0 0 auto;
     margin-top: 6px;
     padding: 8px;
@@ -2393,22 +2398,6 @@ input, button, select, textarea { color: inherit; }
     min-width: 84px;
     min-height: 44px;
   }
-
-  /* Collapse the raise row entirely when raise isn't legal.
-     setupActionButtons toggles `.is-active` based on the same
-     condition that gates raiseBtn.disabled (no chips, can't
-     match min raise, etc.). Without this toggle, the row
-     reserves ~64px of vertical real estate even when raise is
-     disabled — contradicting the spec's "appears only when
-     Raise is active" intent. The collapse keeps the table
-     area's flex-shrink budget unchanged for the active game
-     state. */
-  /* display:none is preferred over visibility:hidden so the
-     collapsed row is fully removed from the accessibility tree
-     (screen readers won't announce "slider" etc. when raised
-     isn't legal). The redundant geometry overrides below stay
-     as defensive no-ops if some UA ever ignores display:none on
-     a flex item. */
   #view-table > .raise-row:not(.is-active) {
     display: none;
     height: 0;
@@ -2416,7 +2405,7 @@ input, button, select, textarea { color: inherit; }
     padding: 0;
     border: none;
     overflow: hidden;
-  }
+  } */
 
   /* Hand-log is debug-only; on mobile we have no real estate for
      it. (Existing mobile blocks already do this; reinforced here
@@ -2649,6 +2638,9 @@ input, button, select, textarea { color: inherit; }
    presets. No Raise submit button (moved to action-bar above). The
    row's display:none collapse rule (mobile @media) hides it when
    raised isn't legal. */
+/* [DEAD] #view-table > .raise-row — moved inside .table-felt
+   (no longer a direct child of #view-table). Kept as documentation. */
+/*
 #view-table > .raise-row {
   display: flex;
   align-items: center;
@@ -2694,6 +2686,7 @@ input, button, select, textarea { color: inherit; }
   background: rgba(255, 204, 77, 0.18);
   border-color: var(--accent);
 }
+*/
 
 /* Reduce the abandon of the inline seat-positioning styles that the
    refactor removed. Re-enforces that wrap.style.* are NOT applied
@@ -2936,9 +2929,12 @@ input, button, select, textarea { color: inherit; }
     pointer-events: none;
   }
 
-  /* ---- FELT CENTER (pot + community cards + phase, inset from edges) ---- */
-  #view-table .table-felt {
-    position: absolute;
+  /* ---- FELT CENTER (pot + community cards + phase, inset from edges) ----   */
+   #view-table .table-felt {
+     position: absolute;
+     /* NOTE: kept as absolute (not relative) because inset:18% requires it.
+        Absolute still creates a containing block for the children positioned
+        absolutely below — functionally identical to relative for this purpose. */
     inset: 18%;
     width: auto; height: auto;
     border: none;
@@ -2948,7 +2944,7 @@ input, button, select, textarea { color: inherit; }
     align-items: center;
     justify-content: center;
     gap: 6px;
-    pointer-events: none;
+    pointer-events: auto;
   }
 
   /* POT: above community cards */
@@ -3218,62 +3214,76 @@ input, button, select, textarea { color: inherit; }
   }
 
   /* ==========================================================
-     SECTION 3: PLAYER STATUS BAR (below table, full width)
+     SECTION 3: PLAYER STATUS BAR (inside felt lower band)
+     Stacked from bottom: raise-row → status-bar → self-panel.
      ========================================================== */
   #view-table .player-status-bar {
-    flex: 0 0 auto;
-    padding: 6px 14px;
-    background: #0d0d0d;
-    border-top: 1px solid rgba(255,255,255,0.06);
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    position: absolute;
+    left: 6%;
+    right: 6%;
+    bottom: calc(4% + 26px);
+    z-index: 20;
+    padding: 2px 8px;
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(4px);
+    border-radius: 4px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    min-height: 32px;
-    flex-wrap: wrap;
+    gap: 6px;
+    min-height: auto;
+    flex-wrap: nowrap;
+    border: none;
   }
   #view-table .player-status-bar .self-panel-info {
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    font-size: 12px;
+    gap: 6px;
+    flex-wrap: nowrap;
+    font-size: 9px;
   }
   #view-table .player-status-bar .self-name {
-    font-size: 13px;
+    font-size: 10px;
     font-weight: 800;
     color: #fff;
     white-space: nowrap;
   }
   #view-table .player-status-bar .self-stack {
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 700;
     color: var(--accent);
     white-space: nowrap;
   }
   #view-table .player-status-bar .self-marks {
-    font-size: 10px;
+    font-size: 8px;
     color: rgba(255,255,255,0.45);
     white-space: nowrap;
   }
   #view-table .player-status-bar .self-status {
-    font-size: 11px;
+    font-size: 9px;
     color: var(--text-mute);
   }
 
   /* ==========================================================
-     SECTION 4: HAND CARDS (left, fluid) + ACTION GRID (right, fluid)
-     Uses clamp() so both columns shrink proportionally on narrow
-     screens instead of cards overflowing into the button area.
+     SECTION 4: HAND CARDS + ACTION GRID (inside felt lower band)
+     Absolute-positioned above status bar, scaled to fit ~90px.
      ========================================================== */
   #view-table .self-panel {
-    flex: 0 0 auto;
-    padding: 10px 8px 0;
-    background: #0d0d0d;
+    position: absolute;
+    left: 4%;
+    right: 4%;
+    bottom: calc(4% + 52px);
+    z-index: 20;
+    padding: 2px 4px;
+    margin-top: 0;             /* override general .self-panel margin */
+    box-shadow: none;           /* override general .self-panel shadow */
+    background: rgba(0,0,0,0.40);
+    backdrop-filter: blur(4px);
+    border-radius: 5px;
+    border: 1px solid rgba(255,255,255,0.08);
   }
   #view-table .self-panel.is-active {
-    border-top: 2px solid var(--accent);
+    border-color: var(--accent);
   }
 
   #view-table .hand-action-row {
@@ -3282,50 +3292,49 @@ input, button, select, textarea { color: inherit; }
     width: 100%;
     margin: 0 auto;
     align-items: stretch;
-    gap: 0;
-    /* Safe-area padding so buttons are never clipped by iOS home indicator */
-    padding-bottom: env(safe-area-inset-bottom, 8px);
+    gap: 1px;
     box-sizing: border-box;
   }
 
-  /* TOP: hole cards — full-width row above action buttons */
+  /* Cards — ultra-compact to fit below community cards (~22px tall) */
   #view-table .hand-cards-col {
     flex: 0 0 auto;
     width: 100%;
-    padding: 4px 2px;
+    padding: 0 2px;
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: hidden;  /* cards must NEVER bleed into button area */
+    overflow: hidden;
   }
   #view-table .hand-cards-col .self-panel-cards {
     display: flex;
-    gap: clamp(4px, 1.5vw, 8px);
+    gap: 3px;
     justify-content: center;
     align-items: center;
   }
   #view-table .hand-cards-col .self-panel-cards .card {
-    /* Cards scale down on narrow screens so they always fit within their column */
-    width: clamp(46px, 13vw, 68px);
-    height: clamp(66px, 18.5vw, 98px);
-    border-radius: 8px;
+    width: 17px;
+    height: 22px;
+    border-radius: 3px;
     flex-shrink: 0;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.1);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
   }
-  #view-table .hand-cards-col .self-panel-cards .card .corner .rank { font-size: clamp(13px, 3.5vw, 18px); }
-  #view-table .hand-cards-col .self-panel-cards .card .corner .suit { font-size: clamp(8px, 2.2vw, 12px); }
-  #view-table .hand-cards-col .self-panel-cards .card .center-suit { font-size: clamp(24px, 8vw, 38px); }
+  #view-table .hand-cards-col .self-panel-cards .card .corner.top { top: 1px; left: 1px; }
+  #view-table .hand-cards-col .self-panel-cards .card .corner.bottom { bottom: 1px; right: 1px; }
+  #view-table .hand-cards-col .self-panel-cards .card .corner .rank { font-size: 6px; }
+  #view-table .hand-cards-col .self-panel-cards .card .corner .suit { font-size: 4px; }
+  #view-table .hand-cards-col .self-panel-cards .card .center-suit { font-size: 8px; }
 
-  /* DIVIDER — horizontal separation between cards and buttons */
+  /* Divider — thin horizontal line */
   #view-table .action-divider {
     flex: 0 0 auto;
     height: 1px;
     width: 100%;
-    background: rgba(255,255,255,0.12);
-    margin: 4px 0;
+    background: rgba(255,255,255,0.08);
+    margin: 1px 0;
   }
 
-  /* BOTTOM: action button grid — takes full width below cards */
+  /* Action button grid — ultra-compact 2×2 */
   #view-table .action-grid-col {
     width: 100%;
     overflow: hidden;
@@ -3337,7 +3346,7 @@ input, button, select, textarea { color: inherit; }
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto;
-    gap: clamp(4px, 1.5vw, 6px);
+    gap: 2px;
     width: 100%;
     padding: 0;
     background: none;
@@ -3367,19 +3376,18 @@ input, button, select, textarea { color: inherit; }
   #view-table .action-btn.call:disabled,
   #view-table .action-btn.check:disabled { visibility: collapse; }
 
-  /* Action button: responsive sizing with clamp() — shrinks font+padding
-     on narrow screens to keep all buttons visible and tappable */
+  /* Action button: compact sizing — fits inside felt lower band */
   #view-table .action-btn {
     background: rgba(255,255,255,0.06) !important;
     border: 1px solid rgba(255,255,255,0.15) !important;
-    border-radius: 10px !important;
+    border-radius: 6px !important;
     box-shadow: none !important;
-    padding: clamp(6px, 1.5vw, 10px) clamp(2px, 1vw, 6px);
-    min-height: clamp(38px, 10vw, 46px);
+    padding: 2px 4px;
+    min-height: 16px;
     min-width: 0;
-    font-size: clamp(10px, 3vw, 13px);
+    font-size: 8px;
     font-weight: 800;
-    letter-spacing: 0.2px;
+    letter-spacing: 0.1px;
     color: #ddd;
     text-align: center;
     opacity: 1;
@@ -3417,18 +3425,23 @@ input, button, select, textarea { color: inherit; }
   #view-table .action-btn.all-in { color: #ff9b59; }
 
   /* ==========================================================
-     SECTION 5: BET SIZING ROW (below section 4)
+     SECTION 5: BET SIZING ROW (inside felt, above status bar)
      ========================================================== */
   #view-table .raise-row {
+    position: absolute;
+    left: 4%;
+    right: 4%;
+    bottom: 4%;
+    z-index: 21;
     display: flex;
     align-items: center;
-    gap: 6px;
-    width: 100%;
-    margin: 0 auto;
-    padding: 8px 10px;
-    background: #0d0d0d;
-    border-top: 1px solid rgba(255,255,255,0.05);
-    flex: 0 0 auto;
+    gap: 4px;
+    margin: 0;
+    padding: 3px 6px;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px);
+    border-radius: 5px;
+    border: 1px solid rgba(255,255,255,0.08);
     flex-wrap: nowrap;
   }
   #view-table .raise-row.is-active {
@@ -3439,7 +3452,8 @@ input, button, select, textarea { color: inherit; }
     display: none !important;
   }
   #view-table .raise-row > .raise-price-label {
-    font-size: 11px;
+    display: inline;
+    font-size: 7px;
     font-weight: 700;
     color: rgba(255,255,255,0.45);
     text-transform: uppercase;
@@ -3448,15 +3462,15 @@ input, button, select, textarea { color: inherit; }
     white-space: nowrap;
   }
   #view-table .raise-row > #raiseAmount {
-    width: 64px;
-    min-height: 38px;
+    width: 38px;
+    min-height: 18px;
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 8px;
+    border-radius: 4px;
     color: #fff;
-    font-size: 13px;
+    font-size: 9px;
     font-weight: 700;
-    padding: 6px 8px;
+    padding: 1px 3px;
     text-align: center;
     flex: 0 0 auto;
   }
@@ -3469,13 +3483,13 @@ input, button, select, textarea { color: inherit; }
   #view-table .raise-row > .raise-presets button {
     flex: 1 1 0;
     min-width: 0;
-    min-height: 38px;
-    padding: 6px 4px;
-    font-size: 11px;
+    min-height: 16px;
+    padding: 1px 3px;
+    font-size: 8px;
     font-weight: 800;
     background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 8px;
+    border-radius: 3px;
     color: rgba(255,255,255,0.6);
     transition: color 150ms, border-color 150ms, background 150ms;
   }
