@@ -3627,11 +3627,50 @@ input, button, select, textarea { color: inherit; }
     box-shadow: 0 0 18px rgba(230,57,70,0.25);
   }
 
-  /* Desktop self-panel cards — intermediate between mobile tiny
-     (17×22) and full desktop (64×92). */
+  /* Desktop self-panel cards — larger, positioned to the right of action buttons */
   .self-panel .self-panel-cards .card {
-    width: 18px;
-    height: 26px;
+    width: 40px;
+    height: 56px;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .self-panel .self-panel-cards .card .corner.top    { top: 3px;    left: 4px; }
+  .self-panel .self-panel-cards .card .corner.bottom { bottom: 3px; right: 4px; }
+  .self-panel .self-panel-cards .card .corner .rank  { font-size: 13px; }
+  .self-panel .self-panel-cards .card .corner .suit  { font-size: 9px; }
+  .self-panel .self-panel-cards .card .center-suit   { font-size: 22px; }
+
+  /* Desktop action row: side-by-side layout — cards on right, buttons on left */
+  #view-table .hand-action-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+  /* Cards column → right side */
+  #view-table .hand-cards-col {
+    order: 2;
+    flex: 0 0 auto;
+    width: auto;
+    padding: 0 4px;
+  }
+  #view-table .hand-cards-col .self-panel-cards {
+    gap: 6px;
+  }
+  /* Vertical divider between buttons and cards */
+  #view-table .action-divider {
+    order: 1;
+    flex: 0 0 auto;
+    width: 1px;
+    align-self: stretch;
+    margin: 4px 2px;
+    background: rgba(255,255,255,0.10);
+  }
+  /* Action buttons column → left side */
+  #view-table .action-grid-col {
+    order: 0;
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
   }
 
   /* ---- Action bar: wider gaps for clear button separation ---- */
