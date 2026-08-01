@@ -86,7 +86,7 @@ html, body {
    and poker-gold accent so the table view keeps its own theme
    independent of the black/red rest-of-site theme. */
 body.is-table-view {
-  background: radial-gradient(ellipse 70% 60% at 50% 45%, var(--felt-center) 0%, var(--felt-edge) 100%);
+  background: #0d0d0d;
   background-attachment: fixed;
   --accent:      #ffcc4d;
   --accent-2:    #ffe27a;
@@ -97,6 +97,12 @@ body.is-table-view {
   --bg-3:        #243a30;
   --bg-4:        #2e4639;
   --btn-text:    #2a1d00;
+}
+/* Desktop table view: green felt body behind the poker table */
+@media (min-width: 721px) {
+  body.is-table-view {
+    background: radial-gradient(ellipse 70% 60% at 50% 45%, var(--felt-center) 0%, var(--felt-edge) 100%);
+  }
 }
 
 /* Suit-decoration watermark — faint card glyphs in the corners of the
@@ -2823,7 +2829,7 @@ input, button, select, textarea { color: inherit; }
     flex-direction: column;
     min-height: 100vh;
     min-height: 100dvh;
-    background: radial-gradient(ellipse 70% 60% at 50% 45%, var(--felt-center) 0%, var(--felt-edge) 100%);
+    background: #0d0d0d;
     overflow-x: hidden;
   }
 
@@ -3716,7 +3722,7 @@ input, button, select, textarea { color: inherit; }
     display: flex;
     flex-direction: column;
     /* Full-screen felt radial gradient: lighter center → darker edges */
-    background: radial-gradient(ellipse 70% 60% at 50% 45%, var(--felt-center) 0%, var(--felt-edge) 100%);
+    background: #0d0d0d;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
@@ -3774,7 +3780,7 @@ input, button, select, textarea { color: inherit; }
     font-size: 16px;
     font-weight: 800;
     letter-spacing: 0.3px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    background: linear-gradient(135deg, #ffcc4d, #ffe27a);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -3796,8 +3802,8 @@ input, button, select, textarea { color: inherit; }
   }
   .mftr-points-pill {
     padding: 5px 12px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #2a1d00;
+    background: linear-gradient(135deg, #e63946, #ff6b6b);
+    color: #fff;
     border-radius: 999px;
     font-weight: 800;
     font-size: 13px;
@@ -3826,9 +3832,8 @@ input, button, select, textarea { color: inherit; }
   .mfsr-table-name {
     font-size: 16px;
     font-weight: 800;
-    color: var(--accent);
+    color: #e63946;
     letter-spacing: 0.3px;
-    text-shadow: 0 0 14px var(--accent-glow);
   }
   .mfsr-table-info {
     font-size: 11px;
@@ -3869,10 +3874,15 @@ input, button, select, textarea { color: inherit; }
     align-items: center;
     gap: 10px;
     flex: 1 0 auto;
-    padding: 8px 16px 14px;
+    padding: 12px 16px 16px;
+    margin: 6px 10px 8px;
     position: relative;
     z-index: 2;
     min-height: 0;
+    /* Zone 1: dark green felt rounded panel */
+    background: radial-gradient(ellipse 80% 70% at 50% 45%, #12352a 0%, #0d2a1f 50%, #081c15 100%);
+    border-radius: 24px;
+    box-shadow: inset 0 0 40px rgba(0,0,0,0.45);
   }
 
   /* Pot */
@@ -4039,13 +4049,13 @@ input, button, select, textarea { color: inherit; }
     transition: opacity 200ms;
   }
   /* Left positions */
-  .mfsm-left-upper   { left: 4px;  top: 22%; }
-  .mfsm-left-middle  { left: 4px;  top: 44%; }
-  .mfsm-left-lower   { left: 4px;  top: 66%; }
+  .mfsm-left-upper   { left: 10px; top: 28%; }
+  .mfsm-left-middle  { left: 10px; top: 46%; }
+  .mfsm-left-lower   { left: 10px; top: 60%; }
   /* Right positions */
-  .mfsm-right-upper  { right: 4px; top: 22%; }
-  .mfsm-right-middle { right: 4px; top: 44%; }
-  .mfsm-right-lower  { right: 4px; top: 66%; }
+  .mfsm-right-upper  { right: 10px; top: 28%; }
+  .mfsm-right-middle { right: 10px; top: 46%; }
+  .mfsm-right-lower  { right: 10px; top: 60%; }
 
   .mfsm-seat .mfsm-name {
     font-size: 11px;
@@ -4060,30 +4070,29 @@ input, button, select, textarea { color: inherit; }
   .mfsm-seat .mfsm-stack {
     font-size: 10px;
     font-weight: 700;
-    color: var(--accent);
+    color: #e63946;
     font-variant-numeric: tabular-nums;
     line-height: 1.2;
   }
   .mfsm-seat .mfsm-sit-here {
     font-size: 10px;
     font-weight: 600;
-    color: var(--text-mute);
+    color: var(--text-dim);
     cursor: pointer;
     padding: 6px 10px;
     border-radius: 999px;
-    border: 1px dashed rgba(255,204,77,0.25);
-    transition: color 120ms, border-color 120ms, background 120ms;
+    border: none;
+    transition: color 120ms, background 120ms;
     white-space: nowrap;
   }
   .mfsm-seat .mfsm-sit-here:hover,
   .mfsm-seat .mfsm-sit-here:active {
-    color: var(--accent);
-    border-color: var(--accent);
-    background: rgba(255,204,77,0.08);
+    color: #e63946;
+    background: rgba(230,57,70,0.08);
   }
   .mfsm-seat.mfsm-current-turn .mfsm-name {
-    color: var(--accent);
-    text-shadow: 0 0 8px var(--accent-glow);
+    color: #e63946;
+    text-shadow: 0 0 6px rgba(230,57,70,0.35);
   }
 
   /* ============================================================
@@ -4132,9 +4141,9 @@ input, button, select, textarea { color: inherit; }
   /* Individual action colors */
   .mfa-check  { color: var(--text); }
   .mfa-fold   { color: #ffb8b8; }
-  .mfa-raise  { color: var(--accent); text-shadow: 0 0 14px var(--accent-glow); }
+  .mfa-raise  { color: #e63946; text-shadow: 0 0 12px rgba(230,57,70,0.40); }
   .mfa-call   { color: var(--info); }
-  .mfa-allin  { color: var(--warn); }
+  .mfa-allin  { color: #e63946; }
 
   /* ============================================================
      Mobile felt sizing row — quick bet-sizing labels
