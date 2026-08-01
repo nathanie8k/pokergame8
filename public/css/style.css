@@ -793,6 +793,7 @@ input, button, select, textarea { color: inherit; }
   border: 2px solid rgba(255,255,255,0.06);
   transition: border-color 200ms, box-shadow 200ms;
   backdrop-filter: blur(2px);
+  position: relative;
 }
 .seat.is-active .seat-ring {
   border-color: var(--accent);
@@ -4273,4 +4274,327 @@ input, button, select, textarea { color: inherit; }
   .mobile-felt-seat-markers {
     display: none !important;
   }
+}
+
+/* ============================================================
+   ANIMATIONS — Game-feel layer (all visual, no logic)
+   ============================================================ */
+
+/* 1. CARD DEALING — flip reveal ------------------------------ */
+.card.card-deal {
+  animation: cardDealIn 400ms var(--ease) both;
+}
+@keyframes cardDealIn {
+  0%   { transform: perspective(400px) rotateY(25deg) scale(0.85); opacity: 0; }
+  100% { transform: perspective(400px) rotateY(0deg) scale(1); opacity: 1; }
+}
+/* Stagger delays set via inline style by JS (delay ms per card). */
+
+/* 2. CHIPS TO POT — arc toss --------------------------------- */
+.chip-arc-particle {
+  position: fixed;
+  z-index: 150;
+  pointer-events: none;
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--accent);
+  text-shadow: 0 0 8px var(--accent-glow);
+  white-space: nowrap;
+  animation: chipArcFly 550ms cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+@keyframes chipArcFly {
+  0%   { transform: translate(0, 0)          scale(1);   opacity: 1; }
+  30%  { transform: translate(var(--arc-mid-x, -40px), var(--arc-mid-y, -60px)) scale(1.25); opacity: 1; }
+  70%  { transform: translate(var(--arc-end-x, -80px), var(--arc-end-y, -20px)) scale(0.9); opacity: 0.8; }
+  100% { transform: translate(var(--arc-end-x, -80px), var(--arc-end-y, 0px))   scale(0.5); opacity: 0; }
+}
+
+/* 3. WIN CELEBRATION — scale bounce -------------------------- */
+.seat.win-bounce .seat-ring {
+  animation: winBounce 600ms var(--ease) both;
+}
+@keyframes winBounce {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.22); }
+  50%  { transform: scale(0.95); }
+  70%  { transform: scale(1.06); }
+  85%  { transform: scale(0.98); }
+  100% { transform: scale(1); }
+}
+
+/* 4. TURN TIMER — shrinking bar ------------------------------ */
+.turn-timer-bar {
+  position: absolute;
+  bottom: -6px;
+  left: 10%;
+  width: 80%;
+  height: 4px;
+  background: rgba(255,255,255,0.10);
+  border-radius: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.turn-timer-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 2px;
+  background: var(--good);
+  transition: width 300ms linear, background 300ms linear;
+  transform-origin: right center;
+}
+.turn-timer-fill.amber { background: var(--warn); }
+.turn-timer-fill.red   { background: var(--danger); }
+
+/* 5. ACTIVE TURN HIGHLIGHT — pulsing glow -------------------- */
+/* Enhanced from existing activeThrob on .seat-ring.
+   Added avatar glow for extra visibility. */
+.seat.is-active .seat-avatar {
+  box-shadow:
+    0 0 0 3px rgba(255,204,77,0.35),
+    0 0 18px rgba(255,204,77,0.55);
+  animation: avatarGlow 1.4s ease-in-out infinite;
+}
+@keyframes avatarGlow {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(255,204,77,0.20), 0 0 12px rgba(255,204,77,0.30); }
+  50%      { box-shadow: 0 0 0 5px rgba(255,204,77,0.50), 0 0 28px rgba(255,204,77,0.70); }
+}
+
+/* 6. FOLD — slide off table ---------------------------------- */
+.seat.folding .seat-ring {
+  animation: foldSlide 450ms ease-in both;
+}
+@keyframes foldSlide {
+  0%   { transform: translate(0, 0)    rotate(0deg);   opacity: 1; }
+  100% { transform: translate(80px, -40px) rotate(15deg); opacity: 0; }
+}
+/* Seat at slot 4 (top-left) and 5 (top-center) should slide different direction */
+.seat[data-slot="4"].folding .seat-ring,
+.seat[data-slot="5"].folding .seat-ring {
+  animation-name: foldSlideUp;
+}
+@keyframes foldSlideUp {
+  0%   { transform: translate(0, 0)    rotate(0deg);   opacity: 1; }
+  100% { transform: translate(0, -60px) rotate(10deg); opacity: 0; }
+}
+
+/* 7. SHOWDOWN REVEAL — pop + settle -------------------------- */
+.card.card-showdown {
+  animation: showdownPop 400ms var(--ease) both;
+}
+@keyframes showdownPop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  60%  { transform: scale(1.18); opacity: 1; }
+  80%  { transform: scale(0.94); }
+  100% { transform: scale(1);    opacity: 1; }
+}
+
+/* 8. NOTIFICATIONS — speech bubble fade ---------------------- */
+.action-notification {
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.78);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+  border: 1px solid rgba(255,255,255,0.15);
+  animation: notifLife 2.5s ease-out both;
+}
+@keyframes notifLife {
+  0%   { transform: translateX(-50%) translateY(6px) scale(0.85); opacity: 0; }
+  12%  { transform: translateX(-50%) translateY(0)   scale(1.05); opacity: 1; }
+  25%  { transform: translateX(-50%) translateY(0)   scale(1);    opacity: 1; }
+  75%  { opacity: 1; }
+  100% { transform: translateX(-50%) translateY(-8px) scale(0.9); opacity: 0; }
+}
+
+/* 9. POT SPLIT — split apart --------------------------------- */
+.pot-split-chip {
+  position: absolute;
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--accent);
+  text-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 20px var(--accent-glow);
+  pointer-events: none;
+  z-index: 40;
+  animation: potSplitFly 700ms var(--ease) both;
+}
+.pot-split-chip.left  { animation-name: potSplitLeft; }
+.pot-split-chip.right { animation-name: potSplitRight; }
+@keyframes potSplitLeft {
+  0%   { transform: translate(0, 0) scale(1);  opacity: 1; }
+  100% { transform: translate(-90px, -20px) scale(0.7); opacity: 0; }
+}
+@keyframes potSplitRight {
+  0%   { transform: translate(0, 0) scale(1);  opacity: 1; }
+  100% { transform: translate(90px, -20px) scale(0.7);  opacity: 0; }
+}
+
+/* 10. DEALER BUTTON MOVEMENT — spin + land ------------------- */
+.seat-dealer-chip.spinning {
+  animation: dealerSpin 500ms var(--ease);
+}
+@keyframes dealerSpin {
+  0%   { transform: rotate(0deg)   scale(1); }
+  50%  { transform: rotate(360deg) scale(1.3); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+/* 11. POINTS COUNTER UPDATE — floating +/- text -------------- */
+.float-text {
+  position: absolute;
+  right: 0;
+  top: 0;
+  font-size: 13px;
+  font-weight: 900;
+  pointer-events: none;
+  z-index: 20;
+  white-space: nowrap;
+  animation: floatUp 1.4s ease-out both;
+}
+.float-text.positive { color: var(--good); }
+.float-text.negative { color: var(--danger); }
+@keyframes floatUp {
+  0%   { transform: translateY(0);    opacity: 1; }
+  60%  { opacity: 0.8; }
+  100% { transform: translateY(-28px); opacity: 0; }
+}
+
+/* 12. TABLE AMBIENCE — pot idle glow ------------------------- */
+.pot-amount.pot-idle {
+  animation: potIdleGlow 3s ease-in-out infinite;
+}
+@keyframes potIdleGlow {
+  0%, 100% { text-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 24px var(--accent-glow); }
+  50%      { text-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 38px var(--accent-glow), 0 0 60px rgba(255,204,77,0.25); }
+}
+
+/* 13. WIN/LOSE RESULT HUD — overlay panel -------------------- */
+.result-hud-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: hudBackdropIn 300ms ease-out both;
+}
+.result-hud-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.40);
+  backdrop-filter: blur(4px);
+}
+@keyframes hudBackdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.result-hud-card {
+  position: relative;
+  background: linear-gradient(180deg, rgba(0,0,0,0.85), rgba(18,30,26,0.90));
+  border: 1px solid rgba(255,204,77,0.35);
+  border-radius: var(--radius-xl);
+  padding: 28px 36px;
+  text-align: center;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: var(--shadow-lg), 0 0 80px rgba(255,204,77,0.15);
+  animation: hudCardIn 400ms var(--ease) 100ms both;
+}
+@keyframes hudCardIn {
+  from { transform: translateY(20px) scale(0.94); opacity: 0; }
+  to   { transform: translateY(0) scale(1);     opacity: 1; }
+}
+.result-hud-card .hud-icon {
+  font-size: 44px;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+.result-hud-card .hud-title {
+  font-size: 24px;
+  font-weight: 900;
+  margin: 0 0 4px;
+  color: var(--accent);
+  letter-spacing: 0.4px;
+}
+.result-hud-card .hud-subtitle {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+.result-hud-card .hud-detail {
+  display: inline-flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.result-hud-card .hud-detail-item {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+.result-hud-card .hud-winner-name {
+  color: var(--accent);
+  font-weight: 800;
+}
+.result-hud-card .hud-pot {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+/* HUD dismiss animation */
+.result-hud-overlay.hud-dismissing {
+  animation: hudBackdropOut 350ms ease-in both;
+}
+.result-hud-overlay.hud-dismissing .result-hud-card {
+  animation: hudCardOut 350ms ease-in both;
+}
+@keyframes hudBackdropOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes hudCardOut {
+  from { transform: translateY(0) scale(1);   opacity: 1; }
+  to   { transform: translateY(20px) scale(0.94); opacity: 0; }
+}
+
+/* ============================================================
+   REDUCED-MOTION: disable all new animations
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .card.card-deal,
+  .card.card-showdown {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .chip-arc-particle,
+  .float-text,
+  .action-notification {
+    animation: none;
+    opacity: 0;
+    display: none;
+  }
+  .seat.win-bounce .seat-ring { animation: none; }
+  .seat.folding .seat-ring { animation: none; opacity: 1; transform: none; }
+  .seat.is-active .seat-avatar { animation: none; }
+  .pot-amount.pot-idle { animation: none; }
+  .turn-timer-bar { display: none; }
+  .pot-split-chip { animation: none; opacity: 0; }
+  .seat-dealer-chip.spinning { animation: none; }
+  .result-hud-overlay,
+  .result-hud-overlay .result-hud-card { animation: none; }
 }

@@ -73,6 +73,12 @@ const state = {
   // playerId simply reads as 'prev = undefined' on the next render of
   // that seat, so no count-up fires until a value lands).
   prevStacks: {},
+  // Animation state tracking (purely cosmetic).
+  prevButtonIndex: -1,
+  prevHandLog: [],
+  prevFolded: {},
+  turnTimerRaf: null,
+  turnTimerStart: 0,
 };
 
 const socket = io({ reconnection: true });
@@ -152,6 +158,178 @@ function tickCount(el, from, to, duration = 600) {
     if (t < 1) raf = requestAnimationFrame(step);
   }
   raf = requestAnimationFrame(step);
+}
+
+// ---------- Animation helpers (UI only, respects reduced motion) ----------
+
+var _reduceMotion = null;
+function prefersReducedMotion() {
+  if (_reduceMotion === null) {
+    _reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+  return _reduceMotion;
+}
+
+// 2. CHIPS TO POT — arc toss: creates a floating chip label that arcs from
+// a seat to the pot display, then fades out.
+function animateChipArc(seatEl, amount) {
+  if (!seatEl || prefersReducedMotion()) return;
+  var seatRect = seatEl.getBoundingClientRect();
+  var potEl = document.getElementById('potAmount');
+  if (!potEl) return;
+  var potRect = potEl.getBoundingClientRect();
+  var sx = seatRect.left + seatRect.width / 2;
+  var sy = seatRect.top + seatRect.height / 2;
+  var ex = potRect.left + potRect.width / 2;
+  var ey = potRect.top + potRect.height / 2;
+  var midX = (sx + ex) / 2;
+  var midY = Math.min(sy, ey) - 50;
+  var el = document.createElement('div');
+  el.className = 'chip-arc-particle';
+  el.textContent = '+' + formatNumber(amount);
+  el.style.position = 'fixed';
+  el.style.left = sx + 'px';
+  el.style.top = sy + 'px';
+  el.style.setProperty('--arc-mid-x', (midX - sx) + 'px');
+  el.style.setProperty('--arc-mid-y', (midY - sy) + 'px');
+  el.style.setProperty('--arc-end-x', (ex - sx) + 'px');
+  el.style.setProperty('--arc-end-y', (ey - sy) + 'px');
+  document.body.appendChild(el);
+  el.addEventListener('animationend', function() { el.remove(); });
+  setTimeout(function() { if (el.parentNode) el.remove(); }, 600);
+}
+
+// 8. NOTIFICATIONS — speech bubble fade: shows a floating action label
+// near a seat, then auto-removes.
+function showActionNotification(seatEl, text) {
+  if (!seatEl || prefersReducedMotion()) return;
+  // Remove any existing notification on this seat first.
+  var existing = seatEl.querySelector('.action-notification');
+  if (existing) existing.remove();
+  var bubble = document.createElement('div');
+  bubble.className = 'action-notification';
+  bubble.textContent = text;
+  seatEl.appendChild(bubble);
+  bubble.addEventListener('animationend', function() { bubble.remove(); });
+  setTimeout(function() { if (bubble.parentNode) bubble.remove(); }, 2600);
+}
+
+// 11. POINTS COUNTER UPDATE — floating +/- text above stack element.
+function showFloatText(parentEl, delta) {
+  if (!parentEl || prefersReducedMotion() || delta === 0) return;
+  var ft = document.createElement('span');
+  ft.className = 'float-text ' + (delta > 0 ? 'positive' : 'negative');
+  ft.textContent = (delta > 0 ? '+' : '') + formatNumber(delta);
+  parentEl.style.position = parentEl.style.position || 'relative';
+  parentEl.appendChild(ft);
+  ft.addEventListener('animationend', function() { ft.remove(); });
+  setTimeout(function() { if (ft.parentNode) ft.remove(); }, 1500);
+}
+
+// 4. TURN TIMER — manages the shrinking bar under the active player's seat.
+// Called with progress 0..1 (1 = full, 0 = empty).
+function updateTurnTimer(seatEl, progress) {
+  if (!seatEl || prefersReducedMotion()) return;
+  var bar = seatEl.querySelector('.turn-timer-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.className = 'turn-timer-bar';
+    var fill = document.createElement('div');
+    fill.className = 'turn-timer-fill';
+    bar.appendChild(fill);
+    var ring = seatEl.querySelector('.seat-ring');
+    if (ring) ring.appendChild(bar);
+  }
+  var fill = bar.querySelector('.turn-timer-fill');
+  if (!fill) return;
+  fill.style.width = Math.max(0, Math.min(100, progress * 100)) + '%';
+  fill.classList.toggle('amber', progress <= 0.35 && progress > 0.15);
+  fill.classList.toggle('red', progress <= 0.15);
+}
+
+// 9. POT SPLIT — animates pot visual splitting into multiple chip stacks.
+function animatePotSplit(potEl, winnerCount) {
+  if (!potEl || prefersReducedMotion() || winnerCount < 2) return;
+  var potRect = potEl.getBoundingClientRect();
+  var cx = potRect.left + potRect.width / 2;
+  var cy = potRect.top + potRect.height / 2;
+  for (let i = 0; i < winnerCount; i++) {
+    (function(idx) {
+    var chip = document.createElement('div');
+    chip.className = 'pot-split-chip ' + (idx % 2 === 0 ? 'left' : 'right');
+    chip.textContent = '🪙';
+    chip.style.position = 'fixed';
+    chip.style.left = cx + 'px';
+    chip.style.top = cy + 'px';
+    document.body.appendChild(chip);
+    chip.addEventListener('animationend', function() { chip.remove(); });
+    setTimeout(function() { if (chip.parentNode) chip.remove(); }, 800);
+    })(i);
+  }
+}
+
+// 13. RESULT HUD — shows the outcome overlay on hand completion.
+function showResultHUD(t) {
+  if (!t || !t.lastHandResults || prefersReducedMotion()) return;
+  var results = t.lastHandResults;
+  var winners = results.winners || [];
+  if (!winners.length) return;
+  // Remove any existing HUD.
+  var existing = document.querySelector('.result-hud-overlay');
+  if (existing) existing.remove();
+  // Determine if viewer is a winner.
+  var viewerName = state.player && state.player.name;
+  var isViewerWinner = winners.some(function(w) { return w.name === viewerName; });
+  var icon = isViewerWinner ? '🎉' : '👀';
+  var title = isViewerWinner ? 'You Won!' : (winners.length === 1 ? (winners[0].name + ' Wins') : 'Split Pot!');
+  var subtitle = winners.length === 1
+    ? winners[0].handName + ' · ' + formatNumber(winners[0].share) + ' chips'
+    : winners.map(function(w) { return w.name + ' (' + w.handName + ') ' + formatNumber(w.share); }).join(' / ');
+  var overlay = document.createElement('div');
+  overlay.className = 'result-hud-overlay';
+  var card = document.createElement('div');
+  card.className = 'result-hud-card';
+  // Build with textContent, consistent with codebase conventions.
+  var iconEl = document.createElement('div');
+  iconEl.className = 'hud-icon';
+  iconEl.textContent = icon;
+  var titleEl = document.createElement('div');
+  titleEl.className = 'hud-title';
+  titleEl.textContent = title;
+  var subtitleEl = document.createElement('div');
+  subtitleEl.className = 'hud-subtitle';
+  subtitleEl.textContent = subtitle;
+  card.appendChild(iconEl);
+  card.appendChild(titleEl);
+  card.appendChild(subtitleEl);
+  var detail = document.createElement('div');
+  detail.className = 'hud-detail';
+  var potItem = document.createElement('span');
+  potItem.className = 'hud-detail-item';
+  potItem.appendChild(document.createTextNode('Pot: '));
+  var potVal = document.createElement('span');
+  potVal.className = 'hud-pot';
+  potVal.textContent = formatNumber(t.pot || 0);
+  potItem.appendChild(potVal);
+  detail.appendChild(potItem);
+  var handItem = document.createElement('span');
+  handItem.className = 'hud-detail-item';
+  handItem.textContent = 'Hand #' + (t.handNumber || 0);
+  detail.appendChild(handItem);
+  card.appendChild(detail);
+  overlay.appendChild(card);
+  // Click to dismiss early.
+  overlay.addEventListener('click', function() {
+    overlay.classList.add('hud-dismissing');
+    setTimeout(function() { if (overlay.parentNode) overlay.remove(); }, 400);
+  });
+  document.body.appendChild(overlay);
+  // Auto-dismiss after 5 seconds.
+  setTimeout(function() {
+    if (!overlay.parentNode) return;
+    overlay.classList.add('hud-dismissing');
+    setTimeout(function() { if (overlay.parentNode) overlay.remove(); }, 400);
+  }, 5000);
 }
 
 // Soft-prompt gate helpers (UI only — server untouched).
@@ -656,6 +834,9 @@ function renderTable() {
   $('handInfo').textContent = infoBits.join(' \u00B7 ');
 
   $('potAmount').textContent = formatNumber(t.pot);
+  // 12. Pot idle glow: apply when no hand is in progress.
+  var isIdle = t.phase === 'waiting' || t.phase === 'hand_over' || t.currentPlayerIndex < 0;
+  $('potAmount').classList.toggle('pot-idle', isIdle);
 
   const phaseLabel = ({
     waiting: 'Waiting for players',
@@ -671,8 +852,7 @@ function renderTable() {
   // Community cards
   const ccHost = $('communityCards');
   ccHost.innerHTML = '';
-  (t.communityCards || []).forEach((c, i) => {
-    ccHost.appendChild(renderCard(c, { delay: i * 80 }));
+  (t.communityCards || []).forEach((c, i) => {    ccHost.appendChild(renderCard(c, { delay: i * 80, flip: true }));
   });
   for (let i = (t.communityCards || []).length; i < 5; i++) {
     ccHost.appendChild(el('div', { class: 'empty-card' }));
@@ -813,6 +993,29 @@ function renderTable() {
   // the very bottom so it's the last visual layer to settle after every
   // renderTable invocation. Idempotent across re-renders.
   maybeShowShowdown(t);
+
+  // --- Animation triggers (purely cosmetic, after render) ---
+  // 13. Result HUD overlay on hand completion.
+  if (t.phase === 'hand_over' && t.lastHandResults) {
+    showResultHUD(t);
+  }
+  // 9. Pot split animation when multiple winners.
+  if (t.phase === 'hand_over' && t.lastHandResults && t.lastHandResults.winners && t.lastHandResults.winners.length > 1) {
+    var potEl = document.getElementById('potAmount');
+    if (potEl) animatePotSplit(potEl, t.lastHandResults.winners.length);
+  }
+  // 10. Dealer button spin on movement.
+  if (state.prevButtonIndex >= 0 && t.buttonIndex !== state.prevButtonIndex) {
+    var newDealer = document.querySelector('.seat[data-slot] .seat-dealer-chip');
+    if (newDealer) {
+      newDealer.classList.add('spinning');
+      newDealer.addEventListener('animationend', function() { newDealer.classList.remove('spinning'); }, { once: true });
+      setTimeout(function() { newDealer.classList.remove('spinning'); }, 600);
+    }
+  }
+  state.prevButtonIndex = t.buttonIndex;
+  // 8. Notifications: detect new handLog entries and show action bubbles.
+  detectAndNotifyActions(t);
 }
 
 function renderSeat(seat, idx, table, total) {
@@ -825,6 +1028,7 @@ function renderSeat(seat, idx, table, total) {
   // relative position). Defensive default keeps the seat at slot 0 if
   // renderSeat is called without the caller pre-setting data-slot.
   wrap.dataset.slot = wrap.dataset.slot || '0';
+  wrap.dataset.seatIdx = String(idx);
 
   const nameClasses = ['name'];
   if (idx === table.buttonIndex) nameClasses.push('dealer-mark');
@@ -846,20 +1050,21 @@ function renderSeat(seat, idx, table, total) {
   // brief color hint. The DOM is updated as a side effect of tickCount;
   // we don't gate any socket event on the animation.
   const stackEl = el('div', { class: 'stack' });
+  var _stackPrev = undefined;
+  var _stackCur = Number(seat.stack || 0);
   if (seat.playerId) {
-    const prev = state.prevStacks[seat.playerId];
-    const cur  = Number(seat.stack || 0);
-    if (typeof prev === 'number' && prev !== cur) {
+    _stackPrev = state.prevStacks[seat.playerId];
+    _stackCur  = Number(seat.stack || 0);
+    if (typeof _stackPrev === 'number' && _stackPrev !== _stackCur) {
       // Choose color hint based on direction of change.
-      stackEl.classList.add(cur > prev ? 'is-up' : 'is-down');
+      stackEl.classList.add(_stackCur > _stackPrev ? 'is-up' : 'is-down');
       // Strip the hint after the animation completes so re-renders
       // don't leave a permanent tint.
-      setTimeout(() => stackEl.classList.remove('is-up', 'is-down'), 1200);
-      tickCount(stackEl, prev, cur, 500);
+      setTimeout(function() { stackEl.classList.remove('is-up', 'is-down'); }, 1200);
+      tickCount(stackEl, _stackPrev, _stackCur, 500);
     } else {
-      stackEl.textContent = formatNumber(cur);
+      stackEl.textContent = formatNumber(_stackCur);
     }
-    state.prevStacks[seat.playerId] = cur;
   } else {
     stackEl.textContent = formatNumber(seat.stack || 0);
   }
@@ -880,8 +1085,9 @@ function renderSeat(seat, idx, table, total) {
   // Folded seats stay face-down (the muck). The CSS already has a
   // `.card.face-down` design prepared in style.css — we just plug into it
   // here so cards never render as blank placeholder boxes.
-  const cardEls = (seat.holeCards && seat.holeCards.length > 0)
-    ? seat.holeCards.map((c, i) => renderCard(c, { delay: i * 80, small: true }))
+  var isShowdownReveal = table.phase === 'hand_over' && table.lastHandResults && !seat.folded && !seat.isSelf;
+  var cardEls = (seat.holeCards && seat.holeCards.length > 0)
+    ? seat.holeCards.map(function(c, i) { return renderCard(c, { delay: i * 80, small: true, showdown: isShowdownReveal }); })
     : [renderCard(null, { small: true, faceDown: true }),
        renderCard(null, { small: true, faceDown: true })];
   ringChildren.push(el('div', { class: 'cards' }, cardEls));
@@ -918,6 +1124,40 @@ function renderSeat(seat, idx, table, total) {
   // (chat_update, action ack, etc.) keeps the element in place —
   // only the classes/text toggle.
   wrap.appendChild(el('div', { class: 'seat-banner', 'data-seat-idx': idx }));
+
+  // --- Animation triggers (post-render, purely cosmetic) ---
+  // 6. FOLD — slide off table: detect newly-folded seats.
+  var wasFolded = !!state.prevFolded[idx];
+  var isNowFolded = !!seat.folded;
+  if (isNowFolded && !wasFolded) {
+    wrap.classList.add('folding');
+    setTimeout(function() { wrap.classList.remove('folding'); }, 500);
+  }
+  state.prevFolded[idx] = isNowFolded;
+  // 3. WIN CELEBRATION — scale bounce for winners.
+  if (table.phase === 'hand_over' && table.lastHandResults && table.lastHandResults.winners) {
+    var hasWon = table.lastHandResults.winners.some(function(w) { return w.id === seat.playerId; });
+    if (hasWon) {
+      wrap.classList.add('win-bounce');
+      setTimeout(function() { wrap.classList.remove('win-bounce'); }, 700);
+    }
+  }
+  // 11. Floating +/- text on stack change.
+  if (seat.playerId && typeof _stackPrev === 'number' && _stackPrev !== _stackCur) {
+    var delta = _stackCur - _stackPrev;
+    if (delta !== 0) {
+      var stackWrap = wrap.querySelector('.stack');
+      if (stackWrap) showFloatText(stackWrap, delta);
+    }
+  }
+  // Persist stack snapshot AFTER floating text check.
+  if (seat.playerId) {
+    state.prevStacks[seat.playerId] = _stackCur;
+  }
+  // 4. Turn timer bar for active seat (JS-driven shrink).
+  if (isActive && table.phase !== 'waiting' && table.phase !== 'hand_over') {
+    startTurnTimer(wrap, table);
+  }
   return wrap;
 }
 
@@ -938,7 +1178,8 @@ function renderCard(c, opts = {}) {
   const card = el('div', {
     class: (faceDown ? 'card face-down' : 'card' + (SUIT_COLOR[c.suit] === 'red' ? ' red' : ''))
          + (opts.small ? ' card-small' : '')
-         + ' fade-in',
+         + (opts.showdown ? ' card-showdown' : '')
+         + (opts.flip ? ' card-deal' : ''),
   });
   if (!faceDown) {
     const rank = rankLabel(c.rank);
@@ -1105,8 +1346,8 @@ function populateMobileFelt(t, selfSeat) {
   if (ccs) {
     ccs.innerHTML = '';
     (t.communityCards || []).forEach(function(c, i) {
-      var slot = el('div', { class: 'mfc-card-slot mfc-filled' });
-      slot.appendChild(renderCard(c, { delay: i * 80 }));
+       var slot = el('div', { class: 'mfc-card-slot mfc-filled' });
+      slot.appendChild(renderCard(c, { delay: i * 80, flip: true }));
       ccs.appendChild(slot);
     });
     for (var i = (t.communityCards || []).length; i < 5; i++) {
@@ -1376,6 +1617,76 @@ function sitIn() {
 }
 
 // per-seat banners back.
+
+// 4. TURN TIMER: starts a JS-driven progress bar that shrinks over the
+// estimated turn duration. Uses requestAnimationFrame.
+function startTurnTimer(seatEl, table) {
+  if (!seatEl || prefersReducedMotion()) return;
+  if (state.turnTimerRaf) cancelAnimationFrame(state.turnTimerRaf);
+  var duration = 90000;
+  var start = performance.now();
+  function tick(now) {
+    if (!seatEl.isConnected || !document.getElementById('seatsContainer').contains(seatEl)) {
+      state.turnTimerRaf = null;
+      return;
+    }
+    var elapsed = now - start;
+    var progress = Math.max(0, 1 - elapsed / duration);
+    updateTurnTimer(seatEl, progress);
+    if (progress > 0) {
+      state.turnTimerRaf = requestAnimationFrame(tick);
+    } else {
+      state.turnTimerRaf = null;
+    }
+  }
+  state.turnTimerStart = start;
+  updateTurnTimer(seatEl, 1);
+  state.turnTimerRaf = requestAnimationFrame(tick);
+}
+
+// 8. NOTIFICATIONS: detects new entries in handLog since last render
+// and shows action bubbles on the corresponding seat elements.
+function detectAndNotifyActions(t) {
+  if (!t || !t.handLog || prefersReducedMotion()) return;
+  var prevLen = state.prevHandLog.length;
+  var curLen = t.handLog.length;
+  if (curLen <= prevLen) { state.prevHandLog = t.handLog.slice(); return; }
+  var newEntries = t.handLog.slice(prevLen);
+  state.prevHandLog = t.handLog.slice();
+  for (var i = 0; i < newEntries.length; i++) {
+    var entry = newEntries[i];
+    if (!('seat' in entry)) continue;
+    var text = '';
+    if (entry.type === 'fold') text = entry.name + ' folded';
+    else if (entry.type === 'raise') text = entry.name + ' raised to ' + formatNumber(entry.toAmount);
+    else if (entry.type === 'call') text = entry.name + ' called ' + formatNumber(entry.amount);
+    else if (entry.type === 'bet') text = entry.name + ' bet ' + formatNumber(entry.amount);
+    else if (entry.type === 'all_in') text = entry.name + ' all-in ' + formatNumber(entry.amount);
+    else if (entry.type === 'check') text = entry.name + ' checked';
+    if (text) {
+      var seatEl = document.querySelector('.seat[data-seat-idx="' + entry.seat + '"]');
+      if (!seatEl) {
+        var allSeats = document.querySelectorAll('.seat');
+        for (var s = 0; s < allSeats.length; s++) {
+          if (allSeats[s].dataset.seatIdx === String(entry.seat)) { seatEl = allSeats[s]; break; }
+        }
+      }
+      if (seatEl) {
+        showActionNotification(seatEl, text);
+        // 2. Chip arc toss: animate chips arcing from seat to pot for bet actions.
+        var arcAmount = entry.amount || entry.toAmount;
+        if (arcAmount && (entry.type === 'bet' || entry.type === 'raise' || entry.type === 'call' || entry.type === 'all_in')) {
+          animateChipArc(seatEl, arcAmount);
+        }
+      }
+    }
+  }
+  // Gate: first render with existing handLog? Seed snapshot to avoid notification flood.
+  if (state.prevHandLog.length === 0 && t.handLog && t.handLog.length > 0) {
+    state.prevHandLog = t.handLog.slice();
+  }
+}
+
 function maybeShowShowdown(t) {
   // Cleanup early if we're not in a real showdown state. Covers:
   //   - phasse !== 'hand_over' (next hand started, table empty, etc.)
@@ -1560,6 +1871,11 @@ function clearShowdown() {
     state.showdownModalTimer = null;
   }
   clearSeatBanners();
+  // Reset animation tracking state.
+  if (state.turnTimerRaf) { cancelAnimationFrame(state.turnTimerRaf); state.turnTimerRaf = null; }
+  state.prevFolded = {};
+  state.prevHandLog = [];
+  state.prevButtonIndex = -1;
   // Note on what this function owns vs. doesn't:
   //   - This function is the route through which a phase transition /
   //     leave-table / busted-refund tears down the per-seat banner
