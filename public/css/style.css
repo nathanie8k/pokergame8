@@ -76,15 +76,14 @@ html, body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* Animated radial-gradient backdrop. CSS only — no JS gauges motion.
-     Two layered radial gradients animate the position of light sources
-     inside the bg stack; this gives a slow "felt rotating under spot
-     lights" effect without ever moving any actual UI element so it
-     never affects when actions become available. */
+  /* Full-viewport green poker-felt backdrop. A single radial gradient
+     fills the entire page — lighter green center fading to darker edges —
+     so the whole screen reads as continuous felt with no black frame.
+     Two subtle animated light overlays add depth without changing color. */
   background:
-    radial-gradient(ellipse 60vw 50vh at 20% 0%, rgba(29, 136, 89, 0.18), transparent 60%),
-    radial-gradient(ellipse 50vw 40vh at 95% 90%, rgba(255, 204, 77, 0.08), transparent 60%),
-    radial-gradient(ellipse 100vw 80vh at 50% 50%, var(--bg-0) 0%, #050807 100%);
+    radial-gradient(ellipse 60vw 50vh at 20% 0%, rgba(255, 255, 255, 0.04), transparent 60%),
+    radial-gradient(ellipse 50vw 40vh at 95% 90%, rgba(255, 204, 77, 0.06), transparent 60%),
+    radial-gradient(ellipse 100vw 80vh at 50% 50%, #1f5c46 0%, #0d3527 100%);
   background-attachment: fixed;
   animation: backdropShift 22s ease-in-out infinite alternate;
 }
