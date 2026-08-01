@@ -22,6 +22,10 @@
   --table-edge:     #0e3d28;
   --table-rail:     #2a1d10;
 
+  /* Full-screen mobile felt gradient stops */
+  --felt-center:   #1f5c46;
+  --felt-edge:     #0d3527;
+
   /* Accents — bolder gold + cyan + crimson */
   --accent:      #ffcc4d;   /* warm gold */
   --accent-2:    #ffe27a;
@@ -3676,4 +3680,468 @@ input, button, select, textarea { color: inherit; }
   }
   .seat.is-self .name { font-size: 12px; }
   .seat.is-self .stack { font-size: 12px; }
+}
+
+
+/* ============================================================
+   MOBILE FULL-FELT TABLE LAYOUT (≤720px)
+   The entire screen IS the felt — no header bar, no bottom panel.
+   Everything floats directly on the green felt background.
+   ============================================================ */
+@media (max-width: 720px) {
+
+  /* ----- Hide desktop table UI (top-bar, table-info, poker-table,
+          hand-log, chat-edge-panel) on mobile ----- */
+  body.is-table-view #topBar {
+    display: none;
+  }
+  body.is-table-view::before,
+  body.is-table-view::after {
+    display: none;
+  }
+
+  #view-table {
+    position: fixed;
+    inset: 0;
+    padding: 0;
+    max-width: none;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    /* Full-screen felt radial gradient: lighter center → darker edges */
+    background: radial-gradient(ellipse 70% 60% at 50% 45%, var(--felt-center) 0%, #1a4f3c 40%, var(--felt-edge) 100%);
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Subtle felt texture overlay */
+  #view-table::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+      ),
+      radial-gradient(ellipse 60% 50% at 50% 40%, rgba(255,255,255,0.04) 0%, transparent 70%);
+  }
+
+  /* Hide desktop table elements */
+  #view-table .table-info,
+  #view-table .table-chat-row,
+  #view-table .hand-log {
+    display: none;
+  }
+
+  /* ============================================================
+     Mobile felt top row — brand + player info
+     ============================================================ */
+  .mobile-felt-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    padding-top: max(12px, env(safe-area-inset-top, 12px));
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+  }
+  .mftr-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mftr-suits {
+    color: var(--accent);
+    font-size: 14px;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px var(--accent-glow);
+  }
+  .mftr-brand {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .mftr-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mftr-player-pill {
+    padding: 5px 12px;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 13px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .mftr-points-pill {
+    padding: 5px 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #2a1d00;
+    border-radius: 999px;
+    font-weight: 800;
+    font-size: 13px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.15) inset;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ============================================================
+     Mobile felt second row — table info + table actions
+     ============================================================ */
+  .mobile-felt-second-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px 10px;
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+  }
+  .mfsr-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .mfsr-table-name {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: 0.3px;
+    text-shadow: 0 0 14px var(--accent-glow);
+  }
+  .mfsr-table-info {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.3px;
+  }
+  .mfsr-right {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .mfsr-pill-btn {
+    padding: 6px 14px;
+    background: rgba(0,0,0,0.40);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 999px;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    min-height: 36px;
+    transition: background 120ms, color 120ms, border-color 120ms;
+  }
+  .mfsr-pill-btn:hover,
+  .mfsr-pill-btn:active {
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+    border-color: rgba(255,255,255,0.25);
+  }
+
+  /* ============================================================
+     Mobile felt center — pot, community cards, hole cards,
+     seat info — all stacked vertically
+     ============================================================ */
+  .mobile-felt-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    flex: 1 0 auto;
+    padding: 8px 16px 14px;
+    position: relative;
+    z-index: 2;
+    min-height: 0;
+  }
+
+  /* Pot */
+  .mfc-pot {
+    text-align: center;
+    line-height: 1.1;
+  }
+  .mfc-pot-label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+  }
+  .mfc-pot-amount {
+    font-size: 34px;
+    font-weight: 900;
+    color: var(--accent);
+    text-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 24px var(--accent-glow);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Community card slots — 5 dashed outlines */
+  .mfc-community-slots {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    min-height: 64px;
+    align-items: center;
+  }
+  .mfc-community-slots .mfc-card-slot {
+    width: 48px;
+    height: 68px;
+    border: 2px dashed rgba(255,255,255,0.15);
+    border-radius: 7px;
+    background: rgba(0,0,0,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mfc-community-slots .mfc-card-slot.mfc-filled {
+    border: none;
+    background: none;
+  }
+  .mfc-community-slots .card {
+    width: 48px;
+    height: 68px;
+  }
+  .mfc-community-slots .card .corner.top { top: 4px; left: 5px; }
+  .mfc-community-slots .card .corner.bottom { bottom: 4px; right: 5px; }
+  .mfc-community-slots .card .corner .rank { font-size: 14px; }
+  .mfc-community-slots .card .corner .suit { font-size: 9px; }
+  .mfc-community-slots .card .center-suit { font-size: 28px; }
+
+  /* Player hole cards */
+  .mfc-hole-cards {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    min-height: 74px;
+    align-items: center;
+  }
+  .mfc-hole-cards .card {
+    width: 56px;
+    height: 80px;
+  }
+  .mfc-hole-cards .card .corner.top { top: 4px; left: 5px; }
+  .mfc-hole-cards .card .corner.bottom { bottom: 4px; right: 5px; }
+  .mfc-hole-cards .card .corner .rank { font-size: 16px; }
+  .mfc-hole-cards .card .corner .suit { font-size: 10px; }
+  .mfc-hole-cards .card .center-suit { font-size: 32px; }
+
+  /* Player seat info */
+  .mfc-seat-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 0 0;
+  }
+  .mfc-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.50);
+    border: 3px solid var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--accent);
+    box-shadow:
+      0 0 0 3px rgba(255,204,77,0.20),
+      0 0 20px rgba(255,204,77,0.25);
+  }
+  .mfc-seat-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--info);
+    letter-spacing: 0.3px;
+  }
+  .mfc-stack {
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.4);
+  }
+  .mfc-hole-cards-back {
+    display: flex;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  .mfc-hole-cards-back .mfc-card-back {
+    width: 34px;
+    height: 48px;
+    background: linear-gradient(135deg, #4a2f99, #6b3fb5);
+    border: 1px solid #2a1a55;
+    border-radius: 4px;
+    position: relative;
+  }
+  .mfc-hole-cards-back .mfc-card-back::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border: 1.5px solid rgba(255,255,255,0.35);
+    border-radius: 2px;
+  }
+  .mfc-bet-chip {
+    padding: 4px 14px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #2a1d00;
+    border-radius: 999px;
+    font-weight: 800;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+    display: none;
+  }
+
+  /* ============================================================
+     Mobile felt action row — text-only labels, no buttons
+     ============================================================ */
+  .mobile-felt-actions {
+    display: flex;
+    justify-content: space-evenly;
+    align-items: center;
+    padding: 12px 8px 6px;
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+  }
+  .mobile-felt-actions::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 16px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+  }
+  .mfa-label {
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    padding: 10px 8px;
+    min-height: 44px;
+    min-width: 44px;
+    cursor: pointer;
+    text-align: center;
+    user-select: none;
+    transition: transform 100ms var(--ease), opacity 100ms, text-shadow 100ms;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mfa-label:active {
+    transform: scale(0.93);
+  }
+  .mfa-label.mfa-disabled {
+    opacity: 0.28;
+    pointer-events: none;
+  }
+  /* Individual action colors */
+  .mfa-check  { color: var(--text); }
+  .mfa-fold   { color: #ffb8b8; }
+  .mfa-raise  { color: var(--accent); text-shadow: 0 0 14px var(--accent-glow); }
+  .mfa-call   { color: var(--info); }
+  .mfa-allin  { color: var(--warn); }
+
+  /* ============================================================
+     Mobile felt sizing row — quick bet-sizing labels
+     ============================================================ */
+  .mobile-felt-sizing {
+    display: flex;
+    justify-content: space-evenly;
+    align-items: center;
+    padding: 4px 8px 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+  }
+  .mfs-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    letter-spacing: 0.3px;
+    padding: 8px 12px;
+    min-height: 36px;
+    min-width: 44px;
+    cursor: pointer;
+    text-align: center;
+    user-select: none;
+    transition: color 100ms, transform 100ms var(--ease);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mfs-label:active {
+    color: var(--accent);
+    transform: scale(0.94);
+  }
+  .mfs-label.mfs-disabled {
+    opacity: 0.28;
+    pointer-events: none;
+  }
+  .mfs-label.mfs-active {
+    color: var(--accent);
+    text-shadow: 0 0 10px var(--accent-glow);
+  }
+
+  /* ============================================================
+     Mobile felt phase display — floating pill on felt
+     ============================================================ */
+  .mobile-felt-phase {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+    text-align: center;
+    padding: 4px 12px 10px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--text-dim);
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin: 0 16px;
+  }
+
+  /* ============================================================
+     Mobile felt hand result banner
+     ============================================================ */
+  #view-table .hand-result {
+    position: relative;
+    z-index: 3;
+    margin: 6px 16px;
+    display: none;
+  }
+
+}
+
+
+/* ============================================================
+   DESKTOP: hide mobile felt elements above 720px
+   ============================================================ */
+@media (min-width: 721px) {
+  .mobile-felt-top-row,
+  .mobile-felt-second-row,
+  .mobile-felt-center,
+  .mobile-felt-actions,
+  .mobile-felt-sizing,
+  .mobile-felt-phase {
+    display: none !important;
+  }
 }

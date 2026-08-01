@@ -127,7 +127,75 @@
       </div>
     </section>
 
-    <!-- ===== Table view ===== -->    <section id="view-table" class="view" style="display:none">
+    <!-- ===== Table view ===== -->
+    <section id="view-table" class="view" style="display:none">
+
+      <!-- Mobile full-felt top row: brand + player info, floating on felt -->
+      <div class="mobile-felt-top-row" id="mobileFeltTopRow">
+        <div class="mftr-left">
+          <span class="mftr-suits">♠♥♦♣</span>
+          <span class="mftr-brand">Friendly Poker</span>
+        </div>
+        <div class="mftr-right">
+          <span class="mftr-player-pill" id="mftrPlayerPill"></span>
+          <span class="mftr-points-pill" id="mftrPointsPill"></span>
+        </div>
+      </div>
+
+      <!-- Mobile full-felt second row: table info + table actions -->
+      <div class="mobile-felt-second-row" id="mobileFeltSecondRow">
+        <div class="mfsr-left">
+          <span class="mfsr-table-name" id="mfsrTableName">Table</span>
+          <span class="mfsr-table-info" id="mfsrTableInfo"></span>
+        </div>
+        <div class="mfsr-right">
+          <button class="mfsr-pill-btn" id="mfsrSitOutBtn" style="display:none">Sit out</button>
+          <button class="mfsr-pill-btn" id="mfsrSitInBtn" style="display:none">Sit in</button>
+          <button class="mfsr-pill-btn" id="mfsrLeaveBtn">Leave</button>
+        </div>
+      </div>
+
+      <!-- Mobile full-felt center: pot + community cards + player cards + seat -->
+      <div class="mobile-felt-center" id="mobileFeltCenter">
+        <!-- Pot -->
+        <div class="mfc-pot">
+          <span class="mfc-pot-label">POT</span>
+          <span class="mfc-pot-amount" id="mfcPotAmount">0</span>
+        </div>
+        <!-- Community card slots -->
+        <div class="mfc-community-slots" id="mfcCommunitySlots"></div>
+        <!-- Player hole cards -->
+        <div class="mfc-hole-cards" id="mfcHoleCards"></div>
+        <!-- Player seat info -->
+        <div class="mfc-seat-info" id="mfcSeatInfo">
+          <div class="mfc-avatar" id="mfcAvatar">?</div>
+          <div class="mfc-seat-name" id="mfcSeatName"></div>
+          <div class="mfc-stack" id="mfcStack"></div>
+          <div class="mfc-hole-cards-back" id="mfcHoleCardsBack"></div>
+          <div class="mfc-bet-chip" id="mfcBetChip"></div>
+        </div>
+      </div>
+
+      <!-- Mobile full-felt action row: text-only action labels -->
+      <div class="mobile-felt-actions" id="mobileFeltActions">
+        <span class="mfa-label mfa-check" id="mfaCheck" data-action="check">Check</span>
+        <span class="mfa-label mfa-fold" id="mfaFold" data-action="fold">Fold</span>
+        <span class="mfa-label mfa-raise" id="mfaRaise" data-action="raise">Raise</span>
+        <span class="mfa-label mfa-call" id="mfaCall" data-action="call">Call</span>
+        <span class="mfa-label mfa-allin" id="mfaAllin" data-action="all_in">All-in</span>
+      </div>
+
+      <!-- Mobile full-felt sizing row: bet-sizing labels -->
+      <div class="mobile-felt-sizing" id="mobileFeltSizing">
+        <span class="mfs-label" data-sizing="min">Min</span>
+        <span class="mfs-label" data-sizing="x2">x2</span>
+        <span class="mfs-label" data-sizing="x5">x5</span>
+        <span class="mfs-label" data-sizing="all">All in</span>
+      </div>
+
+      <!-- Phase display (mobile, floating on felt) -->
+      <div class="mobile-felt-phase" id="mobileFeltPhase">Waiting...</div>
+
       <div class="table-info">
         <div>
           <h2 id="tableName">Table</h2>

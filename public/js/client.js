@@ -245,6 +245,11 @@ function updateTopBar() {
   if (!state.player) return;
   $('playerChip').textContent = state.player.name;
   $('pointsChip').textContent = formatNumber(state.player.points) + ' pts';
+  // Mobile felt pills
+  var mftrPP = $('mftrPlayerPill');
+  if (mftrPP) mftrPP.textContent = state.player.name;
+  var mftrPtP = $('mftrPointsPill');
+  if (mftrPtP) mftrPtP.textContent = formatNumber(state.player.points) + ' pts';
 }
 
 // ---------- Login view ----------
@@ -789,6 +794,9 @@ function renderTable() {
     disableAllActions();
   }
 
+  // Populate mobile full-felt elements
+  populateMobileFelt(t, selfSeat);
+
   // Chat panel: rendered after seats so the messages reflect whatever
   // state.currentTable.chatMessages just got (publicView now includes it
   // on every table_state broadcast, so a new join into an empty table
@@ -1012,6 +1020,115 @@ function populateSelfCards(cardsEl, seat) {
   } else {
     cardsEl.appendChild(renderCard(null, { faceDown: true }));
     cardsEl.appendChild(renderCard(null, { faceDown: true }));
+  }
+}
+
+function populateMobileFelt(t, selfSeat) {
+  // Update table name + info row
+  var tn = $('mfsrTableName');
+  if (tn) tn.textContent = t.name;
+  var ti = $('mfsrTableInfo');
+  if (ti) {
+    var bits = [];
+    bits.push('Hand #' + (t.handNumber || 0));
+    if (t.smallBlind !== undefined) bits.push('Blinds ' + t.smallBlind + '/' + t.bigBlind);
+    var liveCount = t.seats.filter(function(s) { return s.occupied && !s.removed; }).length;
+    if (t.phase && t.phase !== 'waiting' && t.phase !== 'hand_over') bits.push('Players ' + liveCount + '/' + t.maxSeats);
+    ti.textContent = bits.join(' \u00B7 ');
+  }
+
+  // Pot
+  var pa = $('mfcPotAmount');
+  if (pa) pa.textContent = formatNumber(t.pot);
+
+  // Community card slots
+  var ccs = $('mfcCommunitySlots');
+  if (ccs) {
+    ccs.innerHTML = '';
+    (t.communityCards || []).forEach(function(c, i) {
+      var slot = el('div', { class: 'mfc-card-slot mfc-filled' });
+      slot.appendChild(renderCard(c, { delay: i * 80 }));
+      ccs.appendChild(slot);
+    });
+    for (var i = (t.communityCards || []).length; i < 5; i++) {
+      ccs.appendChild(el('div', { class: 'mfc-card-slot' }));
+    }
+  }
+
+  // Player hole cards
+  var hc = $('mfcHoleCards');
+  if (hc) {
+    hc.innerHTML = '';
+    if (selfSeat && selfSeat.holeCards && selfSeat.holeCards.length === 2) {
+      selfSeat.holeCards.forEach(function(c, i) {
+        hc.appendChild(renderCard(c, { delay: i * 80 }));
+      });
+    } else {
+      hc.appendChild(renderCard(null, { faceDown: true }));
+      hc.appendChild(renderCard(null, { faceDown: true }));
+    }
+  }
+
+  // Seat info
+  var av = $('mfcAvatar');
+  if (av) av.textContent = selfSeat ? getInitials(selfSeat.name) : '?';
+  var sn = $('mfcSeatName');
+  if (sn) {
+    sn.textContent = '';
+    if (selfSeat) {
+      var sidx = t.seats.findIndex(function(s) { return s && s.isSelf; });
+      var marks = [];
+      if (sidx === t.buttonIndex) marks.push('(D)');
+      if (sidx === t.sbIndex) marks.push('SB');
+      if (sidx === t.bbIndex) marks.push('BB');
+      sn.textContent = (marks.length ? marks.join(' ') + ' ' : '') + selfSeat.name;
+    }
+  }
+  var stk = $('mfcStack');
+  if (stk) stk.textContent = formatNumber(selfSeat ? selfSeat.stack : 0);
+
+  // Purple card backs
+  var hcb = $('mfcHoleCardsBack');
+  if (hcb) {
+    hcb.innerHTML = '';
+    hcb.appendChild(el('div', { class: 'mfc-card-back' }));
+    hcb.appendChild(el('div', { class: 'mfc-card-back' }));
+  }
+
+  // Bet chip
+  var bc = $('mfcBetChip');
+  if (bc) {
+    if (selfSeat && selfSeat.contributed && selfSeat.contributed > 0) {
+      bc.textContent = formatNumber(selfSeat.contributed);
+      bc.style.display = '';
+    } else {
+      bc.style.display = 'none';
+    }
+  }
+
+  // Sit out / Sit in buttons (toggle visibility based on satOut state)
+  var so = $('mfsrSitOutBtn');
+  var si = $('mfsrSitInBtn');
+  if (so) {
+    so.style.display = (selfSeat && !selfSeat.folded && !selfSeat.allIn && !selfSeat.satOut && selfSeat.stack > 0) ? '' : 'none';
+  }
+  if (si) {
+    si.style.display = (selfSeat && selfSeat.satOut && !selfSeat.folded && !selfSeat.allIn && selfSeat.stack > 0) ? '' : 'none';
+  }
+
+  // Phase display on mobile
+  var mp = $('mobileFeltPhase');
+  if (mp) {
+    var phaseLabel = ({
+      waiting: 'Waiting for players',
+      pre_flop: 'Pre-flop',
+      flop: 'Flop',
+      turn: 'Turn',
+      river: 'River',
+      showdown: 'Showdown',
+      hand_over: 'Hand complete',
+    })[t.phase] || t.phase;
+    mp.textContent = phaseLabel;
   }
 }
 
@@ -1585,35 +1702,113 @@ function setupActionButtons(selfSeat, t) {
   allInBtn.disabled = selfSeat.stack <= 0;
   allInBtn.textContent = `All-in ${formatNumber(selfSeat.stack)}`;
 
-  // Raise presets
-  const presets = [];
-  if (t.currentBet === 0) {
-    presets.push({ label: 'Min', val: Math.min(t.bigBlind, selfSeat.stack) });
-    presets.push({ label: '2\u00d7', val: Math.min(t.bigBlind * 2, selfSeat.stack) });
-    presets.push({ label: '5\u00d7', val: Math.min(t.bigBlind * 5, selfSeat.stack) });
+  // ---- Mobile felt action labels ----
+  var mfaCheck = $('mfaCheck');
+  var mfaFold  = $('mfaFold');
+  var mfaRaise = $('mfaRaise');
+  var mfaCall  = $('mfaCall');
+  var mfaAllin = $('mfaAllin');
+
+  var setMFA = function(el, disabled, text) {
+    if (!el) return;
+    el.classList.toggle('mfa-disabled', disabled);
+    if (text) el.textContent = text;
+  };
+
+  setMFA(mfaFold, false, 'Fold');
+  setMFA(mfaCheck, toCall > 0, 'Check');
+  var callDisabled = toCall <= 0 || selfSeat.stack < toCall;
+  if (toCall > 0) {
+    setMFA(mfaCall, callDisabled, 'Call ' + formatNumber(Math.min(selfSeat.stack, toCall)));
   } else {
-    const callAmt = toCall + selfSeat.contributed + Math.max(t.minRaise || t.bigBlind, t.bigBlind);
-    presets.push({ label: 'Min', val: Math.min(callAmt, maxRaise) });
-    presets.push({ label: '2\u00d7', val: Math.min(t.currentBet * 2, maxRaise) });
-    presets.push({ label: 'Pot', val: Math.min(t.pot + t.currentBet, maxRaise) });
-    presets.push({ label: 'All',  val: maxRaise });
+    setMFA(mfaCall, callDisabled, 'Call');
   }
+  var raiseDisabled = selfSeat.stack <= 0 || maxRaise < minRaiseTotal;
+  setMFA(mfaRaise, raiseDisabled, (t.currentBet || 0) === 0 ? 'Bet' : 'Raise');
+  setMFA(mfaAllin, selfSeat.stack <= 0, 'All-in');
+
+  // Store raise bounds for sizing labels
+  if (!state._mobileRaise) state._mobileRaise = {};
+  state._mobileRaise.minRaiseTotal = minRaiseTotal;
+  state._mobileRaise.maxRaise = maxRaise;
+
+  // ---- Mobile felt sizing labels ----
+  var sizingHost = $('mobileFeltSizing');
+  if (sizingHost) {
+    sizingHost.style.display = raiseDisabled ? 'none' : '';
+    var sizingLabels = sizingHost.querySelectorAll('.mfs-label');
+
+    // Build presets
+    var presets = [];
+    if (t.currentBet === 0) {
+      var minVal = Math.min(t.bigBlind, selfSeat.stack);
+      presets.push({ label: 'Min', val: minVal, key: 'min' });
+      presets.push({ label: '2\u00d7', val: Math.min(t.bigBlind * 2, selfSeat.stack), key: 'x2' });
+      presets.push({ label: '5\u00d7', val: Math.min(t.bigBlind * 5, selfSeat.stack), key: 'x5' });
+      presets.push({ label: 'All', val: selfSeat.stack, key: 'all' });
+    } else {
+      var callAmt = toCall + selfSeat.contributed + Math.max(t.minRaise || t.bigBlind, t.bigBlind);
+      presets.push({ label: 'Min', val: Math.min(callAmt, maxRaise), key: 'min' });
+      presets.push({ label: '2\u00d7', val: Math.min(t.currentBet * 2, maxRaise), key: 'x2' });
+      presets.push({ label: 'Pot', val: Math.min(t.pot + t.currentBet, maxRaise), key: 'pot' });
+      presets.push({ label: 'All',  val: maxRaise, key: 'all' });
+    }
+
+    // Store presets for click handlers
+    state._mobileRaise.presets = presets;
+
+    sizingLabels.forEach(function(lbl) {
+      var key = lbl.dataset.sizing;
+      var preset = presets.find(function(p) { return p.key === key; });
+      if (preset && preset.val > 0) {
+        lbl.classList.remove('mfs-disabled');
+        lbl.textContent = preset.label + ' (' + formatNumber(Math.max(selfSeat.contributed, preset.val)) + ')';
+      } else {
+        lbl.classList.add('mfs-disabled');
+        lbl.textContent = key === 'min' ? 'Min' : key === 'x2' ? 'x2' : key === 'x5' ? 'x5' : 'All';
+      }
+    });
+  }
+
+  // Raise presets (desktop)
   const presetsHost = $('raisePresets');
-  presetsHost.innerHTML = '';
-  presets.forEach(p => {
-    if (p.val <= 0) return;
-    presetsHost.appendChild(el('button', {
-      text: `${p.label} (${formatNumber(Math.max(selfSeat.contributed, p.val))})`,
-      title: 'Set raise amount',
-      onclick: () => { raiseInput.value = p.val; },
-    }));
-  });
+  if (presetsHost) {
+    presetsHost.innerHTML = '';
+    var deskPresets = [];
+    if (t.currentBet === 0) {
+      deskPresets.push({ label: 'Min', val: Math.min(t.bigBlind, selfSeat.stack) });
+      deskPresets.push({ label: '2\u00d7', val: Math.min(t.bigBlind * 2, selfSeat.stack) });
+      deskPresets.push({ label: '5\u00d7', val: Math.min(t.bigBlind * 5, selfSeat.stack) });
+    } else {
+      var callAmtD = toCall + selfSeat.contributed + Math.max(t.minRaise || t.bigBlind, t.bigBlind);
+      deskPresets.push({ label: 'Min', val: Math.min(callAmtD, maxRaise) });
+      deskPresets.push({ label: '2\u00d7', val: Math.min(t.currentBet * 2, maxRaise) });
+      deskPresets.push({ label: 'Pot', val: Math.min(t.pot + t.currentBet, maxRaise) });
+      deskPresets.push({ label: 'All',  val: maxRaise });
+    }
+    deskPresets.forEach(function(p) {
+      if (p.val <= 0) return;
+      presetsHost.appendChild(el('button', {
+        text: p.label + ' (' + formatNumber(Math.max(selfSeat.contributed, p.val)) + ')',
+        title: 'Set raise amount',
+        onclick: function() { raiseInput.value = p.val; },
+      }));
+    });
+  }
 }
 
 function disableAllActions() {
   document.querySelectorAll('.action-btn').forEach(b => { b.disabled = true; });
   $('raiseAmount').disabled = true;
   document.querySelectorAll('.raise-presets button').forEach(b => { b.disabled = true; });
+  // Mobile action labels
+  ['mfaCheck','mfaFold','mfaRaise','mfaCall','mfaAllin'].forEach(function(id) {
+    var el = $(id);
+    if (el) el.classList.add('mfa-disabled');
+  });
+  // Mobile sizing row
+  var sizing = $('mobileFeltSizing');
+  if (sizing) sizing.style.display = 'none';
 }
 
 function performAction(action, amount) {
@@ -2483,6 +2678,50 @@ socket.on('chat_update', ({ tableId, messages }) => {
     const total = Math.max(min, Math.min(raw, max));
     performAction(isBet ? 'bet' : 'raise', total);
   });
+
+  // ---- Mobile felt action labels (text-only, no buttons) ----
+  document.querySelectorAll('.mfa-label[data-action]').forEach(function(lbl) {
+    lbl.addEventListener('click', function() {
+      if (lbl.classList.contains('mfa-disabled')) return;
+      var action = lbl.dataset.action;
+      if (action === 'raise' || action === 'bet') {
+        // Raise/bet needs an amount. Use the stored minRaiseTotal.
+        var mr = (state._mobileRaise && state._mobileRaise.minRaiseTotal);
+        var maxR = (state._mobileRaise && state._mobileRaise.maxRaise);
+        var amt = mr || 0;
+        if (maxR && amt > maxR) amt = maxR;
+        performAction(action, amt);
+      } else {
+        performAction(action);
+      }
+    });
+  });
+
+  // ---- Mobile felt sizing labels ----
+  document.querySelectorAll('.mfs-label[data-sizing]').forEach(function(lbl) {
+    lbl.addEventListener('click', function() {
+      if (lbl.classList.contains('mfs-disabled')) return;
+      var presets = (state._mobileRaise && state._mobileRaise.presets) || [];
+      var key = lbl.dataset.sizing;
+      var preset = presets.find(function(p) { return p.key === key; });
+      if (preset) {
+        var raiseInput = $('raiseAmount');
+        if (raiseInput) raiseInput.value = preset.val;
+        // Perform raise/bet with this amount
+        var t = state.currentTable;
+        var isBet = t && (t.currentBet || 0) === 0;
+        performAction(isBet ? 'bet' : 'raise', preset.val);
+      }
+    });
+  });
+
+  // ---- Mobile felt buttons (Sit out, Sit in, Leave table) ----
+  var mfsrSO = $('mfsrSitOutBtn');
+  var mfsrSI = $('mfsrSitInBtn');
+  var mfsrLV = $('mfsrLeaveBtn');
+  if (mfsrSO) mfsrSO.addEventListener('click', sitOut);
+  if (mfsrSI) mfsrSI.addEventListener('click', sitIn);
+  if (mfsrLV) mfsrLV.addEventListener('click', leaveCurrentTable);
 
   loadRandomNames();
 });
