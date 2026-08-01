@@ -9,27 +9,27 @@
 
 /* ---------- Theme tokens ---------- */
 :root {
-  /* Background stages — deeper, more cinematic */
-  --bg-0:        #080d0b;   /* outermost */
-  --bg-1:        #121e1a;   /* panels */
-  --bg-2:        #1b2c25;   /* inputs */
-  --bg-3:        #243a30;   /* hover */
-  --bg-4:        #2e4639;   /* active */
+  /* Background stages — black poker theme */
+  --bg-0:        #0d0d0d;   /* outermost / page bg */
+  --bg-1:        #1a1a1a;   /* panels / cards */
+  --bg-2:        #242424;   /* inputs */
+  --bg-3:        #333333;   /* hover */
+  --bg-4:        #404040;   /* active */
 
-  /* Felt green — richer, deeper */
-  --table-felt:     #166b48;
-  --table-felt-lit: #1d8859;
-  --table-edge:     #0e3d28;
+  /* Felt green — richer, deeper (table screen only) */
+  --table-felt:     #1a8a5a;
+  --table-felt-lit: #22a866;
+  --table-edge:     #135c42;
   --table-rail:     #2a1d10;
 
-  /* Full-screen mobile felt gradient stops */
-  --felt-center:   #1f5c46;
-  --felt-edge:     #0d3527;
+  /* Full-screen mobile felt gradient stops — brighter greens */
+  --felt-center:   #2a7a5c;
+  --felt-edge:     #135c42;
 
-  /* Accents — bolder gold + cyan + crimson */
-  --accent:      #ffcc4d;   /* warm gold */
-  --accent-2:    #ffe27a;
-  --accent-glow: rgba(255, 204, 77, 0.55);
+  /* Accents — poker red + cyan + crimson */
+  --accent:      #e63946;   /* poker red */
+  --accent-2:    #ff6b6b;
+  --accent-glow: rgba(230, 57, 70, 0.45);
   --info:        #5ccdff;
   --info-glow:   rgba(92, 205, 255, 0.45);
   --good:        #5cd97a;
@@ -76,21 +76,29 @@ html, body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* Full-viewport green poker-felt backdrop. A single radial gradient
-     fills the entire page — lighter green center fading to darker edges —
-     so the whole screen reads as continuous felt with no black frame.
-     Two subtle animated light overlays add depth without changing color. */
-  background:
-    radial-gradient(ellipse 60vw 50vh at 20% 0%, rgba(255, 255, 255, 0.04), transparent 60%),
-    radial-gradient(ellipse 50vw 40vh at 95% 90%, rgba(255, 204, 77, 0.06), transparent 60%),
-    radial-gradient(ellipse 100vw 80vh at 50% 50%, #1f5c46 0%, #0d3527 100%);
+  /* Black poker-theme backdrop for non-table views (login, lobby, admin).
+     The table view gets green felt via body.is-table-view override. */
+  background: #0d0d0d;
   background-attachment: fixed;
   animation: backdropShift 22s ease-in-out infinite alternate;
 }
-@keyframes backdropShift {
-  from { background-position: 0% 0%, 100% 100%, 50% 50%; }
-  to   { background-position: 4% 6%, 96% 94%, 50% 50%; }
+/* On the table/game screen, restore the green felt body background
+   and poker-gold accent so the table view keeps its own theme
+   independent of the black/red rest-of-site theme. */
+body.is-table-view {
+  background: radial-gradient(ellipse 70% 60% at 50% 45%, var(--felt-center) 0%, var(--felt-edge) 100%);
+  background-attachment: fixed;
+  --accent:      #ffcc4d;
+  --accent-2:    #ffe27a;
+  --accent-glow: rgba(255, 204, 77, 0.55);
+  --bg-0:        #080d0b;
+  --bg-1:        #121e1a;
+  --bg-2:        #1b2c25;
+  --bg-3:        #243a30;
+  --bg-4:        #2e4639;
+  --btn-text:    #2a1d00;
 }
+
 /* Suit-decoration watermark — faint card glyphs in the corners of the
    page (behind everything). Purely decorative; lives at z-index -1
    so it never intercepts clicks or attention. Honors reduced-motion. */
@@ -195,7 +203,7 @@ input, button, select, textarea { color: inherit; }
    ============================================================ */
 .primary-btn {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #2a1d00;
+  color: var(--btn-text, #fff);
   border: none; cursor: pointer;
   padding: 12px 22px;
   min-height: 44px;        /* a11y tap target */
@@ -356,7 +364,7 @@ input, button, select, textarea { color: inherit; }
   width: 100%;
   max-width: 560px;
   padding: 32px 36px 28px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  background: var(--bg-1);
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
@@ -523,7 +531,7 @@ input, button, select, textarea { color: inherit; }
   margin: 12px 0 16px;
 }
 .table-card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  background: var(--bg-1);
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: var(--radius-lg);
   padding: 12px 14px;
@@ -563,7 +571,7 @@ input, button, select, textarea { color: inherit; }
 .table-card .primary-btn { align-self: stretch; }
 
 .create-table-card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  background: var(--bg-1);
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: var(--radius-lg);
   padding: 22px 24px;
@@ -1734,7 +1742,7 @@ input, button, select, textarea { color: inherit; }
     width: 100%;
   }
   .admin-table tr {
-    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+    background: var(--bg-1);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: var(--radius-md);
     padding: 12px 14px;
@@ -2917,7 +2925,7 @@ input, button, select, textarea { color: inherit; }
     border: 12px solid #5c3a1e;
     outline: none;
     background:
-      radial-gradient(ellipse 60% 60% at 48% 48%, #22a866 0%, #17804d 35%, #0e5c32 65%, #0a4124 100%);
+      radial-gradient(ellipse 60% 60% at 48% 48%, var(--table-felt-lit) 0%, var(--table-felt) 35%, var(--felt-center) 65%, var(--felt-edge) 100%);
     box-shadow:
       inset 0 0 50px rgba(0,0,0,0.5),
       0 4px 28px rgba(0,0,0,0.6),
