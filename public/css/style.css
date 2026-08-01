@@ -2815,7 +2815,7 @@ input, button, select, textarea { color: inherit; }
     flex-direction: column;
     min-height: 100vh;
     min-height: 100dvh;
-    background: #0a0a0a;
+    background: radial-gradient(ellipse 70% 60% at 50% 45%, var(--felt-center) 0%, var(--felt-edge) 100%);
     overflow-x: hidden;
   }
 
