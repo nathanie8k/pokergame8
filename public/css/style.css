@@ -3642,9 +3642,11 @@ input, button, select, textarea { color: inherit; }
 
   /* Desktop action row: side-by-side layout — cards on right, buttons on left */
   #view-table .hand-action-row {
+    display: flex;
     flex-direction: row;
     align-items: center;
     gap: 10px;
+    width: 100%;
   }
   /* Cards column → right side */
   #view-table .hand-cards-col {
@@ -3652,6 +3654,7 @@ input, button, select, textarea { color: inherit; }
     flex: 0 0 auto;
     width: auto;
     padding: 0 4px;
+    margin-left: auto;
   }
   #view-table .hand-cards-col .self-panel-cards {
     gap: 6px;
@@ -3662,7 +3665,7 @@ input, button, select, textarea { color: inherit; }
     flex: 0 0 auto;
     width: 1px;
     align-self: stretch;
-    margin: 4px 2px;
+    margin: 4px 6px;
     background: rgba(255,255,255,0.10);
   }
   /* Action buttons column → left side */
