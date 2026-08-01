@@ -724,6 +724,19 @@ input, button, select, textarea { color: inherit; }
   border: 1px solid rgba(255,204,77,0.30);
   animation: handResultIn 500ms var(--ease) both;
 }
+
+/* Override .table-felt pointer-events:none inheritance so the nested
+   interactive controls (action buttons, raise presets, input) are
+   clickable on desktop where .table-felt still has pointer-events:none.
+   Same local-auto pattern as .hand-result above. */
+.self-panel,
+.self-panel > .action-bar,
+.self-panel > .action-bar > .action-btn,
+.raise-row,
+.raise-row input,
+.raise-row button {
+  pointer-events: auto;
+}
 @keyframes handResultIn {
   from { transform: translateY(8px) scale(0.96); opacity: 0; }
   to   { transform: translateY(0) scale(1);     opacity: 1; }
@@ -3508,4 +3521,159 @@ input, button, select, textarea { color: inherit; }
     #view-table .action-bar { gap: 3px; }
     #view-table .hand-action-row { padding-bottom: env(safe-area-inset-bottom, 6px); }
   }
+}
+
+/* ============================================================
+   DESKTOP (>720px): felt-embedded self-panel positioning.
+   The three interactive blocks (player-status-bar, self-panel,
+   raise-row) live inside .table-felt and need absolute positioning
+   in the lower band so they don't overlap the community cards.
+   Stack order (bottom→top): raise-row → status-bar → self-panel.
+   Base offset anchored at 4% from felt bottom per the user spec.
+   The self-panel height is capped to stay below the community-cards
+   row (cards sit at center of felt, ~92px from bottom at typical
+   378px felt height). Desktop sizing is intermediate — larger than
+   mobile compact but smaller than full desktop to fit the band.
+   ============================================================ */
+@media (min-width: 721px) {
+
+  /* ---- Player status: name + stack + dealer/SB/BB marks.
+     Stacked ABOVE self-panel per user spec (raise→self→status):
+     4% + 36px(self-panel bottom) + 66px(self-panel height) + 10px(gap)
+     = 4% + 112px ---- */
+  .player-status-bar {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    bottom: calc(4% + 112px);
+    z-index: 20;
+    padding: 2px 10px;
+    background: rgba(0,0,0,0.38);
+    backdrop-filter: blur(4px);
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    flex-wrap: wrap;
+    border: none;
+    min-height: auto;
+  }
+  .player-status-bar .self-panel-info {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .player-status-bar .self-name {
+    font-size: 12px;
+    font-weight: 800;
+    color: #fff;
+    white-space: nowrap;
+  }
+  .player-status-bar .self-stack {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .player-status-bar .self-marks {
+    font-size: 9px;
+    color: rgba(255,255,255,0.45);
+    white-space: nowrap;
+  }
+  .player-status-bar .self-status {
+    font-size: 10px;
+    color: var(--text-mute);
+  }
+
+  /* ---- Self-panel: hole cards + action buttons.
+     Directly above raise-row per user spec (raise→self→status):
+     4% + 26px(raise-row height) + 10px(gap) = 4% + 36px.
+     Cards 18×26px, buttons 16px min-height (match mobile baseline).
+     Total height ~66px — ~26px gap to community-cards bottom. ---- */
+  .self-panel {
+    position: absolute;
+    left: 6%;
+    right: 6%;
+    bottom: calc(4% + 36px);
+    z-index: 20;
+    padding: 3px 8px;
+    margin-top: 0;
+    box-shadow: none;
+    background: rgba(0,0,0,0.33);
+    backdrop-filter: blur(4px);
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.10);
+    display: flex;
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+  .self-panel.is-active {
+    border-color: var(--accent);
+    box-shadow: 0 0 12px rgba(255,204,77,0.20);
+  }
+
+  /* Desktop self-panel cards — intermediate between mobile tiny
+     (17×22) and full desktop (64×92). */
+  .self-panel .self-panel-cards .card {
+    width: 18px;
+    height: 26px;
+  }
+
+  /* ---- Action bar: wider gaps for clear button separation ---- */
+  .self-panel > .action-bar {
+    gap: 10px;
+  }
+  /* Desktop button sizing — 16px min-height matches mobile baseline;
+     10px font is larger than mobile's 8px. Fits the felt lower band. */
+  .self-panel > .action-bar > .action-btn {
+    min-height: 16px;
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  /* ---- Raise sizing row, anchored at 4% from felt bottom.
+     Compact desktop sizing (~26px tall) to leave room above. ---- */
+  .raise-row {
+    position: absolute;
+    left: 6%;
+    right: 6%;
+    bottom: 4%;
+    z-index: 21;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(4px);
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.10);
+    flex-wrap: nowrap;
+  }
+
+  /* ---- Seat.is-self → compact name+stack pill only.
+     Cards and avatar are already rendered inside the felt's self-panel;
+     duplicating them on the seat ring adds visual noise and risks
+     intercepting clicks meant for the action buttons below. ---- */
+  .seat.is-self {
+    width: auto;
+    min-width: 100px;
+    pointer-events: none;
+  }
+  .seat.is-self .seat-avatar,
+  .seat.is-self .cards,
+  .seat.is-self .status {
+    display: none;
+  }
+  .seat.is-self .seat-ring {
+    flex-direction: row;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(0,0,0,0.55);
+    border-radius: 999px;
+  }
+  .seat.is-self .name { font-size: 12px; }
+  .seat.is-self .stack { font-size: 12px; }
 }
