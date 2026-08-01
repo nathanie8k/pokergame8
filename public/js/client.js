@@ -1024,6 +1024,65 @@ function populateSelfCards(cardsEl, seat) {
 }
 
 function populateMobileFelt(t, selfSeat) {
+  // ---- Seat markers around table edges ----
+  var markersHost = $('mobileFeltSeatMarkers');
+  if (markersHost) {
+    var N = t.maxSeats;
+    var selfServerIdx = t.seats.findIndex(function(s) { return s && s.isSelf; });
+
+    if (selfServerIdx >= 0) {
+      var visibleSlots = SLOT_LAYOUTS[N] || SLOT_LAYOUTS[6];
+
+      // Map visual slot index → mobile marker position key
+      var slotToMobile = { 1: 'rl', 2: 'rm', 3: 'ru', 4: 'lu', 5: 'lm' };
+
+      // Clear all markers first
+      var allMarkers = markersHost.querySelectorAll('.mfsm-seat');
+      allMarkers.forEach(function(m) {
+        m.innerHTML = '';
+        m.classList.remove('mfsm-current-turn');
+        m.style.display = 'none';
+      });
+
+      for (var relIdx = 0; relIdx < visibleSlots.length; relIdx++) {
+        var slotIdx = visibleSlots[relIdx];
+        if (slotIdx === 0) continue; // viewer, handled in center
+        var serverIdx = (selfServerIdx + relIdx + N) % N;
+        var seat = t.seats[serverIdx];
+        var mobileKey = slotToMobile[slotIdx];
+        if (!mobileKey) continue;
+
+        var markerEl = markersHost.querySelector('[data-mfsm-pos="' + mobileKey + '"]');
+        if (!markerEl) continue;
+        markerEl.style.display = '';
+
+        if (seat && seat.occupied && !seat.removed && !seat.disconnected) {
+          // Occupied: name + stack
+          var nameEl = el('span', { class: 'mfsm-name', text: seat.name });
+          markerEl.appendChild(nameEl);
+          var stackEl = el('span', { class: 'mfsm-stack', text: formatNumber(seat.stack) });
+          markerEl.appendChild(stackEl);
+
+          // Highlight if this seat is the current active player
+          if (serverIdx === t.currentPlayerIndex) {
+            markerEl.classList.add('mfsm-current-turn');
+          }
+        } else {
+          // Empty: "Sit here"
+          var sitEl = el('span', {
+            class: 'mfsm-sit-here',
+            text: 'Sit here',
+            title: 'Click to sit here',
+            onclick: (function(seatIdx, tableId) {
+              return function() { seatEmpty(seatIdx, tableId); };
+            })(serverIdx, t.id),
+          });
+          markerEl.appendChild(sitEl);
+        }
+      }
+    } // end if (selfServerIdx >= 0)
+  } // end if (markersHost)
+
   // Update table name + info row
   var tn = $('mfsrTableName');
   if (tn) tn.textContent = t.name;

@@ -4010,6 +4010,76 @@ input, button, select, textarea { color: inherit; }
   }
 
   /* ============================================================
+     Mobile felt seat markers — around table edges
+     ============================================================ */
+  .mobile-felt-seat-markers {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .mfsm-seat {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    min-width: 60px;
+    max-width: 100px;
+    text-align: center;
+    pointer-events: auto;
+    cursor: default;
+    transition: opacity 200ms;
+  }
+  /* Left positions */
+  .mfsm-left-upper   { left: 4px;  top: 22%; }
+  .mfsm-left-middle  { left: 4px;  top: 44%; }
+  .mfsm-left-lower   { left: 4px;  top: 66%; }
+  /* Right positions */
+  .mfsm-right-upper  { right: 4px; top: 22%; }
+  .mfsm-right-middle { right: 4px; top: 44%; }
+  .mfsm-right-lower  { right: 4px; top: 66%; }
+
+  .mfsm-seat .mfsm-name {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    line-height: 1.2;
+  }
+  .mfsm-seat .mfsm-stack {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+  .mfsm-seat .mfsm-sit-here {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-mute);
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px dashed rgba(255,204,77,0.25);
+    transition: color 120ms, border-color 120ms, background 120ms;
+    white-space: nowrap;
+  }
+  .mfsm-seat .mfsm-sit-here:hover,
+  .mfsm-seat .mfsm-sit-here:active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(255,204,77,0.08);
+  }
+  .mfsm-seat.mfsm-current-turn .mfsm-name {
+    color: var(--accent);
+    text-shadow: 0 0 8px var(--accent-glow);
+  }
+
+  /* ============================================================
      Mobile felt action row — text-only labels, no buttons
      ============================================================ */
   .mobile-felt-actions {
@@ -4141,7 +4211,8 @@ input, button, select, textarea { color: inherit; }
   .mobile-felt-center,
   .mobile-felt-actions,
   .mobile-felt-sizing,
-  .mobile-felt-phase {
+  .mobile-felt-phase,
+  .mobile-felt-seat-markers {
     display: none !important;
   }
 }
