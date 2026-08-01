@@ -98,10 +98,26 @@ body.is-table-view {
   --bg-4:        #2e4639;
   --btn-text:    #2a1d00;
 }
-/* Desktop table view: green felt body behind the poker table */
+/* Desktop table view: black body behind the poker table (black/red/white theme) */
 @media (min-width: 721px) {
   body.is-table-view {
-    background: radial-gradient(ellipse 70% 60% at 50% 45%, var(--felt-center) 0%, var(--felt-edge) 100%);
+    background: #0d0d0d;
+  }
+  /* Desktop table name + action buttons in red */
+  #view-table .table-info h2 {
+    color: #e63946;
+  }
+  /* Leaderboard / Admin Room buttons → red on desktop */
+  #view-table .table-actions .primary-btn {
+    background: linear-gradient(135deg, #e63946, #ff6b6b);
+    color: #fff;
+  }
+  #view-table .table-actions .primary-btn:hover:not(:disabled) {
+    box-shadow: var(--shadow-md), 0 0 24px rgba(230,57,70,0.40), 0 0 0 1px rgba(255,255,255,0.18) inset;
+  }
+  #view-table .table-actions .ghost-btn {
+    color: #e63946;
+    border-color: rgba(230,57,70,0.30);
   }
 }
 
@@ -640,7 +656,7 @@ input, button, select, textarea { color: inherit; }
   max-height: 60vh;
   border-radius: var(--radius-xl);
   background:
-    radial-gradient(ellipse 80% 70% at center, var(--table-felt-lit) 0%, var(--table-felt) 40%, var(--table-edge) 90%);
+    radial-gradient(ellipse 80% 70% at center, #165237 0%, #0d3723 40%, #081c15 90%);
   box-shadow:
     inset 0 0 80px rgba(0,0,0,0.55),
     inset 0 0 0 4px rgba(255,255,255,0.04),
@@ -833,7 +849,7 @@ input, button, select, textarea { color: inherit; }
   padding: 14px 12px;
   border-radius: 18px;
   background: rgba(0,0,0,0.30);
-  border: 1px dashed rgba(255,204,77,0.35);
+  border: 1px dashed rgba(230,57,70,0.35);
   color: var(--text-dim);
   font-size: 11px;
   letter-spacing: 1px;
@@ -858,20 +874,20 @@ input, button, select, textarea { color: inherit; }
 .empty-seat:hover,
 .empty-seat:focus-visible {
   background: rgba(0,0,0,0.55);
-  border-color: var(--accent);
+  border-color: #e63946;
   border-style: solid;
-  color: var(--accent);
+  color: #e63946;
   box-shadow:
-    0 0 0 4px rgba(255,204,77,0.18),
-    0 0 24px rgba(255,204,77,0.35);
+    0 0 0 4px rgba(230,57,70,0.18),
+    0 0 24px rgba(230,57,70,0.35);
   transform: translateY(-2px) scale(1.03);
   outline: none;
 }
 .empty-seat:hover .empty-seat-icon,
 .empty-seat:focus-visible .empty-seat-icon {
-  border-color: var(--accent);
+  border-color: #e63946;
   border-style: solid;
-  color: var(--accent);
+  color: #e63946;
 }
 
 /* ============================================================
@@ -3554,27 +3570,9 @@ input, button, select, textarea { color: inherit; }
    ============================================================ */
 @media (min-width: 721px) {
 
-  /* ---- Player status: name + stack + dealer/SB/BB marks.
-     Stacked ABOVE self-panel per user spec (raise→self→status):
-     4% + 36px(self-panel bottom) + 66px(self-panel height) + 10px(gap)
-     = 4% + 112px ---- */
+  /* ---- Player status: hidden on desktop ---- */
   .player-status-bar {
-    position: absolute;
-    left: 8%;
-    right: 8%;
-    bottom: calc(4% + 112px);
-    z-index: 20;
-    padding: 2px 10px;
-    background: rgba(0,0,0,0.38);
-    backdrop-filter: blur(4px);
-    border-radius: 5px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-    flex-wrap: wrap;
-    border: none;
-    min-height: auto;
+    display: none;
   }
   .player-status-bar .self-panel-info {
     display: flex;
@@ -3605,31 +3603,28 @@ input, button, select, textarea { color: inherit; }
     color: var(--text-mute);
   }
 
-  /* ---- Self-panel: hole cards + action buttons.
-     Directly above raise-row per user spec (raise→self→status):
-     4% + 26px(raise-row height) + 10px(gap) = 4% + 36px.
-     Cards 18×26px, buttons 16px min-height (match mobile baseline).
-     Total height ~66px — ~26px gap to community-cards bottom. ---- */
+  /* ---- Self-panel: hole cards + action buttons, positioned BELOW the table oval ---- */
   .self-panel {
     position: absolute;
-    left: 6%;
-    right: 6%;
-    bottom: calc(4% + 36px);
+    left: 0;
+    right: 0;
+    bottom: -100px;
     z-index: 20;
-    padding: 3px 8px;
+    padding: 8px 12px;
     margin-top: 0;
-    box-shadow: none;
-    background: rgba(0,0,0,0.33);
-    backdrop-filter: blur(4px);
-    border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.10);
+    box-shadow: var(--shadow-md);
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(8px);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(255,255,255,0.12);
     display: flex;
     flex-wrap: wrap;
     overflow: visible;
+    max-width: 100%;
   }
   .self-panel.is-active {
-    border-color: var(--accent);
-    box-shadow: 0 0 12px rgba(255,204,77,0.20);
+    border-color: #e63946;
+    box-shadow: 0 0 18px rgba(230,57,70,0.25);
   }
 
   /* Desktop self-panel cards — intermediate between mobile tiny
@@ -3651,23 +3646,23 @@ input, button, select, textarea { color: inherit; }
     padding: 2px 6px;
   }
 
-  /* ---- Raise sizing row, anchored at 4% from felt bottom.
-     Compact desktop sizing (~26px tall) to leave room above. ---- */
+  /* ---- Raise sizing row, positioned BELOW the self-panel (below table) ---- */
   .raise-row {
     position: absolute;
-    left: 6%;
-    right: 6%;
-    bottom: 4%;
+    left: 0;
+    right: 0;
+    bottom: -172px;
     z-index: 21;
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 3px 8px;
-    background: rgba(0,0,0,0.45);
-    backdrop-filter: blur(4px);
-    border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.10);
+    padding: 6px 10px;
+    background: rgba(0,0,0,0.50);
+    backdrop-filter: blur(8px);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255,255,255,0.12);
     flex-wrap: nowrap;
+    max-width: 100%;
   }
 
   /* ---- Seat.is-self → compact name+stack pill only.
@@ -3693,6 +3688,11 @@ input, button, select, textarea { color: inherit; }
   }
   .seat.is-self .name { font-size: 12px; }
   .seat.is-self .stack { font-size: 12px; }
+
+  /* Allow action bar + raise-row to render below the table oval */
+  .poker-table {
+    overflow: visible;
+  }
 }
 
 
