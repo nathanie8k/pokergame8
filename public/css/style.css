@@ -3709,7 +3709,7 @@ input, button, select, textarea { color: inherit; }
     display: flex;
     flex-direction: column;
     /* Full-screen felt radial gradient: lighter center → darker edges */
-    background: radial-gradient(ellipse 70% 60% at 50% 45%, var(--felt-center) 0%, #1a4f3c 40%, var(--felt-edge) 100%);
+    background: radial-gradient(ellipse 70% 60% at 50% 45%, var(--felt-center) 0%, var(--felt-edge) 100%);
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
