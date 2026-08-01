@@ -77,6 +77,7 @@ const state = {
   prevButtonIndex: -1,
   prevHandLog: [],
   prevFolded: {},
+  prevMobileHandNumber: -1,  // tracks last hand shown for mobile perf animations
   turnTimerRaf: null,
   turnTimerStart: 0,
 };
@@ -1281,7 +1282,7 @@ function populateMobileFelt(t, selfSeat) {
       var allMarkers = markersHost.querySelectorAll('.mfsm-seat');
       allMarkers.forEach(function(m) {
         m.innerHTML = '';
-        m.classList.remove('mfsm-current-turn');
+        m.classList.remove('mfsm-current-turn', 'mfsm-perf-won', 'mfsm-perf-lost', 'mfsm-perf-fold');
         m.style.display = 'none';
       });
 
@@ -1308,6 +1309,24 @@ function populateMobileFelt(t, selfSeat) {
           if (serverIdx === t.currentPlayerIndex) {
             markerEl.classList.add('mfsm-current-turn');
           }
+
+          // Performance animation: brief pulse based on last hand result.
+          // Only fires once per hand number change. Skip sitting-out players
+          // (they didn't participate, so no perf state to represent).
+          if (t.phase === 'hand_over' && t.handNumber > 0 && t.handNumber !== state.prevMobileHandNumber && !seat.satOut) {
+            var isWinner = t.lastHandResults && t.lastHandResults.winners &&
+              t.lastHandResults.winners.some(function(w) { return w.id === seat.playerId; });
+            if (isWinner) {
+              markerEl.classList.add('mfsm-perf-won');
+              setTimeout(function() { markerEl.classList.remove('mfsm-perf-won'); }, 600);
+            } else if (seat.folded) {
+              markerEl.classList.add('mfsm-perf-fold');
+              setTimeout(function() { markerEl.classList.remove('mfsm-perf-fold'); }, 450);
+            } else {
+              markerEl.classList.add('mfsm-perf-lost');
+              setTimeout(function() { markerEl.classList.remove('mfsm-perf-lost'); }, 500);
+            }
+          }
         } else {
           // Empty: "Sit here"
           var sitEl = el('span', {
@@ -1322,6 +1341,11 @@ function populateMobileFelt(t, selfSeat) {
         }
       }
     } // end if (selfServerIdx >= 0)
+
+    // Snapshot the hand number so performance animations fire only once.
+    if (t.phase === 'hand_over' && t.handNumber > 0) {
+      state.prevMobileHandNumber = t.handNumber;
+    }
   } // end if (markersHost)
 
   // Update table name + info row

@@ -4138,6 +4138,33 @@ input, button, select, textarea { color: inherit; }
     text-shadow: 0 0 6px rgba(230,57,70,0.35);
   }
 
+  /* Performance pulse after each hand — tiny, minimal, brief */
+  .mfsm-seat.mfsm-perf-won .mfsm-name {
+    animation: mfsmWonPulse 500ms var(--ease) both;
+  }
+  .mfsm-seat.mfsm-perf-lost .mfsm-name {
+    animation: mfsmLostFade 400ms var(--ease) both;
+  }
+  .mfsm-seat.mfsm-perf-fold .mfsm-name {
+    animation: mfsmFoldDim 350ms var(--ease) both;
+  }
+
+  @keyframes mfsmWonPulse {
+    0%   { color: #e63946; }
+    25%  { color: #ffd700; transform: scale(1.15); text-shadow: 0 0 10px rgba(255,215,0,0.6); }
+    100% { color: #e63946; transform: scale(1); text-shadow: none; }
+  }
+  @keyframes mfsmLostFade {
+    0%   { opacity: 1; }
+    30%  { opacity: 0.35; color: #666; }
+    100% { opacity: 1; color: var(--text); }
+  }
+  @keyframes mfsmFoldDim {
+    0%   { opacity: 1; transform: translateX(0); }
+    40%  { opacity: 0.35; transform: translateX(10px); }
+    100% { opacity: 1; transform: translateX(0); }
+  }
+
   /* ============================================================
      Mobile felt action row — text-only labels, no buttons
      ============================================================ */
@@ -4597,4 +4624,7 @@ input, button, select, textarea { color: inherit; }
   .seat-dealer-chip.spinning { animation: none; }
   .result-hud-overlay,
   .result-hud-overlay .result-hud-card { animation: none; }
+  .mfsm-seat.mfsm-perf-won .mfsm-name,
+  .mfsm-seat.mfsm-perf-lost .mfsm-name,
+  .mfsm-seat.mfsm-perf-fold .mfsm-name { animation: none; }
 }
