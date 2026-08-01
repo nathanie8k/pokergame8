@@ -4075,7 +4075,7 @@ input, button, select, textarea { color: inherit; }
   .mobile-felt-seat-markers {
     position: absolute;
     inset: 0;
-    z-index: 1;
+    z-index: 5;
     pointer-events: none;
   }
   .mfsm-seat {
@@ -4091,14 +4091,14 @@ input, button, select, textarea { color: inherit; }
     cursor: default;
     transition: opacity 200ms;
   }
-  /* Left positions */
-  .mfsm-left-upper   { left: 10px; top: 28%; }
-  .mfsm-left-middle  { left: 10px; top: 46%; }
-  .mfsm-left-lower   { left: 10px; top: 60%; }
+  /* Left positions — anchored at the felt panel edge */
+  .mfsm-left-upper   { left: 2px; top: 12%; }
+  .mfsm-left-middle  { left: 2px; top: 45%; }
+  .mfsm-left-lower   { left: 2px; top: 74%; }
   /* Right positions */
-  .mfsm-right-upper  { right: 10px; top: 28%; }
-  .mfsm-right-middle { right: 10px; top: 46%; }
-  .mfsm-right-lower  { right: 10px; top: 60%; }
+  .mfsm-right-upper  { right: 2px; top: 12%; }
+  .mfsm-right-middle { right: 2px; top: 45%; }
+  .mfsm-right-lower  { right: 2px; top: 74%; }
 
   .mfsm-seat .mfsm-name {
     font-size: 11px;
