@@ -597,7 +597,23 @@ input, button, select, textarea { color: inherit; }
 @keyframes lobbyCardIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
 @media (prefers-reduced-motion:reduce) { .stakes-card { animation:none; } .stakes-card:hover,.stakes-card__action:hover:not(:disabled) { transform:none; } }
 @media (max-width:1023px) and (min-width:768px) { .lobby-grid { grid-template-columns:repeat(2,1fr); } .form-grid { grid-template-columns:repeat(2,1fr); } }
-@media (max-width:767px) { #view-lobby { padding:32px 16px 48px; } .lobby-header { align-items:start; } .lobby-live-indicator { display:none; } .lobby-grid { grid-template-columns:1fr; } .form-grid { grid-template-columns:1fr; gap:14px; } .create-table-card { padding:24px; } .mobile-admin-link { display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:44px; margin-top:48px; padding:12px; color:var(--text-muted); font-size:13px; text-decoration:none; } .mobile-admin-link:hover,.mobile-admin-link:focus-visible { color:var(--text-primary); } }
+@media (max-width:767px) {
+  #view-lobby { padding:32px 16px 48px; }
+  .lobby-header { align-items:start; }
+  .lobby-live-indicator { display:none; }
+  .lobby-grid { grid-template-columns:1fr; }
+  .form-grid { grid-template-columns:1fr; gap:14px; }
+  .create-table-card { padding:24px; }
+  .top-bar .brand-text { display:none; }
+  .top-bar .brand { gap:0; }
+  .top-bar .brand-icon { font-size:14px; letter-spacing:1px; }
+  .top-bar #leaderboardBtn { display:none; }
+  .mobile-lobby-links { display:flex; flex-direction:column; align-items:center; margin-top:48px; }
+  .mobile-admin-link { display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:44px; padding:12px; color:var(--text-muted); font-size:13px; text-decoration:none; }
+  .mobile-admin-link + .mobile-admin-link { margin-top:4px; }
+  .mobile-admin-link:hover,.mobile-admin-link:focus-visible { color:var(--text-primary); }
+}
+@media (min-width:768px) { .mobile-lobby-links { display:none; } }
 @media (min-width:768px) { #view-lobby ~ * .mobile-admin-link { display:none; } }
 
 /* ============================================================

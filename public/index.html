@@ -11,7 +11,7 @@
 <body>
   <header class="top-bar" id="topBar">
     <div class="brand">
-      <span class="brand-icon">♠♥♦♣</span>
+      <span class="brand-icon" aria-hidden="true">♠♥♦♣</span>
       <span class="brand-text">Friendly Poker</span>
     </div>
     <div class="top-info" id="topInfo" style="display:none">
@@ -139,7 +139,10 @@
         </div>
         <button id="createTableBtn" class="primary-btn">Create table</button>
       </div>
-      <a class="mobile-admin-link" id="mobileAdminLink" href="#admin" aria-label="Open Admin Room">Admin Room <span aria-hidden="true">›</span></a>
+      <div class="mobile-lobby-links">
+        <a class="mobile-admin-link" id="mobileAdminLink" href="#admin" aria-label="Open Admin Room">Admin Room <span aria-hidden="true">›</span></a>
+        <a class="mobile-admin-link" id="mobileLeaderboardLink" href="#leaderboard" aria-label="Open Leaderboard">Leaderboard <span aria-hidden="true">›</span></a>
+      </div>
     </section>
 
     <!-- ===== Table view ===== -->

@@ -764,45 +764,68 @@ function renderLobbySkeleton() {
   ]));
 }
 
+function createLobbyCard(table, index) {
+  const tier = tierForTable(table, index);
+  const card = el('article', { class: 'stakes-card', 'data-table-id': table.id, style: `--card-index:${index}` }, [
+    el('span', { class: 'stakes-card__watermark', 'aria-hidden': 'true' }),
+    el('div', { class: 'stakes-card__header' }, [
+      el('span', { class: 'ring-icon', 'aria-hidden': 'true' }),
+      el('h3', { class: 'stakes-card__title' }),
+    ]),
+    el('p', { class: 'stakes-card__name' }),
+    el('div', { class: 'stakes-card__stats' }, [
+      el('div', { class: 'stakes-stat' }, [el('span', { class: 'micro-label', text: 'Seats' }), el('strong', { class: 'stakes-stat__value stakes-stat__seats', 'aria-live': 'polite' })]),
+      el('div', { class: 'stakes-stat' }, [el('span', { class: 'micro-label', text: 'Status' }), el('strong', { class: 'stakes-stat__value stakes-stat__status' })]),
+      el('div', { class: 'stakes-stat' }, [el('span', { class: 'micro-label', text: 'Blinds' }), el('strong', { class: 'stakes-stat__value stakes-stat__blinds' })]),
+    ]),
+    el('button', { class: 'stakes-card__action' }),
+  ]);
+  updateLobbyCard(card, table, index);
+  return card;
+}
+
+function updateLobbyCard(card, table, index) {
+  const tier = tierForTable(table, index);
+  const cap = Number(table.maxSeats) || 0;
+  const live = Number(table.seatsTaken) || 0;
+  const isFull = live >= cap;
+  const inProgress = Boolean(table.handInProgress);
+  const status = inProgress ? 'In Progress' : isFull ? 'Full' : 'Waiting';
+  card.className = `stakes-card stakes-card--${tier.key}${inProgress ? ' stakes-card--in-progress' : ''}${isFull ? ' stakes-card--full' : ''}`;
+  card.style.setProperty('--tier-accent', tier.accent);
+  card.style.setProperty('--card-index', index);
+  card.querySelector('.stakes-card__watermark').textContent = tier.suit;
+  card.querySelector('.stakes-card__title').textContent = tier.label;
+  card.querySelector('.stakes-card__name').textContent = table.name;
+  card.querySelector('.stakes-stat__seats').textContent = `${live}/${cap}`;
+  card.querySelector('.stakes-stat__status').textContent = status;
+  card.querySelector('.stakes-stat__status').classList.toggle('is-live', inProgress);
+  card.querySelector('.stakes-stat__blinds').textContent = `${table.smallBlind}/${table.bigBlind}`;
+  const action = card.querySelector('.stakes-card__action');
+  action.className = `stakes-card__action${inProgress ? ' stakes-card__action--watch' : ''}`;
+  action.textContent = inProgress ? 'Watch' : 'Join';
+  action.disabled = isFull;
+  action.setAttribute('aria-label', `${inProgress ? 'Watch' : 'Join'} ${table.name}`);
+}
+
 function renderLobby() {
   const grid = $('tablesGrid');
   if (!grid) return;
-  grid.innerHTML = '';
   if (!state.tables.length) {
-    renderLobbySkeleton();
+    if (!grid.children.length) renderLobbySkeleton();
     return;
   }
-  state.tables.forEach((t, index) => {
-    const tier = tierForTable(t, index);
-    const cap = Number(t.maxSeats) || 0;
-    const live = Number(t.seatsTaken) || 0;
-    const isFull = live >= cap;
-    const inProgress = Boolean(t.handInProgress);
-    const status = inProgress ? 'In Progress' : isFull ? 'Full' : 'Waiting';
-    const cardClass = `stakes-card stakes-card--${tier.key}${inProgress ? ' stakes-card--in-progress' : ''}${isFull ? ' stakes-card--full' : ''}`;
-    const stats = el('div', { class: 'stakes-card__stats' }, [
-      el('div', { class: 'stakes-stat' }, [el('span', { class: 'micro-label', text: 'Seats' }), el('strong', { class: 'stakes-stat__value', text: `${live}/${cap}`, 'aria-live': 'polite' })]),
-      el('div', { class: 'stakes-stat' }, [el('span', { class: 'micro-label', text: 'Status' }), el('strong', { class: 'stakes-stat__value stakes-stat__status' + (inProgress ? ' is-live' : ''), text: status })]),
-      el('div', { class: 'stakes-stat' }, [el('span', { class: 'micro-label', text: 'Blinds' }), el('strong', { class: 'stakes-stat__value', text: `${t.smallBlind}/${t.bigBlind}` })]),
-    ]);
-    const action = el('button', {
-      class: `stakes-card__action${inProgress ? ' stakes-card__action--watch' : ''}`,
-      text: inProgress ? 'Watch' : 'Join',
-      disabled: isFull,
-      onclick: () => joinTable(t.id, null),
-      'aria-label': `${inProgress ? 'Watch' : 'Join'} ${t.name}`,
-    });
-    grid.appendChild(el('article', { class: cardClass, style: `--tier-accent:${tier.accent};--card-index:${index}` }, [
-      el('span', { class: 'stakes-card__watermark', text: tier.suit, 'aria-hidden': 'true' }),
-      el('div', { class: 'stakes-card__header' }, [
-        el('span', { class: 'ring-icon', 'aria-hidden': 'true' }),
-        el('h3', { class: 'stakes-card__title', text: tier.label }),
-      ]),
-      el('p', { class: 'stakes-card__name', text: t.name }),
-      stats,
-      action,
-    ]));
+  const existing = new Map(Array.from(grid.querySelectorAll('[data-table-id]')).map(card => [card.dataset.tableId, card]));
+  const nextIds = new Set(state.tables.map(table => String(table.id)));
+  state.tables.forEach((table, index) => {
+    const id = String(table.id);
+    let card = existing.get(id);
+    if (!card) card = createLobbyCard(table, index);
+    else updateLobbyCard(card, table, index);
+    card.dataset.tableId = id;
+    grid.appendChild(card);
   });
+  existing.forEach((card, id) => { if (!nextIds.has(id)) card.remove(); });
 }
 
 function validateCreateField(id, show = true) {
@@ -3129,6 +3152,8 @@ socket.on('chat_update', ({ tableId, messages }) => {
   });
   const mobileAdminLink = $('mobileAdminLink');
   if (mobileAdminLink) mobileAdminLink.addEventListener('click', e => { e.preventDefault(); openAdminModal(); });
+  const mobileLeaderboardLink = $('mobileLeaderboardLink');
+  if (mobileLeaderboardLink) mobileLeaderboardLink.addEventListener('click', e => { e.preventDefault(); openLeaderboard(); });
   $('leaveTableBtn').addEventListener('click', leaveCurrentTable);
   $('sitOutBtn').addEventListener('click', sitOut);
   // Chat panel: Enter submits, clicking Send submits. The HTML maxlength=200
