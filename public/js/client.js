@@ -94,6 +94,9 @@ function el(tag, attrs = {}, children = []) {
     if (k === 'class') e.className = attrs[k];
     else if (k === 'text') e.textContent = attrs[k];
     else if (k.startsWith('on') && typeof attrs[k] === 'function') e.addEventListener(k.slice(2), attrs[k]);
+    else if (typeof attrs[k] === 'boolean') {
+      if (attrs[k]) e.setAttribute(k, '');
+    }
     else e.setAttribute(k, attrs[k]);
   }
   // Accept children as a flat list OR a (possibly nested) array of nodes/strings.
