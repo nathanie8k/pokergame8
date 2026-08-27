@@ -736,42 +736,93 @@ function submitAdminPassword() {
 
 // ---------- Lobby view ----------
 
+const LOBBY_TIERS = [
+  { key: 'beginners', label: 'Beginners', accent: '#A9744F', suit: '♠' },
+  { key: 'low', label: 'Low Stakes', accent: '#8B98A8', suit: '♥' },
+  { key: 'medium', label: 'Medium Stakes', accent: '#4C9A6A', suit: '♦' },
+  { key: 'high', label: 'High Stakes', accent: '#B5384A', suit: '♣' },
+  { key: 'vip', label: 'VIP', accent: '#C9A227', suit: '♠' },
+];
+
+function tierForTable(table, index) {
+  const name = String(table.name || '').toLowerCase();
+  const match = LOBBY_TIERS.find(tier => name.includes(tier.label.toLowerCase().split(' ')[0]));
+  return match || LOBBY_TIERS[Math.min(index, LOBBY_TIERS.length - 1)];
+}
+
+function renderLobbySkeleton() {
+  const grid = $('tablesGrid');
+  if (!grid || grid.children.length) return;
+  for (let i = 0; i < 5; i++) grid.appendChild(el('div', { class: 'stakes-card stakes-card--skeleton', 'aria-hidden': 'true' }, [
+    el('div', { class: 'skeleton-line skeleton-line--title' }),
+    el('div', { class: 'skeleton-line' }),
+    el('div', { class: 'skeleton-line skeleton-line--short' }),
+    el('div', { class: 'skeleton-button' }),
+  ]));
+}
+
 function renderLobby() {
   const grid = $('tablesGrid');
+  if (!grid) return;
   grid.innerHTML = '';
   if (!state.tables.length) {
-    grid.appendChild(el('div', { class: 'muted small', text: 'No tables yet. Be the first to create one below.' }));
+    renderLobbySkeleton();
     return;
   }
-  state.tables.forEach(t => {
-    const cap = t.maxSeats;
-    const live = t.seatsTaken;
-    const phaseLabel = t.handInProgress ? 'In hand' : 'Waiting';
+  state.tables.forEach((t, index) => {
+    const tier = tierForTable(t, index);
+    const cap = Number(t.maxSeats) || 0;
+    const live = Number(t.seatsTaken) || 0;
     const isFull = live >= cap;
-    const card = el('div', { class: 'table-card' }, [
-      el('div', { class: 'name', text: t.name }),
-      el('div', { class: 'meta' }, [
-        el('span', { class: 'chip', text: `${live}/${cap} seats` }),
-        el('span', { class: 'chip' + (t.handInProgress ? ' live' : ''), text: phaseLabel }),
-        el('span', { class: 'chip', text: `Blinds ${t.smallBlind}/${t.bigBlind}` }),
-      ]),
-      el('div', { class: 'row' }, []),
+    const inProgress = Boolean(t.handInProgress);
+    const status = inProgress ? 'In Progress' : isFull ? 'Full' : 'Waiting';
+    const cardClass = `stakes-card stakes-card--${tier.key}${inProgress ? ' stakes-card--in-progress' : ''}${isFull ? ' stakes-card--full' : ''}`;
+    const stats = el('div', { class: 'stakes-card__stats' }, [
+      el('div', { class: 'stakes-stat' }, [el('span', { class: 'micro-label', text: 'Seats' }), el('strong', { class: 'stakes-stat__value', text: `${live}/${cap}`, 'aria-live': 'polite' })]),
+      el('div', { class: 'stakes-stat' }, [el('span', { class: 'micro-label', text: 'Status' }), el('strong', { class: 'stakes-stat__value stakes-stat__status' + (inProgress ? ' is-live' : ''), text: status })]),
+      el('div', { class: 'stakes-stat' }, [el('span', { class: 'micro-label', text: 'Blinds' }), el('strong', { class: 'stakes-stat__value', text: `${t.smallBlind}/${t.bigBlind}` })]),
     ]);
-    if (!isFull) {
-      const joinBtn = el('button', {
-        class: 'primary-btn',
-        text: 'Join',
-        onclick: () => joinTable(t.id, null),
-      });
-      card.appendChild(joinBtn);
-    } else {
-      card.appendChild(el('span', { class: 'muted small', text: 'Full' }));
-    }
-    grid.appendChild(card);
+    const action = el('button', {
+      class: `stakes-card__action${inProgress ? ' stakes-card__action--watch' : ''}`,
+      text: inProgress ? 'Watch' : 'Join',
+      disabled: isFull,
+      onclick: () => joinTable(t.id, null),
+      'aria-label': `${inProgress ? 'Watch' : 'Join'} ${t.name}`,
+    });
+    grid.appendChild(el('article', { class: cardClass, style: `--tier-accent:${tier.accent};--card-index:${index}` }, [
+      el('span', { class: 'stakes-card__watermark', text: tier.suit, 'aria-hidden': 'true' }),
+      el('div', { class: 'stakes-card__header' }, [
+        el('span', { class: 'ring-icon', 'aria-hidden': 'true' }),
+        el('h3', { class: 'stakes-card__title', text: tier.label }),
+      ]),
+      el('p', { class: 'stakes-card__name', text: t.name }),
+      stats,
+      action,
+    ]));
   });
 }
 
+function validateCreateField(id, show = true) {
+  const sb = parseInt($('newTableSB').value, 10);
+  const bb = parseInt($('newTableBB').value, 10);
+  const seats = parseInt($('newTableSeats').value, 10);
+  let message = '';
+  if (id === 'newTableSB' && Number.isFinite(sb) && Number.isFinite(bb) && sb >= bb) message = 'Small blind must be lower than the big blind.';
+  if (id === 'newTableBB' && Number.isFinite(sb) && Number.isFinite(bb) && sb >= bb) message = 'Big blind must be higher than the small blind.';
+  if (id === 'newTableSeats' && (!Number.isFinite(seats) || seats < 2 || seats > 9)) message = 'Choose between 2 and 9 seats.';
+  const input = $(id);
+  const error = $(id + 'Error');
+  if (input) input.classList.toggle('has-error', Boolean(message));
+  if (error) { error.textContent = show ? message : ''; error.hidden = !show || !message; }
+  return !message;
+}
+
+function validateCreateTable() {
+  return ['newTableSB', 'newTableBB', 'newTableSeats'].map(id => validateCreateField(id)).every(Boolean);
+}
+
 function createTable() {
+  if (!validateCreateTable()) return;
   const name = $('newTableName').value.trim();
   const sb = parseInt($('newTableSB').value, 10);
   const bb = parseInt($('newTableBB').value, 10);
@@ -3067,9 +3118,14 @@ socket.on('chat_update', ({ tableId, messages }) => {
   // Click-outside-to-close for the admin modal — kept consistent with
   // the leaderboard modal. Only the backdrop element is the close
   // trigger; clicks inside .modal-content stay inside.
-  $('adminStartingSave').addEventListener('click', doSetStartingStack);
-
-  $('createTableBtn').addEventListener('click', createTable);
+  $('adminStartingSave').addEventListener('click', doSetStartingStack);    $('createTableBtn').addEventListener('click', createTable);
+  ['newTableSB', 'newTableBB', 'newTableSeats'].forEach(id => {
+    const input = $(id);
+    if (input) input.addEventListener('blur', () => validateCreateField(id));
+    if (input) input.addEventListener('input', () => validateCreateField(id, false));
+  });
+  const mobileAdminLink = $('mobileAdminLink');
+  if (mobileAdminLink) mobileAdminLink.addEventListener('click', e => { e.preventDefault(); openAdminModal(); });
   $('leaveTableBtn').addEventListener('click', leaveCurrentTable);
   $('sitOutBtn').addEventListener('click', sitOut);
   // Chat panel: Enter submits, clicking Send submits. The HTML maxlength=200

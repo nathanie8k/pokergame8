@@ -98,13 +98,24 @@
     <!-- ===== Lobby view ===== -->
     <section id="view-lobby" class="view" style="display:none">
       <div class="lobby-header">
-        <h2>Lobby</h2>
-        <p class="muted">Pick a table or create your own.</p>
+        <div>
+          <p class="lobby-eyebrow">THE FLOOR IS OPEN</p>
+          <h2>Choose your table</h2>
+          <p class="muted">Find your pace, take a seat, and play your way.</p>
+        </div>
+        <span class="lobby-live-indicator"><i aria-hidden="true"></i> Live floor</span>
       </div>
-      <div class="lobby-grid" id="tablesGrid"></div>
+      <div class="lobby-grid" id="tablesGrid" aria-live="polite"></div>
 
       <div class="create-table-card">
-        <h3>Create a new table</h3>
+        <div class="create-table-heading">
+          <div>
+            <p class="lobby-eyebrow">MAKE IT YOURS</p>
+            <h3>Create a new table</h3>
+            <p class="muted small">Set the pace for your next session.</p>
+          </div>
+          <span class="create-table-mark" aria-hidden="true">♣</span>
+        </div>
         <div class="form-grid">
           <label>
             <span>Table name</span>
@@ -112,19 +123,23 @@
           </label>
           <label>
             <span>Small blind</span>
-            <input id="newTableSB" type="number" min="1" max="1000" value="5" />
+            <input id="newTableSB" type="number" min="1" max="1000" value="5" aria-describedby="newTableSBError" />
+            <small id="newTableSBError" class="field-error" role="alert"></small>
           </label>
           <label>
             <span>Big blind</span>
-            <input id="newTableBB" type="number" min="2" max="5000" value="10" />
+            <input id="newTableBB" type="number" min="2" max="5000" value="10" aria-describedby="newTableBBError" />
+            <small id="newTableBBError" class="field-error" role="alert"></small>
           </label>
           <label>
             <span>Max seats</span>
-            <input id="newTableSeats" type="number" min="2" max="9" value="6" />
+            <input id="newTableSeats" type="number" min="2" max="9" value="6" aria-describedby="newTableSeatsError" />
+            <small id="newTableSeatsError" class="field-error" role="alert"></small>
           </label>
         </div>
         <button id="createTableBtn" class="primary-btn">Create table</button>
       </div>
+      <a class="mobile-admin-link" id="mobileAdminLink" href="#admin" aria-label="Open Admin Room">Admin Room <span aria-hidden="true">›</span></a>
     </section>
 
     <!-- ===== Table view ===== -->
