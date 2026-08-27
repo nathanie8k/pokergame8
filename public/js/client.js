@@ -780,6 +780,10 @@ function createLobbyCard(table, index) {
     ]),
     el('button', { class: 'stakes-card__action' }),
   ]);
+  const action = card.querySelector('.stakes-card__action');
+  action.addEventListener('click', () => joinTable(table.id, null));
+  card.classList.add('stakes-card--entering');
+  action.addEventListener('animationend', () => card.classList.remove('stakes-card--entering'), { once: true });
   updateLobbyCard(card, table, index);
   return card;
 }
@@ -791,7 +795,10 @@ function updateLobbyCard(card, table, index) {
   const isFull = live >= cap;
   const inProgress = Boolean(table.handInProgress);
   const status = inProgress ? 'In Progress' : isFull ? 'Full' : 'Waiting';
-  card.className = `stakes-card stakes-card--${tier.key}${inProgress ? ' stakes-card--in-progress' : ''}${isFull ? ' stakes-card--full' : ''}`;
+  LOBBY_TIERS.forEach(candidate => card.classList.remove(`stakes-card--${candidate.key}`));
+  card.classList.add(`stakes-card--${tier.key}`);
+  card.classList.toggle('stakes-card--in-progress', inProgress);
+  card.classList.toggle('stakes-card--full', isFull);
   card.style.setProperty('--tier-accent', tier.accent);
   card.style.setProperty('--card-index', index);
   card.querySelector('.stakes-card__watermark').textContent = tier.suit;
@@ -802,7 +809,7 @@ function updateLobbyCard(card, table, index) {
   card.querySelector('.stakes-stat__status').classList.toggle('is-live', inProgress);
   card.querySelector('.stakes-stat__blinds').textContent = `${table.smallBlind}/${table.bigBlind}`;
   const action = card.querySelector('.stakes-card__action');
-  action.className = `stakes-card__action${inProgress ? ' stakes-card__action--watch' : ''}`;
+  action.classList.toggle('stakes-card__action--watch', inProgress);
   action.textContent = inProgress ? 'Watch' : 'Join';
   action.disabled = isFull;
   action.setAttribute('aria-label', `${inProgress ? 'Watch' : 'Join'} ${table.name}`);
