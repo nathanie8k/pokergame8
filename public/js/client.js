@@ -783,7 +783,7 @@ function createLobbyCard(table, index) {
   const action = card.querySelector('.stakes-card__action');
   action.addEventListener('click', () => joinTable(table.id, null));
   card.classList.add('stakes-card--entering');
-  action.addEventListener('animationend', () => card.classList.remove('stakes-card--entering'), { once: true });
+  card.addEventListener('animationend', () => card.classList.remove('stakes-card--entering'), { once: true });
   updateLobbyCard(card, table, index);
   return card;
 }
@@ -800,7 +800,6 @@ function updateLobbyCard(card, table, index) {
   card.classList.toggle('stakes-card--in-progress', inProgress);
   card.classList.toggle('stakes-card--full', isFull);
   card.style.setProperty('--tier-accent', tier.accent);
-  card.style.setProperty('--card-index', index);
   card.querySelector('.stakes-card__watermark').textContent = tier.suit;
   card.querySelector('.stakes-card__title').textContent = tier.label;
   card.querySelector('.stakes-card__name').textContent = table.name;
