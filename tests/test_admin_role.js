@@ -885,6 +885,63 @@ async function main() {
        'integration: arbitrary player can still be promoted via direct db.setUserAdmin (the new owner gate is owner-only, NOT admin-only)');
   }
 
+  // ====================================================================
+  // 13. Persistent role hierarchy, immutable super-admin, atomic point
+  //     adjustment, and accountability audit fields.
+  // ====================================================================
+  {
+    await db.resetForTests();
+    const owner = await db.ensureSuperAdmin();
+    eq(owner && owner.name, 'Nathanielk8',
+       'ensureSuperAdmin seeds the canonical Nathanielk8 account');
+    eq(owner && owner.role, db.ROLE_SUPER_ADMIN,
+       'ensureSuperAdmin assigns the fixed super-admin role');
+    eq(owner && owner.isAdmin, true,
+       'super-admin remains compatible with the legacy isAdmin flag');
+
+    const target = await db.getOrCreatePlayer('RoleTarget', { points: 100 });
+    const granted = await db.setPlayerRole('RoleTarget', db.ROLE_ADMIN);
+    ok(granted.ok && granted.player.role === db.ROLE_ADMIN && granted.player.isAdmin === true,
+       'setPlayerRole grants ordinary admin');
+    const revoked = await db.setPlayerRole('RoleTarget', db.ROLE_NONE);
+    ok(revoked.ok && revoked.player.role === db.ROLE_NONE && revoked.player.isAdmin === false,
+       'setPlayerRole revokes ordinary admin');
+
+    const otherSuper = await db.setPlayerRole('RoleTarget', db.ROLE_SUPER_ADMIN);
+    ok(!otherSuper.ok, 'setPlayerRole rejects a second super-admin');
+    const revokeOwner = await db.setPlayerRole('Nathanielk8', db.ROLE_NONE);
+    ok(!revokeOwner.ok, 'setPlayerRole cannot change the fixed super-admin');
+    let ownerRevokeError = null;
+    try { await db.setUserAdmin('Nathanielk8', false); } catch (err) { ownerRevokeError = err; }
+    ok(ownerRevokeError && /cannot be revoked/i.test(ownerRevokeError.message),
+       'setUserAdmin cannot revoke the fixed super-admin');
+
+    const adjusted = await db.adjustPoints('RoleTarget', 35);
+    ok(adjusted.ok && adjusted.oldBalance === 100 && adjusted.newBalance === 135,
+       'adjustPoints returns exact old/new balances');
+    const clamped = await db.adjustPoints('RoleTarget', -200);
+    ok(clamped.ok && clamped.oldBalance === 135 && clamped.newBalance === 0,
+       'adjustPoints clamps balances at zero');
+    const set = await db.setPlayerPoints('RoleTarget', 275);
+    ok(set.ok && set.oldBalance === 0 && set.newBalance === 275 && set.amount === 275,
+       'setPlayerPoints returns an audited absolute change');
+    const invalid = await db.adjustPoints('RoleTarget', 0);
+    ok(!invalid.ok, 'adjustPoints rejects zero changes');
+
+    await db.logAdminAction('Nathanielk8', 'RoleTarget', 'adjust_points', 'Test audit', {
+      amount: set.amount, oldBalance: set.oldBalance, newBalance: set.newBalance,
+    });
+    const audit = await db.getAdminActionLog(10);
+    const latest = audit.find((entry) => entry.action === 'adjust_points');
+    ok(latest && latest.adminName === 'Nathanielk8' && latest.targetName === 'RoleTarget',
+       'point adjustments record administrator and target');
+    eq(latest && latest.amount, 275, 'point audit records amount');
+    eq(latest && latest.oldBalance, 0, 'point audit records old balance');
+    eq(latest && latest.newBalance, 275, 'point audit records new balance');
+    ok(latest && typeof latest.timestamp === 'number' && latest.timestamp > 0,
+       'point audit records a timestamp');
+  }
+
   // Final env cleanup so downstream shells / restarts don't inherit a test token.
   setOwnerTokenEnv(null);
 

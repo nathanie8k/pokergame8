@@ -531,6 +531,7 @@ function setupAccessibility() {
 function renderAdminRoom(snapshot) {
   const roster = $('adminConnectedPlayers'); if (!roster) return;
   roster.innerHTML = '';
+  renderAdminPlayerManagement(snapshot.players || []);
   (snapshot.players || []).forEach(p => {
     const row = el('div', { class: 'admin-roster-row' }); const av = el('span', { class: 'admin-roster-avatar' });
     renderAvatar(av, p.name, p.avatar); row.appendChild(av);
@@ -547,11 +548,72 @@ function renderAdminRoom(snapshot) {
   const tables = $('adminTablesBreakdown'); tables.innerHTML = '';
   (snapshot.tables || []).forEach(t => {
     const box = el('section', { class: 'admin-table-box' }, [el('h4', { text: t.name })]);
-    t.seated.forEach(p => { const row = el('div', { class: 'admin-seated-row' }); row.appendChild(el('span', { text: `Seat ${p.seat} · ${p.name}` })); row.appendChild(el('button', { class: 'ghost-btn', text: 'Kick', onclick: () => kickAdminPlayer(p.name) })); box.appendChild(row); });
+    t.seated.forEach(p => { const row = el('div', { class: 'admin-seated-row' }); row.appendChild(el('span', { text: `Seat ${p.seat} · ${p.name}` })); row.appendChild(el('button', { class: 'ghost-btn', text: 'Kick', onclick: () => kickAdminPlayer(p.name, t.id) })); box.appendChild(row); });
     tables.appendChild(box);
   });
 }
 function renderAdminRank(id, rows) { const host = $(id); if (!host) return; host.innerHTML = ''; rows.slice(0, 10).forEach((p, i) => host.appendChild(el('div', { class: 'admin-rank-row', text: `${i + 1}. ${p.name} · ${formatNumber(p.points)} pts` }))); }
+
+function renderAdminPlayerManagement(players) {
+  const host = $('adminRoomPlayerManagement');
+  if (!host) return;
+  host.innerHTML = '';
+  const sorted = (players || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  sorted.forEach((p) => {
+    const row = el('div', { class: 'admin-player-row' });
+    const avatar = el('span', { class: 'admin-roster-avatar' });
+    renderAvatar(avatar, p.name, p.avatar);
+    row.appendChild(avatar);
+    const identity = el('div', { class: 'admin-player-identity' }, [
+      el('strong', { text: p.name }),
+      el('span', { class: 'muted small', text: `${p.role || (p.isAdmin ? 'admin' : 'none')} · ${formatNumber(p.points)} pts` }),
+    ]);
+    row.appendChild(identity);
+
+    const adjustment = el('input', { type: 'number', class: 'admin-points-input', placeholder: '+/-', 'aria-label': `Adjust points for ${p.name}` });
+    const addBtn = el('button', { class: 'ghost-btn', text: 'Adjust', onclick: () => doAdminRoomAdjust(p.name, adjustment.value) });
+    const balance = el('input', { type: 'number', class: 'admin-points-input', value: String(Math.max(0, Math.floor(p.points || 0))), 'aria-label': `Set points for ${p.name}` });
+    const setBtn = el('button', { class: 'ghost-btn', text: 'Set', onclick: () => doAdminRoomSet(p.name, balance.value) });
+    const pointsControls = el('div', { class: 'admin-player-controls' }, [adjustment, addBtn, balance, setBtn]);
+    row.appendChild(pointsControls);
+
+    if (state.player && state.player.name === 'Nathanielk8' && p.name !== 'Nathanielk8') {
+      const roleBtn = el('button', {
+        class: 'ghost-btn admin-role-btn',
+        text: p.role === 'admin' ? 'Revoke admin' : 'Grant admin',
+        onclick: () => setAdminPlayerRole(p.name, p.role === 'admin' ? 'none' : 'admin'),
+      });
+      roleBtn.setAttribute('aria-label', `${roleBtn.textContent} for ${p.name}`);
+      row.appendChild(roleBtn);
+    }
+    host.appendChild(row);
+  });
+}
+
+function doAdminRoomAdjust(name, value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || Math.trunc(amount) === 0) return showToast('Enter a non-zero point adjustment', 'error');
+  socket.emit('admin_add_points', { name, delta: Math.trunc(amount) }, (res) => {
+    if (!res || !res.ok) return showToast(res && res.error || 'Point adjustment failed', 'error');
+    setAdminFeedback(`${name}: ${res.oldBalance} → ${res.newBalance} points.`);
+  });
+}
+
+function doAdminRoomSet(name, value) {
+  const points = Number(value);
+  if (!Number.isFinite(points) || Math.trunc(points) < 0) return showToast('Enter a non-negative point balance', 'error');
+  socket.emit('admin_set_points', { name, points: Math.trunc(points) }, (res) => {
+    if (!res || !res.ok) return showToast(res && res.error || 'Point update failed', 'error');
+    setAdminFeedback(`${name}: ${res.oldBalance} → ${res.newBalance} points.`);
+  });
+}
+
+function setAdminPlayerRole(name, role) {
+  socket.emit('admin_set_role', { name, role }, (res) => {
+    if (!res || !res.ok) return showToast(res && res.error || 'Role update failed', 'error');
+    setAdminFeedback(`${name} is now ${role === 'admin' ? 'an admin' : 'a regular player'}.`);
+  });
+}
 
 function renderMobileLeaderboard() {
   const host = $('mobileLeaderboardRows');
@@ -584,7 +646,7 @@ async function loadMobileLeaderboard() {
   }
 }
 
-function kickAdminPlayer(name) { socket.emit('admin_kick', { name }, res => { if (!res || !res.ok) showToast(res && res.error || 'Kick failed', 'error'); else showToast(`Kicked ${name}`, 'good'); }); }
+function kickAdminPlayer(name, tableId) { socket.emit('admin_kick', { name, tableId }, res => { if (!res || !res.ok) showToast(res && res.error || 'Kick failed', 'error'); else showToast(`Kicked ${name}`, 'good'); }); }
 
 function formatNumber(n) {
   // Format chips with thousand separators.
@@ -3281,6 +3343,12 @@ socket.on('presence_update', ({ count, players }) => {
 socket.on('admin_snapshot', ({ players, tables, sessions, busiest, topEarners, biggestLosers, lastHand }) => {
   if (!state.isAdmin) return;
   renderAdminRoom({ players, tables, sessions, busiest, topEarners, biggestLosers, lastHand });
+});
+
+socket.on('leaderboard_update', ({ players }) => {
+  state.leaderboardData = players || [];
+  renderMobileLeaderboard();
+  if ($('leaderboardModal') && $('leaderboardModal').style.display !== 'none') renderLeaderboard();
 });
 
 socket.on('lobby_update', ({ tables }) => {

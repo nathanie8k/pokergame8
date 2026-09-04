@@ -50,7 +50,15 @@ const HOST = process.env.HOST || '0.0.0.0';
 //   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 // and store it in your deployment env (e.g. systemd EnvironmentFile,
 // Docker --env-file, Kubernetes Secret). Treat it like a root password.
+// Legacy owner-token login remains compatible with existing deployments,
+// but it grants ordinary admin access only. The fixed super-admin identity
+// is a separate, exact username below.
 const OWNER_NAME = 'nathanielk7';
+const SUPER_ADMIN_NAME = db.SUPER_ADMIN_NAME;
+
+function isAdminRole(role) {
+  return role === db.ROLE_ADMIN || role === db.ROLE_SUPER_ADMIN;
+}
 
 function getOwnerToken() {
   // Re-read env on every call so tests + boot-time reloads see the
@@ -66,22 +74,11 @@ function getOwnerToken() {
 }
 
 function isHardcodedOwnerName(name) {
-  // Case-insensitive comparison on purpose: the SPA may send a name in
-  // any casing ("nathanielk7", "NathanielK7", "NATHANIELK7") and we
-  // want every variant to flow through the same secret-gate. MongoDB's
-  // unique index is case-sensitive, so a casing variant creates a
-  // separate doc — but the gate fires BEFORE getOrCreatePlayer, so the
-  // impostor variant never gets that far.
-  //
-  // Defense-in-depth: the register handler's character regex
-  // (^[\w .'\-]+$) rejects non-ASCII input today, so a Cyrillic
-  // homoglyph impersonation can't even reach this check. We still
-  // NFKC-normalize both sides so a future relaxation of the regex (or
-  // a downstream code path that bypasses it) doesn't silently expose
-  // a Unicode cross-mapping gap.
+  // Legacy OWNER_TOKEN compatibility remains case-insensitive. It grants
+  // ordinary admin only; the fixed super-admin is the exact
+  // `Nathanielk8` identity enforced by the database role layer.
   if (typeof name !== 'string') return false;
-  return name.trim().normalize('NFKC').toLowerCase()
-       === OWNER_NAME.normalize('NFKC').toLowerCase();
+  return name.trim().normalize('NFKC').toLowerCase() === OWNER_NAME.toLowerCase();
 }
 
 
@@ -164,6 +161,13 @@ async function primePersistedSettings() {
 // was a silent no-op; the BLOCKING boot-reapply bug from the
 // code-review pass.) Skip rows that have no cache entry — those
 // tables genuinely are configured at their defaults.
+// Seed and repair the fixed super-admin identity independently of any
+// client request. This guarantees Nathanielk8 is always super-admin and
+// prevents a manually edited legacy role from creating a second one.
+db.ensureSuperAdmin().catch((err) => {
+  console.error('Super-admin seed failed:', err.message);
+});
+
 primePersistedSettings().then(() => {
   let applied = 0;
   for (const t of rooms.tables.values()) {
@@ -461,8 +465,12 @@ async function buildAdminSnapshot() {
   const allPlayers = await db.getAllPlayers();
   const players = allPlayers.map(p => {
     const live = connected.find(row => row.name === p.name);
+    const role = p.name === SUPER_ADMIN_NAME
+      ? db.ROLE_SUPER_ADMIN
+      : (p.role || (p.isAdmin ? db.ROLE_ADMIN : db.ROLE_NONE));
     return {
       name: p.name, avatar: p.profilePhoto || '', points: p.points || 0,
+      role, isAdmin: role === db.ROLE_ADMIN || role === db.ROLE_SUPER_ADMIN,
       online: onlineNames.has(p.name),
       tableName: live ? live.tableName : 'In Lobby', seat: live ? live.seat : null,
     };
@@ -551,7 +559,24 @@ async function applyAdminPointsChangeToSeats(name, newPoints) {
       }
     }
   }
+  const sockets = playerSockets.get(name);
+  if (sockets) {
+    for (const sid of sockets) {
+      const playerSocket = io.sockets.sockets.get(sid);
+      if (!playerSocket || !playerSocket.data.player) continue;
+      playerSocket.data.player = { ...playerSocket.data.player, points: newPoints };
+      playerSocket.emit('hello', { player: playerSocket.data.player });
+    }
+  }
   if (touched) broadcastAllTables();
+}
+
+async function broadcastLeaderboard() {
+  try {
+    io.emit('leaderboard_update', { players: await db.getLeaderboardRows() });
+  } catch (err) {
+    console.error('leaderboard broadcast error:', err.message);
+  }
 }
 
 // ----- Hand lifecycle -----
@@ -892,15 +917,16 @@ io.on('connection', (socket) => {
           // still applies for THIS session. The next reconnect will
           // pick up whatever the doc has at that point.
         }
+        // The legacy owner token grants ordinary admin access only;
+        // it can never mint a second super-admin identity.
         socket.data.isAdmin = true;
-        // Refresh the in-memory player mirror so any future handler
-        // that reads socket.data.player.isAdmin (currently none — the
-        // canonical gate is socket.data.isAdmin read by requireAdmin)
-        // sees the post-promotion value without waiting for a
-        // reconnect. Purely a consistency nudge.
-        socket.data.player = Object.assign({}, socket.data.player || {}, { isAdmin: true });
+        socket.data.player = Object.assign({}, socket.data.player || {}, { isAdmin: true, role: db.ROLE_ADMIN });
+        socket.data.role = db.ROLE_ADMIN;
       } else {
-        socket.data.isAdmin = player.isAdmin === true;
+          socket.data.role = player.name === SUPER_ADMIN_NAME
+          ? db.ROLE_SUPER_ADMIN
+          : (player.role || (player.isAdmin ? db.ROLE_ADMIN : db.ROLE_NONE));
+        socket.data.isAdmin = socket.data.role === db.ROLE_ADMIN || socket.data.role === db.ROLE_SUPER_ADMIN;
       }
 
       if (!playerSockets.has(player.name)) playerSockets.set(player.name, new Set());
@@ -1392,11 +1418,26 @@ io.on('connection', (socket) => {
   // for audits. Tests cover each handler with both an admin and a
   // non-admin socket to lock down the rejection path.
   function requireAdmin(cb) {
-    if (!socket.data.isAdmin) {
+    const role = socket.data.role;
+    const allowed = isAdminRole(role);
+    if (!allowed) {
       if (cb) cb({ ok: false, error: 'Not admin' });
       return false;
     }
     return true;
+  }
+
+  function requireSuperAdmin(targetName, cb) {
+    if (socket.data.player && socket.data.player.name === SUPER_ADMIN_NAME
+        && socket.data.role === db.ROLE_SUPER_ADMIN) return true;
+    db.logAdminAction(
+      socket.data.player && socket.data.player.name || 'unknown',
+      targetName || '',
+      'unauthorized_role_change',
+      'Rejected grant/revoke attempt'
+    ).catch(() => {});
+    if (cb) cb({ ok: false, error: 'Super-admin permission required' });
+    return false;
   }
 
   socket.on('admin_list', async (_, cb) => {
@@ -1408,24 +1449,77 @@ io.on('connection', (socket) => {
 
   socket.on('admin_set_points', async ({ name, points }, cb) => {
     if (!requireAdmin(cb)) return;
-    const p = await db.setPoints(name, points);
-    if (!p) return cb && cb({ ok: false, error: 'No such player' });
-    await applyAdminPointsChangeToSeats(name, p.points);
-    db.logAdminAction(socket.data.player.name, name, 'set_points', 'Set points to ' + points).catch(() => {});
-    cb && cb({ ok: true, player: p });
+    const result = await db.setPlayerPoints(name, Number(points));
+    if (!result.ok) return cb && cb(result);
+    await applyAdminPointsChangeToSeats(name, result.newBalance);
+    await db.logAdminAction(
+      socket.data.player.name,
+      name,
+      'set_points',
+      'Set points balance',
+      { amount: result.amount, oldBalance: result.oldBalance, newBalance: result.newBalance }
+    );
+    broadcastLobby();
+    broadcastLeaderboard();
+    broadcastPresence().catch((err) => console.error('admin set-points presence broadcast:', err));
+    cb && cb({ ok: true, player: result.player, oldBalance: result.oldBalance, newBalance: result.newBalance });
   });
 
   socket.on('admin_add_points', async ({ name, delta }, cb) => {
     if (!requireAdmin(cb)) return;
-    const p = await db.addPoints(name, delta);
-    if (!p) return cb && cb({ ok: false, error: 'No such player' });
-    await applyAdminPointsChangeToSeats(name, p.points);
-    db.logAdminAction(socket.data.player.name, name, 'add_points', 'Added ' + delta + ' points').catch(() => {});
-    cb && cb({ ok: true, player: p });
+    const result = await db.adjustPoints(name, Number(delta));
+    if (!result.ok) return cb && cb(result);
+    await applyAdminPointsChangeToSeats(name, result.newBalance);
+    await db.logAdminAction(
+      socket.data.player.name,
+      name,
+      'adjust_points',
+      'Adjusted points balance',
+      { amount: result.amount, oldBalance: result.oldBalance, newBalance: result.newBalance }
+    );
+    broadcastLobby();
+    broadcastLeaderboard();
+    broadcastPresence().catch((err) => console.error('admin add-points presence broadcast:', err));
+    cb && cb({ ok: true, player: result.player, oldBalance: result.oldBalance, newBalance: result.newBalance, amount: result.amount });
+  });
+
+  socket.on('admin_set_role', async ({ name, role }, cb) => {
+    if (!requireSuperAdmin(name, cb)) return;
+    if (name === SUPER_ADMIN_NAME) {
+      return cb && cb({ ok: false, error: 'Super-admin role is fixed' });
+    }
+    if (role !== db.ROLE_ADMIN && role !== db.ROLE_NONE) {
+      return cb && cb({ ok: false, error: 'Role must be admin or none' });
+    }
+    const result = await db.setPlayerRole(name, role);
+    if (!result.ok) return cb && cb(result);
+    const targetSockets = playerSockets.get(name);
+    if (targetSockets) {
+      for (const sid of targetSockets) {
+        const targetSocket = io.sockets.sockets.get(sid);
+        if (!targetSocket) continue;
+        targetSocket.data.role = role;
+        targetSocket.data.isAdmin = role === db.ROLE_ADMIN;
+        targetSocket.data.player = { ...targetSocket.data.player, role, isAdmin: targetSocket.data.isAdmin };
+        targetSocket.emit('hello', { player: targetSocket.data.player });
+      }
+    }
+    await db.logAdminAction(
+      socket.data.player.name,
+      name,
+      role === db.ROLE_ADMIN ? 'grant_admin' : 'revoke_admin',
+      'Changed player role to ' + role
+    );
+    broadcastPresence();
+    broadcastLeaderboard();
+    cb && cb({ ok: true, player: result.player });
   });
 
   socket.on('admin_remove', async ({ name }, cb) => {
     if (!requireAdmin(cb)) return;
+    if (name === SUPER_ADMIN_NAME) {
+      return cb && cb({ ok: false, error: 'Super-admin cannot be removed' });
+    }
     if (db.isReservedHouseAccountName(name)) {
       return cb && cb({ ok: false, error: 'HouseRake is a system account and cannot be removed' });
     }
@@ -1552,7 +1646,7 @@ io.on('connection', (socket) => {
       // The dedicated Admin Room is for persisted admin accounts only.
       // The old shared-password modal is retained in markup for compatibility
       // but can no longer grant admin privileges.
-      if (!socket.data.player || !socket.data.player.isAdmin) {
+      if (!socket.data.player || !isAdminRole(socket.data.role, socket.data.isAdmin)) {
         return cb && cb({ ok: false, error: 'Not admin' });
       }
       const expected = await db.getAdminPassword();

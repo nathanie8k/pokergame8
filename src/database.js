@@ -1,4 +1,4 @@
-// MongoDB-backed persistence for player accounts, admin flags, and per-table
+// MongoDB-backed persistence for player accounts, roles, and per-table
 // session settings.
 //
 // Storage layout:
@@ -66,8 +66,15 @@ let connectPromise = null;
 // preserved verbatim from the JSON version (slug + 2 random bytes) so any
 // existing-account ids match if you were to import an old data.json.
 
+const SUPER_ADMIN_NAME = 'Nathanielk8';
+const ROLE_NONE = 'none';
+const ROLE_ADMIN = 'admin';
+const ROLE_SUPER_ADMIN = 'super-admin';
+const PLAYER_ROLES = Object.freeze([ROLE_NONE, ROLE_ADMIN, ROLE_SUPER_ADMIN]);
+
 const playerSchema = new mongoose.Schema({
   name:        { type: String, required: true, unique: true, index: true },
+  role:        { type: String, enum: PLAYER_ROLES, default: ROLE_NONE, index: true },
   id:          { type: String, required: true },
   points:      { type: Number, default: 0 },
   // Stats default to 0 — the leaderboard's `gamesPlayed > 0` filter relies
@@ -104,6 +111,9 @@ const adminActionLogSchema = new mongoose.Schema({
   action:       { type: String, required: true },
   details:      { type: String, default: '' },
   timestamp:    { type: Number, default: () => Date.now(), index: true },
+  amount:       { type: Number, default: null },
+  oldBalance:   { type: Number, default: null },
+  newBalance:   { type: Number, default: null },
 }, { versionKey: false });
 
 const AdminActionLog = mongoose.model('AdminActionLog', adminActionLogSchema);
@@ -280,7 +290,31 @@ async function getOrCreatePlayer(name, opts) {
   const meta = await getMeta();
   const opts2 = opts || {};
   const existing = await Player.findOne({ name }).lean();
-  if (existing) return existing;
+  if (existing) {
+    // The canonical super-admin identity is repaired on every login/read
+    // path so a stale legacy boolean or manual edit cannot demote it.
+    if (name === SUPER_ADMIN_NAME && (existing.role !== ROLE_SUPER_ADMIN || existing.isAdmin !== true)) {
+      await Player.updateOne({ _id: existing._id }, { $set: { role: ROLE_SUPER_ADMIN, isAdmin: true, updated: Date.now() } });
+      return Player.findById(existing._id).lean();
+    }
+    // Migrate legacy `isAdmin:true` records into the role field while
+    // retaining the boolean for backwards-compatible callers. Also
+    // repair any impossible role combinations and ensure no second
+    // account can keep a stale super-admin role.
+    const canonicalRole = existing.role === ROLE_SUPER_ADMIN && name !== SUPER_ADMIN_NAME
+      ? ROLE_ADMIN
+      : (existing.role === ROLE_NONE && existing.isAdmin === true
+        ? ROLE_ADMIN
+        : (existing.role || (existing.isAdmin ? ROLE_ADMIN : ROLE_NONE)));
+    const canonicalIsAdmin = canonicalRole === ROLE_ADMIN || canonicalRole === ROLE_SUPER_ADMIN;
+    if (existing.role !== canonicalRole || existing.isAdmin !== canonicalIsAdmin) {
+      await Player.updateOne({ _id: existing._id }, {
+        $set: { role: canonicalRole, isAdmin: canonicalIsAdmin, updated: Date.now() },
+      });
+      return Player.findById(existing._id).lean();
+    }
+    return existing;
+  }
   const id = opts2.id || (
     name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 32)
     + '-' + crypto.randomBytes(2).toString('hex')
@@ -293,7 +327,12 @@ async function getOrCreatePlayer(name, opts) {
   // create an admin user without poking Mongo directly. Production code
   // paths leave it as false (the default) — the user flips the flag
   // via the database admin panel.
-  const isAdmin = opts2.isAdmin === true;
+  const requestedRole = PLAYER_ROLES.includes(opts2.role)
+    ? opts2.role
+    : (opts2.isAdmin === true ? ROLE_ADMIN : ROLE_NONE);
+  const role = name === SUPER_ADMIN_NAME
+    ? ROLE_SUPER_ADMIN
+    : (requestedRole === ROLE_SUPER_ADMIN ? ROLE_ADMIN : requestedRole);
   // Race-safe first-time create: two concurrent `getOrCreatePlayer('Alice')`
   // calls could both miss the `findOne` and both attempt `create`. The
   // unique-name index makes the second call throw E11000; we catch and
@@ -307,7 +346,8 @@ async function getOrCreatePlayer(name, opts) {
       gamesPlayed: 0,
       wins: 0,
       lastSeenAt: 0,
-      isAdmin,
+      isAdmin: role !== ROLE_NONE,
+      role,
       created: now,
     });
     return created.toObject();
@@ -414,10 +454,57 @@ async function addPoints(name, delta) {
 
 async function getAllPlayers() {
   await connect();
-  return Player.find({}).lean();
+  const players = await Player.find({}).lean();
+  return players.map((p) => {
+    const role = p.name === SUPER_ADMIN_NAME
+      ? ROLE_SUPER_ADMIN
+      : (p.role === ROLE_SUPER_ADMIN
+        ? ROLE_ADMIN
+        : (p.role === ROLE_ADMIN || p.isAdmin === true ? ROLE_ADMIN : ROLE_NONE));
+    return {
+      ...p,
+      role,
+      isAdmin: role === ROLE_ADMIN || role === ROLE_SUPER_ADMIN,
+    };
+  });
+}
+
+async function ensureSuperAdmin() {
+  await connect();
+  const meta = await getMeta();
+  // Repair all legacy admin records first. Only the exact canonical
+  // username may retain the super-admin role; an accidental/manual role
+  // assignment to another account is downgraded to ordinary admin.
+  await Player.updateMany(
+    { isAdmin: true, role: { $in: [ROLE_NONE, null] }, name: { $ne: SUPER_ADMIN_NAME } },
+    { $set: { role: ROLE_ADMIN, updated: Date.now() } }
+  );
+  await Player.updateMany(
+    { role: ROLE_SUPER_ADMIN, name: { $ne: SUPER_ADMIN_NAME } },
+    { $set: { role: ROLE_ADMIN, isAdmin: true, updated: Date.now() } }
+  );
+  const existing = await Player.findOne({ name: SUPER_ADMIN_NAME });
+  if (existing) {
+    await Player.updateOne(
+      { _id: existing._id },
+      { $set: { role: ROLE_SUPER_ADMIN, isAdmin: true, updated: Date.now() } }
+    );
+    return Player.findById(existing._id).lean();
+  }
+  return Player.create({
+    name: SUPER_ADMIN_NAME,
+    id: SUPER_ADMIN_NAME.toLowerCase() + '-super',
+    points: meta.startingStack || 1000,
+    role: ROLE_SUPER_ADMIN,
+    isAdmin: true,
+    created: Date.now(),
+  }).then((player) => player.toObject());
 }
 
 async function deletePlayer(name) {
+  if (name === SUPER_ADMIN_NAME) {
+    throw new Error('Super-admin cannot be deleted');
+  }
   await connect();
   const res = await Player.deleteOne({ name });
   return res.deletedCount > 0;
@@ -506,10 +593,11 @@ async function setAdminPassword(newPassword) {
 // "no house = no fee sink" case.
 async function getAdminPlayers() {
   await connect();
-  return Player.find({ isAdmin: true })
-    .sort({ name: 1 })
-    .select({ name: 1, id: 1, isAdmin: 1, points: 1 })
-    .lean();
+  const players = await getAllPlayers();
+  return players
+    .filter((p) => p.role === ROLE_ADMIN || p.role === ROLE_SUPER_ADMIN)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((p) => ({ name: p.name, id: p.id, isAdmin: p.isAdmin, role: p.role, points: p.points }));
 }
 
 // Single-row lookup for legacy callers. Note: creditHousePoints no longer
@@ -518,16 +606,14 @@ async function getAdminPlayers() {
 // lexicographically-first admin name to make the choice deterministic.
 async function getPrimaryAdminPlayer() {
   await connect();
-  return Player.findOne({ isAdmin: true })
-    .sort({ name: 1, created: 1 })
-    .select({ name: 1, id: 1, isAdmin: 1, points: 1 })
-    .lean();
+  const admins = await getAdminPlayers();
+  return admins[0] || null;
 }
 
-// Manually flip the admin flag for a player. Exposed so a Node.js REPL
-// or migration script can do `db.setUserAdmin('Admin', true)` instead of
-// poking Mongo directly. Production callers rarely need this — the spec
-// is explicit that the user manages the flag themselves.
+// Manually flip the admin flag for a player. Exposed for migrations and
+// setup tooling; application requests use the stricter super-admin-only
+// `setPlayerRole` socket handler below. The canonical super-admin identity
+// cannot be demoted through this helper.
 async function setUserAdmin(name, isAdmin) {
   if (!name || typeof name !== 'string') {
     throw new Error('setUserAdmin: name (string) required');
@@ -535,13 +621,81 @@ async function setUserAdmin(name, isAdmin) {
   if (typeof isAdmin !== 'boolean') {
     throw new Error('setUserAdmin: isAdmin (boolean) required');
   }
+  if (name === SUPER_ADMIN_NAME && !isAdmin) {
+    throw new Error('Super-admin cannot be revoked');
+  }
   await connect();
   const updated = await Player.findOneAndUpdate(
     { name },
-    [{ $set: { isAdmin, updated: Date.now() } }],
+    [{ $set: {
+      isAdmin: name === SUPER_ADMIN_NAME ? true : isAdmin,
+      role: name === SUPER_ADMIN_NAME ? ROLE_SUPER_ADMIN : (isAdmin ? ROLE_ADMIN : ROLE_NONE),
+      updated: Date.now(),
+    } }],
     { new: true, updatePipeline: true }
   );
   return updated ? updated.toObject() : null;
+}
+
+async function setPlayerRole(name, role) {
+  if (!name || typeof name !== 'string') return { ok: false, error: 'Player name required' };
+  if (name !== name.trim()) return { ok: false, error: 'Invalid player name' };
+  if (!PLAYER_ROLES.includes(role)) return { ok: false, error: 'Invalid role' };
+  if (name === SUPER_ADMIN_NAME) return { ok: false, error: 'Super-admin role is fixed' };
+  if (role === ROLE_SUPER_ADMIN) return { ok: false, error: 'Only the fixed super-admin may hold that role' };
+  await connect();
+  const updated = await Player.findOneAndUpdate(
+    { name },
+    [{ $set: { role, isAdmin: role === ROLE_ADMIN, updated: Date.now() } }],
+    { new: true, updatePipeline: true }
+  );
+  return updated
+    ? { ok: true, player: updated.toObject() }
+    : { ok: false, error: 'No such player' };
+}
+
+async function adjustPoints(name, amount) {
+  if (!name || typeof amount !== 'number' || !Number.isFinite(amount)) {
+    return { ok: false, error: 'Invalid point adjustment' };
+  }
+  const delta = Math.trunc(amount);
+  if (delta === 0) return { ok: false, error: 'Adjustment cannot be zero' };
+  await connect();
+  // Compare-and-set retries preserve exact old/new balances even when two
+  // admins adjust the same player concurrently.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const current = await Player.findOne({ name }).lean();
+    if (!current) return { ok: false, error: 'No such player' };
+    const oldBalance = Math.max(0, Math.floor(current.points || 0));
+    const newBalance = Math.max(0, oldBalance + delta);
+    const updated = await Player.findOneAndUpdate(
+      { _id: current._id, points: current.points },
+      { $set: { points: newBalance, updated: Date.now() } },
+      { new: true }
+    ).lean();
+    if (updated) return { ok: true, player: updated, oldBalance, newBalance, amount: delta };
+  }
+  return { ok: false, error: 'Point balance changed concurrently; try again' };
+}
+
+async function setPlayerPoints(name, points) {
+  if (!name || typeof points !== 'number' || !Number.isFinite(points)) {
+    return { ok: false, error: 'Invalid point balance' };
+  }
+  await connect();
+  const target = Math.max(0, Math.trunc(points));
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const current = await Player.findOne({ name }).lean();
+    if (!current) return { ok: false, error: 'No such player' };
+    const oldBalance = Math.max(0, Math.floor(current.points || 0));
+    const updated = await Player.findOneAndUpdate(
+      { _id: current._id, points: current.points },
+      { $set: { points: target, updated: Date.now() } },
+      { new: true }
+    ).lean();
+    if (updated) return { ok: true, player: updated, oldBalance, newBalance: target, amount: target - oldBalance };
+  }
+  return { ok: false, error: 'Point balance changed concurrently; try again' };
 }
 
 // Credit "house points" (rake) to the dedicated HouseRake account — NOT
@@ -800,6 +954,7 @@ async function getPlayerStats(name) {
     lastSeenAt: p.lastSeenAt || 0,
     created: p.created || 0,
     isAdmin: p.isAdmin === true,
+    role: p.role || (p.isAdmin ? ROLE_ADMIN : ROLE_NONE),
     avatar: p.profilePhoto || '',
     lastNameChangeAt: p.lastNameChangeAt || 0,
   };
@@ -807,7 +962,7 @@ async function getPlayerStats(name) {
 
 // ----- Admin action log -----
 
-async function logAdminAction(adminName, targetName, action, details) {
+async function logAdminAction(adminName, targetName, action, details, audit = {}) {
   if (!adminName || !action) return;
   await connect();
   await AdminActionLog.create({
@@ -815,6 +970,9 @@ async function logAdminAction(adminName, targetName, action, details) {
     targetName: String(targetName || ''),
     action: String(action),
     details: String(details || ''),
+    amount: typeof audit.amount === 'number' ? audit.amount : null,
+    oldBalance: typeof audit.oldBalance === 'number' ? audit.oldBalance : null,
+    newBalance: typeof audit.newBalance === 'number' ? audit.newBalance : null,
     timestamp: Date.now(),
   });
 }
@@ -875,4 +1033,14 @@ module.exports = {
   // Admin action log
   logAdminAction,
   getAdminActionLog,
+  // Role and point-management helpers
+  SUPER_ADMIN_NAME,
+  ROLE_NONE,
+  ROLE_ADMIN,
+  ROLE_SUPER_ADMIN,
+  PLAYER_ROLES,
+  ensureSuperAdmin,
+  setPlayerRole,
+  adjustPoints,
+  setPlayerPoints,
 };
