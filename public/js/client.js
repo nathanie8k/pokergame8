@@ -485,61 +485,89 @@ function renderProfilePreview(photo) {
   host.appendChild(avatar);
 }
 
-const PROFILE_PHOTO_MAX_SOURCE_BYTES = 10 * 1024 * 1024;
 const PROFILE_PHOTO_THUMBNAIL_SIZE = 256;
-const PROFILE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 function processProfilePhotoFile(file) {
   return new Promise((resolve, reject) => {
-    if (!file || !PROFILE_PHOTO_TYPES.has(file.type)) {
-      reject(new Error('Choose a JPG, PNG, GIF, or WebP image.'));
+    if (!file) {
+      reject(new Error('No photo file was selected.'));
       return;
     }
-    if (file.size > PROFILE_PHOTO_MAX_SOURCE_BYTES) {
-      reject(new Error('File too large, please choose a smaller file.'));
+
+    // Do not inspect MIME type, extension, size, or dimensions here. The
+    // browser's decoder is the source of truth for whether this file can be
+    // rendered. Blob URLs also avoid expanding a large source file into a
+    // second, equally large base64 string before it is resized.
+    let objectUrl;
+    try {
+      objectUrl = URL.createObjectURL(file);
+    } catch (error) {
+      console.error('Profile photo object URL creation failed:', error);
+      reject(error);
       return;
     }
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Could not read that image.'));
-    reader.onload = () => {
-      const image = new Image();
-      image.onerror = () => reject(new Error('That file is not a readable image.'));
-      image.onload = () => {
-        const width = image.naturalWidth || image.width;
-        const height = image.naturalHeight || image.height;
-        if (!width || !height) {
-          reject(new Error('That file has no usable image dimensions.'));
-          return;
-        }
-        const cropSize = Math.min(width, height);
-        const sourceX = (width - cropSize) / 2;
-        const sourceY = (height - cropSize) / 2;
-        const canvas = document.createElement('canvas');
-        canvas.width = PROFILE_PHOTO_THUMBNAIL_SIZE;
-        canvas.height = PROFILE_PHOTO_THUMBNAIL_SIZE;
-        const context = canvas.getContext('2d');
-        if (!context) {
-          reject(new Error('Your browser cannot process this image.'));
-          return;
-        }
-        context.imageSmoothingEnabled = true;
-        context.imageSmoothingQuality = 'high';
+    const image = new Image();
+    let settled = false;
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(objectUrl);
+      if (error) reject(error);
+      else resolve(value);
+    };
+    image.onerror = (event) => {
+      const error = new Error('The selected file could not be decoded as an image.');
+      error.cause = event;
+      console.error('Profile photo decode failed:', event);
+      finish(error);
+    };
+    image.onload = () => {
+      const width = image.naturalWidth || image.width;
+      const height = image.naturalHeight || image.height;
+      // A successful load with no raster dimensions cannot be drawn to the
+      // thumbnail canvas, so treat it as the same unavoidable decode failure.
+      if (!width || !height) {
+        const error = new Error('The decoded image has no usable dimensions.');
+        console.error('Profile photo decode produced no dimensions:', { width, height });
+        finish(error);
+        return;
+      }
+      const cropSize = Math.min(width, height);
+      const sourceX = (width - cropSize) / 2;
+      const sourceY = (height - cropSize) / 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = PROFILE_PHOTO_THUMBNAIL_SIZE;
+      canvas.height = PROFILE_PHOTO_THUMBNAIL_SIZE;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        const error = new Error('The browser could not create a photo thumbnail canvas.');
+        console.error('Profile photo canvas creation failed:', error);
+        finish(error);
+        return;
+      }
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      try {
         context.drawImage(
           image,
           sourceX, sourceY, cropSize, cropSize,
           0, 0, PROFILE_PHOTO_THUMBNAIL_SIZE, PROFILE_PHOTO_THUMBNAIL_SIZE
         );
-        try {
-          // Always store the compact processed thumbnail, regardless of the
-          // source format. GIFs are represented by their first decoded frame.
-          resolve(canvas.toDataURL('image/jpeg', 0.86));
-        } catch (err) {
-          reject(new Error('Could not process that image.'));
-        }
-      };
-      image.src = reader.result;
+        // Always store the compact processed thumbnail, regardless of the
+        // source format. Animated sources are represented by their first
+        // decoded frame.
+        finish(null, canvas.toDataURL('image/jpeg', 0.86));
+      } catch (error) {
+        console.error('Profile photo thumbnail rendering failed:', error);
+        finish(error);
+      }
     };
-    reader.readAsDataURL(file);
+    try {
+      image.src = objectUrl;
+    } catch (error) {
+      console.error('Profile photo load failed:', error);
+      finish(error);
+    }
   });
 }
 

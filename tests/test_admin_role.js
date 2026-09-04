@@ -970,8 +970,10 @@ async function main() {
   }
 
   // ====================================================================
-  // 14. Profile photo validation: accepted image MIME types, processed
-  //     payload ceiling, and rejection of non-image data.
+  // 14. Profile photos: persistence is format/size agnostic. The browser
+  //     is responsible for decoding and resizing the selected source file;
+  //     the database must not reject a valid thumbnail because its MIME
+  //     label is unfamiliar or because a direct caller sends a large value.
   // ====================================================================
   {
     await db.resetForTests();
@@ -980,17 +982,17 @@ async function main() {
     const saved = await db.updateProfilePhoto('PhotoPlayer', tinyJpeg);
     ok(saved.ok && saved.player.profilePhoto === tinyJpeg,
        'profile photo: processed JPEG data URL is persisted');
+    const unusualFormat = 'data:image/avif;base64,AAAA';
+    const unusual = await db.updateProfilePhoto('PhotoPlayer', unusualFormat);
+    ok(unusual.ok && unusual.player.profilePhoto === unusualFormat,
+       'profile photo: unfamiliar image MIME labels are not rejected by persistence');
+    const oversized = 'data:image/jpeg;base64,' + 'A'.repeat(2 * 1024 * 1024 + 1);
+    const large = await db.updateProfilePhoto('PhotoPlayer', oversized);
+    ok(large.ok && large.player.profilePhoto === oversized,
+       'profile photo: persistence has no processed-payload size ceiling');
     const cleared = await db.updateProfilePhoto('PhotoPlayer', '');
     ok(cleared.ok && cleared.player.profilePhoto === '',
        'profile photo: removing the photo remains supported');
-    const badType = await db.updateProfilePhoto('PhotoPlayer', 'data:text/html;base64,AAAA');
-    ok(!badType.ok && /format/i.test(badType.error),
-       'profile photo: non-image data URL is rejected');
-    const oversized = await db.updateProfilePhoto('PhotoPlayer', 'data:image/jpeg;base64,' + 'A'.repeat(2 * 1024 * 1024 + 1));
-    ok(!oversized.ok && /large/i.test(oversized.error),
-       'profile photo: oversized processed payload is rejected');
-    const png = await db.updateProfilePhoto('PhotoPlayer', 'data:image/png;base64,AAAA');
-    ok(png.ok, 'profile photo: PNG data URL remains accepted for trusted processed callers');
   }
 
   // Final env cleanup so downstream shells / restarts don't inherit a test token.
