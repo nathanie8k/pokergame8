@@ -822,7 +822,7 @@ function validateTableSettings(input, fallback) {
 }
 
 async function updateProfilePhoto(name, photo) {
-  if (!name || typeof name !== 'string' || typeof photo !== 'string') return { ok: false, error: 'Invalid photo' };
+  if (!name || typeof name !== 'string' || typeof photo !== 'string') return { ok: false, error: 'Profile photo data is missing or invalid.' };
   // The client normally sends a compact 256x256 JPEG thumbnail, but the
   // database deliberately imposes no format or size policy. Browser decode
   // and client-side thumbnail creation are the only image validity gates;

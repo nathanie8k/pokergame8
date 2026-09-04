@@ -62,6 +62,7 @@ const state = {
   profileModalPlayer: null,
   statsModalPlayer: null,
   profilePhotoDraft: null,
+  profilePhotoStatus: 'idle', // 'idle' | 'processing' | 'ready' | 'error'
   profilePhotoProcessToken: 0,
   // Notification permission (asked once)
   notificationsAsked: false,
@@ -467,15 +468,26 @@ function togglePresence() {
   try { localStorage.setItem('pokerPresenceExpanded', expanded ? '1' : '0'); } catch (e) {}
 }
 
+function setProfilePhotoStatus(status, message = '') {
+  state.profilePhotoStatus = status;
+  const saveButton = $('profilePhotoSaveBtn');
+  if (saveButton) saveButton.disabled = status !== 'ready';
+  const feedback = $('profileFeedback');
+  if (feedback) feedback.textContent = message;
+}
+
 function openProfileModal() {
   if (!state.player || !$('profileModal')) return;
   state.profilePhotoDraft = null;
+  $('profilePhotoInput').value = '';
+  setProfilePhotoStatus('idle');
   $('profileModal').style.display = '';
   renderProfilePreview(state.player.profilePhoto || '');
 }
 function closeProfileModal() {
   if ($('profileModal')) $('profileModal').style.display = 'none';
   state.profilePhotoDraft = null;
+  setProfilePhotoStatus('idle');
 }
 function renderProfilePreview(photo) {
   const host = $('profilePhotoPreview'); if (!host) return;
@@ -574,18 +586,21 @@ function processProfilePhotoFile(file) {
 async function previewProfilePhoto() {
   const input = $('profilePhotoInput'); const file = input && input.files && input.files[0];
   if (!file) return;
-  const feedback = $('profileFeedback');
   const token = ++state.profilePhotoProcessToken;
   state.profilePhotoDraft = null;
-  if (feedback) feedback.textContent = '';
+  // Clear any previous failure before processing the replacement. A valid
+  // preview and an old error must never coexist in the modal.
+  setProfilePhotoStatus('processing');
   try {
     const processed = await processProfilePhotoFile(file);
     if (token !== state.profilePhotoProcessToken) return;
     state.profilePhotoDraft = processed;
+    setProfilePhotoStatus('ready');
     renderProfilePreview(processed);
   } catch (err) {
     if (token !== state.profilePhotoProcessToken) return;
-    if (feedback) feedback.textContent = err.message;
+    console.error('Profile photo processing failed:', err);
+    setProfilePhotoStatus('error', err && err.message ? err.message : String(err));
     input.value = '';
     renderProfilePreview(state.player && state.player.profilePhoto || '');
   }
@@ -599,19 +614,31 @@ async function saveProfilePhoto(value) {
     } else {
       const file = input && input.files && input.files[0];
       if (!file) { showToast('Choose an image first', 'error'); return; }
+      // A user can click Save before the asynchronous change handler has
+      // completed. Invalidate that older attempt and let this request own
+      // the single ready/error state.
+      const token = ++state.profilePhotoProcessToken;
+      setProfilePhotoStatus('processing');
       try {
         value = await processProfilePhotoFile(file);
+        if (token !== state.profilePhotoProcessToken) return;
         state.profilePhotoDraft = value;
+        setProfilePhotoStatus('ready');
         renderProfilePreview(value);
       } catch (err) {
-        const feedback = $('profileFeedback');
-        if (feedback) feedback.textContent = err.message;
+        if (token !== state.profilePhotoProcessToken) return;
+        console.error('Profile photo processing failed before save:', err);
+        setProfilePhotoStatus('error', err && err.message ? err.message : String(err));
         return;
       }
     }
   }
+  setProfilePhotoStatus('processing');
   socket.emit('update_profile_photo', { photo: value }, res => {
-    if (!res || !res.ok) { $('profileFeedback').textContent = res && res.error || 'Could not save photo'; return; }
+    if (!res || !res.ok) {
+      setProfilePhotoStatus('error', res && res.error || 'Could not save photo');
+      return;
+    }
     state.player = res.player;
     state.profilePhotoDraft = null;
     updateTopBar(); closeProfileModal(); showToast('Profile photo saved', 'good');
