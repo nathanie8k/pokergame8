@@ -927,6 +927,33 @@ async function main() {
        'setPlayerPoints returns an audited absolute change');
     const invalid = await db.adjustPoints('RoleTarget', 0);
     ok(!invalid.ok, 'adjustPoints rejects zero changes');
+    ok(!(await db.adjustPoints('RoleTarget', '25')).ok,
+       'adjustPoints rejects non-numeric input');
+    ok(!(await db.setPlayerPoints('RoleTarget', '')).ok,
+       'setPlayerPoints rejects empty input');
+
+    // Explicit add/remove regression: the Admin Room uses the same
+    // persisted balance source as the player screen and leaderboard.
+    await db.incrementStats('RoleTarget', { gamesDelta: 1 });
+    const added = await db.adjustPoints('RoleTarget', 25);
+    ok(added.ok && added.oldBalance === 275 && added.newBalance === 300,
+       'end-to-end points regression: adding 25 persists 275 -> 300');
+    const afterAddScreen = await db.getPlayerStats('RoleTarget');
+    eq(afterAddScreen && afterAddScreen.points, 300,
+       'end-to-end points regression: player stats payload shows added balance');
+    const leaderboardAfterAdd = await db.getLeaderboardRows();
+    eq(leaderboardAfterAdd.find((p) => p.name === 'RoleTarget').points, 300,
+       'end-to-end points regression: leaderboard shows added balance');
+
+    const removed = await db.adjustPoints('RoleTarget', -50);
+    ok(removed.ok && removed.oldBalance === 300 && removed.newBalance === 250,
+       'end-to-end points regression: removing 50 persists 300 -> 250');
+    const afterRemoveScreen = await db.getPlayerStats('RoleTarget');
+    eq(afterRemoveScreen && afterRemoveScreen.points, 250,
+       'end-to-end points regression: player stats payload shows removed balance');
+    const leaderboardAfterRemove = await db.getLeaderboardRows();
+    eq(leaderboardAfterRemove.find((p) => p.name === 'RoleTarget').points, 250,
+       'end-to-end points regression: leaderboard shows removed balance');
 
     await db.logAdminAction('Nathanielk8', 'RoleTarget', 'adjust_points', 'Test audit', {
       amount: set.amount, oldBalance: set.oldBalance, newBalance: set.newBalance,

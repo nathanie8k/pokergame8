@@ -659,7 +659,7 @@ async function adjustPoints(name, amount) {
     return { ok: false, error: 'Invalid point adjustment' };
   }
   const delta = Math.trunc(amount);
-  if (delta === 0) return { ok: false, error: 'Adjustment cannot be zero' };
+  if (!Number.isInteger(amount) || delta === 0) return { ok: false, error: 'Adjustment must be a non-zero whole number' };
   await connect();
   // Compare-and-set retries preserve exact old/new balances even when two
   // admins adjust the same player concurrently.
@@ -679,7 +679,8 @@ async function adjustPoints(name, amount) {
 }
 
 async function setPlayerPoints(name, points) {
-  if (!name || typeof points !== 'number' || !Number.isFinite(points)) {
+  if (!name || typeof name !== 'string' || typeof points !== 'number'
+      || !Number.isFinite(points) || !Number.isInteger(points)) {
     return { ok: false, error: 'Invalid point balance' };
   }
   await connect();

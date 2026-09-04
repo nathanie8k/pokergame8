@@ -560,21 +560,22 @@ function renderAdminPlayerManagement(players) {
   host.innerHTML = '';
   const sorted = (players || []).slice().sort((a, b) => a.name.localeCompare(b.name));
   sorted.forEach((p) => {
-    const row = el('div', { class: 'admin-player-row' });
+    const row = el('div', { class: 'admin-player-row', 'data-player-name': p.name });
     const avatar = el('span', { class: 'admin-roster-avatar' });
     renderAvatar(avatar, p.name, p.avatar);
     row.appendChild(avatar);
     const identity = el('div', { class: 'admin-player-identity' }, [
       el('strong', { text: p.name }),
-      el('span', { class: 'muted small', text: `${p.role || (p.isAdmin ? 'admin' : 'none')} · ${formatNumber(p.points)} pts` }),
+      el('span', { class: 'muted small admin-player-balance', text: `${p.role || (p.isAdmin ? 'admin' : 'none')} · ${formatNumber(p.points)} pts` }),
     ]);
     row.appendChild(identity);
 
-    const adjustment = el('input', { type: 'number', class: 'admin-points-input', placeholder: '+/-', 'aria-label': `Adjust points for ${p.name}` });
-    const addBtn = el('button', { class: 'ghost-btn', text: 'Adjust', onclick: () => doAdminRoomAdjust(p.name, adjustment.value) });
-    const balance = el('input', { type: 'number', class: 'admin-points-input', value: String(Math.max(0, Math.floor(p.points || 0))), 'aria-label': `Set points for ${p.name}` });
+    const adjustment = el('input', { type: 'number', class: 'admin-points-input', placeholder: 'Amount', min: '1', step: '1', 'aria-label': `Point amount for ${p.name}` });
+    const addBtn = el('button', { class: 'ghost-btn', text: 'Add points', onclick: () => doAdminRoomAdjust(p.name, adjustment.value, 1) });
+    const removeBtn = el('button', { class: 'ghost-btn admin-remove-points-btn', text: 'Remove points', onclick: () => doAdminRoomAdjust(p.name, adjustment.value, -1) });
+    const balance = el('input', { type: 'number', class: 'admin-points-input', value: String(Math.max(0, Math.floor(p.points || 0))), min: '0', step: '1', 'aria-label': `Set points for ${p.name}` });
     const setBtn = el('button', { class: 'ghost-btn', text: 'Set', onclick: () => doAdminRoomSet(p.name, balance.value) });
-    const pointsControls = el('div', { class: 'admin-player-controls' }, [adjustment, addBtn, balance, setBtn]);
+    const pointsControls = el('div', { class: 'admin-player-controls' }, [adjustment, addBtn, removeBtn, balance, setBtn]);
     row.appendChild(pointsControls);
 
     if (state.player && state.player.name === 'Nathanielk8' && p.name !== 'Nathanielk8') {
@@ -590,12 +591,33 @@ function renderAdminPlayerManagement(players) {
   });
 }
 
-function doAdminRoomAdjust(name, value) {
+function doAdminRoomAdjust(name, value, direction = 1) {
   const amount = Number(value);
-  if (!Number.isFinite(amount) || Math.trunc(amount) === 0) return showToast('Enter a non-zero point adjustment', 'error');
-  socket.emit('admin_add_points', { name, delta: Math.trunc(amount) }, (res) => {
+  if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
+    return showToast('Enter a positive whole-number amount', 'error');
+  }
+  const delta = Math.trunc(amount) * (direction < 0 ? -1 : 1);
+  socket.emit('admin_add_points', { name, delta }, (res) => {
     if (!res || !res.ok) return showToast(res && res.error || 'Point adjustment failed', 'error');
     setAdminFeedback(`${name}: ${res.oldBalance} → ${res.newBalance} points.`);
+    const row = Array.from(document.querySelectorAll('.admin-player-row'))
+      .find((candidate) => candidate.dataset.playerName === name);
+    if (row) {
+      const balance = row.querySelector('.admin-player-balance');
+      if (balance) balance.textContent = `${formatNumber(res.newBalance)} pts`;
+      const setInput = row.querySelectorAll('.admin-points-input')[1];
+      if (setInput) setInput.value = String(res.newBalance);
+    }
+    // Clear the one-shot adjustment input after the server confirms the
+    // database write. The admin snapshot broadcast re-renders the balance
+    // for every connected admin, while the target socket receives hello.
+    const inputs = document.querySelectorAll('.admin-player-row');
+    inputs.forEach((row) => {
+      if (row.dataset.playerName === name) {
+        const input = row.querySelector('.admin-points-input');
+        if (input) input.value = '';
+      }
+    });
   });
 }
 
@@ -605,6 +627,12 @@ function doAdminRoomSet(name, value) {
   socket.emit('admin_set_points', { name, points: Math.trunc(points) }, (res) => {
     if (!res || !res.ok) return showToast(res && res.error || 'Point update failed', 'error');
     setAdminFeedback(`${name}: ${res.oldBalance} → ${res.newBalance} points.`);
+    const row = Array.from(document.querySelectorAll('.admin-player-row'))
+      .find((candidate) => candidate.dataset.playerName === name);
+    if (row) {
+      const balance = row.querySelector('.admin-player-balance');
+      if (balance) balance.textContent = `${formatNumber(res.newBalance)} pts`;
+    }
   });
 }
 

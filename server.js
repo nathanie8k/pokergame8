@@ -1449,7 +1449,16 @@ io.on('connection', (socket) => {
 
   socket.on('admin_set_points', async ({ name, points }, cb) => {
     if (!requireAdmin(cb)) return;
-    const result = await db.setPlayerPoints(name, Number(points));
+    if (typeof name !== 'string' || !name.trim()
+        || points === '' || points === null || points === undefined
+        || typeof points === 'boolean') {
+      return cb && cb({ ok: false, error: 'Invalid point balance' });
+    }
+    const numericPoints = Number(points);
+    if (!Number.isFinite(numericPoints) || !Number.isInteger(numericPoints)) {
+      return cb && cb({ ok: false, error: 'Invalid point balance' });
+    }
+    const result = await db.setPlayerPoints(name.trim(), numericPoints);
     if (!result.ok) return cb && cb(result);
     await applyAdminPointsChangeToSeats(name, result.newBalance);
     await db.logAdminAction(
@@ -1467,7 +1476,16 @@ io.on('connection', (socket) => {
 
   socket.on('admin_add_points', async ({ name, delta }, cb) => {
     if (!requireAdmin(cb)) return;
-    const result = await db.adjustPoints(name, Number(delta));
+    if (typeof name !== 'string' || !name.trim()
+        || delta === '' || delta === null || delta === undefined
+        || typeof delta === 'boolean') {
+      return cb && cb({ ok: false, error: 'Invalid point adjustment' });
+    }
+    const numericDelta = Number(delta);
+    if (!Number.isFinite(numericDelta) || !Number.isInteger(numericDelta)) {
+      return cb && cb({ ok: false, error: 'Invalid point adjustment' });
+    }
+    const result = await db.adjustPoints(name.trim(), numericDelta);
     if (!result.ok) return cb && cb(result);
     await applyAdminPointsChangeToSeats(name, result.newBalance);
     await db.logAdminAction(
