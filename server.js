@@ -10,6 +10,7 @@ const express  = require('express');
 const http     = require('http');
 const path     = require('path');
 const { Server } = require('socket.io');
+const { isPasswordValid, hasValidSignedCookie, accessCookieHeader } = require('./src/access_gate');
 
 const poker  = require('./src/poker');
 const db     = require('./src/database');
@@ -87,8 +88,36 @@ function isHardcodedOwnerName(name) {
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, { maxHttpBufferSize: 1e6 });
+io.use((socket, next) => {
+  if (hasValidSignedCookie(socket.handshake.headers.cookie)) return next();
+  next(new Error('Site access required'));
+});
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+
+// Daily access gate. The password is checked only here; the mapping remains
+// server-side and a day-bound HttpOnly cookie avoids repeated prompts.
+app.get('/api/access/status', (req, res) => {
+  res.json({ ok: hasValidSignedCookie(req.headers.cookie) });
+});
+
+app.post('/api/access', (req, res) => {
+  if (!isPasswordValid(req.body && req.body.password)) {
+    return res.status(401).json({ ok: false, error: 'Incorrect password' });
+  }
+  res.setHeader('Set-Cookie', accessCookieHeader());
+  return res.json({ ok: true });
+});
+
+app.use((req, res, next) => {
+  if (req.path === '/api/access' || req.path === '/api/access/status' || req.path === '/api/health' || req.path === '/accessibility-statement.html' || hasValidSignedCookie(req.headers.cookie)) return next();
+  // Static assets are safe to serve before access is granted; the app and
+  // Socket.IO client will remain inert until the daily gate succeeds.
+  if (req.path === '/socket.io/socket.io.js' || /\.(css|js|png|jpg|jpeg|webp|gif|svg|ico|woff2?)$/i.test(req.path)) return next();
+  if (req.path.startsWith('/socket.io')) return res.status(403).json({ error: 'Site access required' });
+  if (req.path.startsWith('/api/')) return res.status(403).json({ error: 'Site access required' });
+  return res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = new RoomManager();
@@ -147,6 +176,7 @@ primePersistedSettings().then(() => {
       startingStack:  cached.startingStack,
       houseFeePercent: cached.houseFeePercent,
       maxSeats:       cached.maxSeats,
+      minPoints:      cached.minPoints,
     }, '(boot)');
     if (result.ok) applied += 1;
   }
@@ -169,6 +199,11 @@ rooms.ensureDefaultTables();
 // admin_login round trip.
 const playerSockets   = new Map(); // playerName -> Set<socketId>
 const socketToPlayer  = new Map(); // socketId -> playerName
+const disconnectTimers = new Map(); // playerId -> { timer, tableId, seatIdx }
+const expiredSessions = new Set(); // playerIds whose 45s reconnect window elapsed
+const lastHandTaken = { player: null, at: 0 };
+const GRACE_PERIOD_MS = 45 * 1000;
+const PRESENCE_INTERVAL_MS = 1500;
 const lobbyBroadcastInterval = setInterval(broadcastLobby, 1500);
 
 // AFK kick — every 5s scan every table for seats whose currentActor
@@ -230,17 +265,22 @@ function cancelTurnTimer(tableId, seatIdx) {
 }
 
 function scheduleTurnTimer(tableId, seatIdx) {
+  const current = rooms.get(tableId);
+  if (!current || !current.seats[seatIdx] || !current.seats[seatIdx].disconnected) return;
   cancelTurnTimer(tableId, seatIdx);
   const key = tableId + '|' + seatIdx;
+  const currentSeat = current.seats[seatIdx];
+  const delay = Math.max(0, (currentSeat.reconnectDeadline || Date.now()) - Date.now());
   const timer = setTimeout(() => {
     turnTimers.delete(key);
     const t = rooms.get(tableId);
     if (!t) return;
     const seat = t.seats[seatIdx];
     if (!seat) return;
-    // Only fire if it's still this seat's turn and they're disconnected.
+    // The server-side grace deadline is authoritative. This timer only
+    // handles a disconnected player whose turn arrives during that window.
+    if (!seat.disconnected || (seat.reconnectDeadline && seat.reconnectDeadline > Date.now())) return;
     if (t.currentPlayerIndex !== seatIdx) return;
-    if (!seat.disconnected) return;
     if (t.phase === poker.PHASE.WAITING || t.phase === poker.PHASE.HAND_OVER) return;
     // Prefer check if legal; otherwise fold.
     const canCheck = poker.canCheck(t, seatIdx);
@@ -256,7 +296,7 @@ function scheduleTurnTimer(tableId, seatIdx) {
         scheduleNextHand(tableId);
       }
     }
-  }, TURN_TIMEOUT_MS);
+  }, delay);
   turnTimers.set(key, { timer, tableId, seatIdx });
 }
 
@@ -356,8 +396,33 @@ function generateNames(n) {
 
 // ----- Lobby / table state broadcasting -----
 
+function connectedPlayersSnapshot() {
+  const rows = [];
+  for (const [name, sockets] of playerSockets.entries()) {
+    const socket = sockets.values().next().value && io.sockets.sockets.get(sockets.values().next().value);
+    const player = socket && socket.data.player;
+    let location = { tableId: null, tableName: 'In Lobby', seat: null };
+    for (const t of rooms.tables.values()) {
+      const seatIdx = t.seats.findIndex(s => s && s.playerId === (player && player.id) && !s.removed);
+      if (seatIdx >= 0) { location = { tableId: t.id, tableName: t.name, seat: seatIdx + 1 }; break; }
+    }
+    rows.push({ name, avatar: (player && player.profilePhoto) || '', online: true, ...location });
+  }
+  return rows.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function broadcastPresence() {
+  const payload = { count: playerSockets.size, players: connectedPlayersSnapshot() };
+  io.emit('presence_update', payload);
+  const snapshot = await buildAdminSnapshot();
+  for (const s of io.sockets.sockets.values()) {
+    if (s.data.isAdmin) s.emit('admin_snapshot', snapshot);
+  }
+}
+
 function broadcastLobby() {
   io.emit('lobby_update', { tables: rooms.listTables() });
+  broadcastPresence().catch(err => console.error('presence broadcast error:', err));
 }
 
 function broadcastTable(tableId) {
@@ -388,6 +453,52 @@ function broadcastTable(tableId) {
 
 function broadcastAllTables() {
   for (const t of rooms.tables.values()) broadcastTable(t.id);
+}
+
+async function buildAdminSnapshot() {
+  const connected = connectedPlayersSnapshot();
+  const onlineNames = new Set(connected.map(p => p.name));
+  const allPlayers = await db.getAllPlayers();
+  const players = allPlayers.map(p => {
+    const live = connected.find(row => row.name === p.name);
+    return {
+      name: p.name, avatar: p.profilePhoto || '', points: p.points || 0,
+      online: onlineNames.has(p.name),
+      tableName: live ? live.tableName : 'In Lobby', seat: live ? live.seat : null,
+    };
+  });
+  const tables = Array.from(rooms.tables.values()).map(t => ({
+    id: t.id, name: t.name,
+    seated: t.seats.map((s, i) => {
+      if (!s || s.removed) return null;
+      const playerSocket = findPlayerSocket(s.name);
+      return {
+        name: s.name,
+        seat: i + 1,
+        avatar: (playerSocket && playerSocket.data.player && playerSocket.data.player.profilePhoto) || s.avatar || '',
+      };
+    }).filter(Boolean),
+  }));
+  const sorted = allPlayers
+    .filter(p => p.name !== db.HOUSERAKE_NAME)
+    .map(p => ({ name: p.name, points: p.points || 0 }))
+    .sort((a, b) => b.points - a.points);
+  return {
+    players,
+    tables,
+    sessions: rooms.listTables(),
+    busiest: tables.slice().sort((a, b) => b.seated.length - a.seated.length)[0] || null,
+    topEarners: sorted.slice(0, 10),
+    biggestLosers: sorted.slice().reverse().slice(0, 10),
+    lastHand: lastHandTaken,
+  };
+}
+
+function findPlayerSocket(name) {
+  const ids = playerSockets.get(name);
+  if (!ids) return null;
+  for (const id of ids) { const s = io.sockets.sockets.get(id); if (s) return s; }
+  return null;
 }
 
 // Chat broadcast: send the table's full chat history to every socket in the
@@ -502,6 +613,8 @@ function recordHandOutcomes(table) {
   if (!table.lastHandResults || !Array.isArray(table.lastHandResults.winners)) return;
   for (const w of table.lastHandResults.winners) {
     if (!w || !w.name) continue;
+    lastHandTaken.player = w.name;
+    lastHandTaken.at = Date.now();
     db.incrementStats(w.name, { winsDelta: 1 })
       .catch((err) => console.error('wins increment error:', err));
   }
@@ -587,6 +700,11 @@ async function scheduleNextHand(tableId) {
     rooms.remove(tableId);
     broadcastLobby();
     return;
+  }
+  // A disconnected player keeps the seat for the grace window but must not
+  // be dealt into a subsequent hand that starts before they return.
+  for (const seat of t.seats) {
+    if (seat && seat.disconnected && !seat.removed) seat.satOut = true;
   }
   broadcastTable(tableId);
   broadcastLobby();
@@ -737,6 +855,11 @@ io.on('connection', (socket) => {
 
       const points = await db.getStartingStack();
       const player = await db.getOrCreatePlayer(trimmed, { points });
+      if (disconnectTimers.has(player.id)) {
+        clearTimeout(disconnectTimers.get(player.id).timer);
+        disconnectTimers.delete(player.id);
+      }
+      const reconnectExpired = expiredSessions.delete(player.id);
       socket.data.playerName = player.name;
       socket.data.player = player;
       // Admin flag is now derived from the persisted Player doc — no
@@ -798,9 +921,10 @@ io.on('connection', (socket) => {
       for (const t of rooms.tables.values()) {
         for (let i = 0; i < t.seats.length; i++) {
           const s = t.seats[i];
-          if (s && s.playerId === player.id && (s.disconnected || s.removed)) {
-            // Only offer reconnect if the seat still has chips
-            // and the table hasn't been auto-deleted.
+          if (s && s.playerId === player.id && s.disconnected
+              && s.reconnectDeadline && s.reconnectDeadline > Date.now()) {
+            // Only offer reconnect while the server-side grace window is
+            // open. Expired sessions intentionally return to the lobby.
             if (s.stack > 0) {
               reconnectInfo = { tableId: t.id, seatIdx: i };
               break;
@@ -809,8 +933,8 @@ io.on('connection', (socket) => {
         }
         if (reconnectInfo) break;
       }
-      socket.emit('hello', { player, reconnectInfo });
-      cb && cb({ ok: true, player });
+      socket.emit('hello', { player: socket.data.player, reconnectInfo, reconnectExpired });
+      cb && cb({ ok: true, player: socket.data.player });
       broadcastLobby();
     } catch (err) {
       console.error('register error', err);
@@ -819,7 +943,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('create_table', ({ name, smallBlind, bigBlind, maxSeats }, cb) => {
+  socket.on('create_table', ({ name, smallBlind, bigBlind, maxSeats, minPoints }, cb) => {
     if (!socket.data.player) return cb && cb({ ok: false, error: 'Not logged in' });
     // Rate limit: max 3 table creations per minute per player.
     if (!checkRateLimit(socket.data.player.name, 'create_table', 3)) {
@@ -842,19 +966,22 @@ io.on('connection', (socket) => {
       return cb && cb({ ok: false, error: 'Name reserved' });
     }
     const sb = clampInt(smallBlind, 1, 1000, 5);
-    const bb = clampInt(bigBlind, sb + 1, sb * 100, 10);
+    const bbFallback = Math.max(sb + 1, Math.min(sb * 100, 10));
+    const bb = clampInt(bigBlind, sb + 1, sb * 100, bbFallback);
     const ms = clampInt(maxSeats, 2, 9, 6);
+    const safeMinPoints = clampInt(minPoints, 0, 1000000000, 0);
     const table = rooms.createTable({
       name: trimmedName || ('Table ' + socket.data.player.name),
       smallBlind: sb,
       bigBlind: bb,
       maxSeats: ms,
+      minPoints: safeMinPoints,
     });
     broadcastLobby();
     cb && cb({ ok: true, tableId: table.id });
   });
 
-  socket.on('join_table', ({ tableId, seatIdx }, cb) => {
+  socket.on('join_table', async ({ tableId, seatIdx }, cb) => {
     const player = socket.data.player;
     if (!player) return cb && cb({ ok: false, error: 'Not logged in' });
     // Rate limit: max 10 join attempts per minute per player.
@@ -875,6 +1002,9 @@ io.on('connection', (socket) => {
     }
     const t = rooms.get(tableId);
     if (!t) return cb && cb({ ok: false, error: 'No such table' });
+    const currentPlayer = await db.getPlayer(player.name);
+    const currentPoints = currentPlayer ? currentPlayer.points : player.points;
+    socket.data.player = currentPlayer || player;
     if (socket.data.tableId && socket.data.tableId !== tableId) {
       return cb && cb({ ok: false, error: 'Already at a table; leave first' });
     }
@@ -888,13 +1018,25 @@ io.on('connection', (socket) => {
     for (let i = 0; i < t.seats.length; i++) {
       const s = t.seats[i];
       if (!s || s.playerId !== player.id) continue;
-      if (!s.removed) {
+      if (!s.removed && !s.disconnected) {
         return cb && cb({ ok: false, error: "You're already seated at this table" });
       }
-      // Reconnect case: seat exists, playerId matches, seat is
-      // removed/disconnected. Re-attach to this exact seat.
+      // Only a disconnected seat with an active deadline is eligible for
+      // reconnect. A normal removed/busted seat is stale and must not block
+      // the player from taking a fresh seat elsewhere.
+      if (!s.disconnected) continue;
+      if (!s.reconnectDeadline || s.reconnectDeadline <= Date.now()) {
+        // The grace claim has expired; leave this stale seat available for
+        // a fresh join rather than trapping the player on a dead seat.
+        s.disconnected = false;
+        s.reconnectDeadline = 0;
+        continue;
+      }
+      // Reconnect case: seat exists, playerId matches, and the server-side
+      // grace window is still open. Re-attach to this exact seat.
       s.removed = false;
       s.disconnected = false;
+      s.reconnectDeadline = 0;
       socket.join('table_' + tableId);
       socket.data.tableId = tableId;
       socket.data.seatIdx = i;
@@ -903,6 +1045,13 @@ io.on('connection', (socket) => {
       broadcastTable(tableId);
       tryStartHand(tableId);
       return cb && cb({ ok: true, seatIdx: i, reconnected: true });
+    }
+    // Apply the minimum-points rule only to a new seat. A player with an
+    // active reconnect claim must be allowed back into the exact seat and
+    // hand they left, even if an admin changed points or table settings
+    // while they were offline.
+    if ((Number(currentPoints) || 0) < (Number(t.minPoints) || 0)) {
+      return cb && cb({ ok: false, error: 'You need at least ' + t.minPoints + ' points to join this table — you have ' + (currentPoints || 0) });
     }
     let targetSeat;
     if (typeof seatIdx === 'number' && seatIdx >= 0 && seatIdx < t.seats.length) {
@@ -1012,6 +1161,7 @@ io.on('connection', (socket) => {
     if (!t.seats[sidx]) return cb && cb({ ok: false, error: 'Empty seat' });
     const result = poker.applyAction(t, sidx, 'sit_out');
     if (!result.ok) return cb && cb({ ok: false, error: result.error });
+    const player = socket.data.player;
     db.incrementStats(player.name, { seenAt: Date.now() })
       .catch((err) => console.error('sit_out stats error:', err));
     // Sit-out mid-hand folds the seat. If this is the last live player to
@@ -1043,6 +1193,7 @@ io.on('connection', (socket) => {
     if (t.seats[sidx].stack <= 0) return cb && cb({ ok: false, error: 'No chips (ask admin to add)' });
     const result = poker.applyAction(t, sidx, 'sit_in');
     if (!result.ok) return cb && cb({ ok: false, error: result.error });
+    const player = socket.data.player;
     db.incrementStats(player.name, { seenAt: Date.now() })
       .catch((err) => console.error('sit_in stats error:', err));
     saveStacksToDB(t).catch((err) => console.error('save stacks on sit_in:', err));
@@ -1179,7 +1330,29 @@ io.on('connection', (socket) => {
     socket.emit('hello', { player: newPlayer });
     cb && cb({ ok: true, player: newPlayer });
     broadcastLobby();
-    if (socket.data.tableId) broadcastTable(socket.data.tableId);
+    broadcastAllTables();
+  });
+
+  socket.on('update_profile_photo', async ({ photo }, cb) => {
+    const player = socket.data.player;
+    if (!player) return cb && cb({ ok: false, error: 'Not logged in' });
+    const result = await db.updateProfilePhoto(player.name, photo || '');
+    if (!result.ok) return cb && cb(result);
+    socket.data.player = result.player;
+    for (const table of rooms.tables.values()) {
+      for (const seat of table.seats) {
+        if (seat && seat.playerId === result.player.id) seat.avatar = result.player.profilePhoto || '';
+      }
+    }
+    socket.emit('hello', { player: result.player });
+    broadcastLobby();
+    broadcastAllTables();
+    cb && cb({ ok: true, player: result.player });
+  });
+
+  socket.on('get_admin_snapshot', async (_, cb) => {
+    if (!requireAdmin(cb)) return;
+    cb && cb({ ok: true, snapshot: await buildAdminSnapshot() });
   });
 
   // ----- Player stats (personal history) -----
@@ -1257,11 +1430,25 @@ io.on('connection', (socket) => {
       return cb && cb({ ok: false, error: 'HouseRake is a system account and cannot be removed' });
     }
     await db.deletePlayer(name);
+    const endedTables = new Set();
     for (const t of rooms.tables.values()) {
       for (let i = 0; i < t.seats.length; i++) {
-        if (t.seats[i] && t.seats[i].name === name) t.seats[i] = null;
+        const seat = t.seats[i];
+        if (!seat || seat.name !== name) continue;
+        if (t.phase !== poker.PHASE.WAITING && t.phase !== poker.PHASE.HAND_OVER) {
+          if (t.currentPlayerIndex === i) {
+            const result = poker.applyAction(t, i, 'fold');
+            if (result && result.ok && t.phase === poker.PHASE.HAND_OVER) endedTables.add(t.id);
+          } else {
+            seat.folded = true;
+          }
+          seat.removed = true;
+        } else {
+          t.seats[i] = null;
+        }
       }
     }
+    for (const tableId of endedTables) scheduleNextHand(tableId).catch((err) => console.error('schedule admin removal:', err));
     db.logAdminAction(socket.data.player.name, name, 'remove_player', 'Player deleted').catch(() => {});
     broadcastAllTables();
     cb && cb({ ok: true });
@@ -1283,14 +1470,16 @@ io.on('connection', (socket) => {
   // Removes a player from their current table/seat immediately. The
   // kicked player keeps their points; they're just removed from the
   // table. A real-time notification is sent via their socket.
-  socket.on('admin_kick', ({ name }, cb) => {
+  socket.on('admin_kick', ({ name, tableId }, cb) => {
     if (!requireAdmin(cb)) return;
     if (!name) return cb && cb({ ok: false, error: 'Player name required' });
 
-    // Find which table+seat this player occupies.
+    // Find which table+seat this player occupies. When the admin UI sends
+    // tableId, constrain the lookup to that table so the action is explicit.
     let foundTableId = null;
     let foundSeatIdx = null;
     for (const t of rooms.tables.values()) {
+      if (tableId && t.id !== tableId) continue;
       for (let i = 0; i < t.seats.length; i++) {
         if (t.seats[i] && t.seats[i].name === name && !t.seats[i].removed) {
           foundTableId = t.id;
@@ -1303,13 +1492,17 @@ io.on('connection', (socket) => {
     if (!foundTableId) return cb && cb({ ok: false, error: 'Player not seated at any table' });
 
     const t = rooms.get(foundTableId);
-    // Mid-hand fold if they're the current actor.
-    if (t && t.phase !== poker.PHASE.WAITING && t.phase !== poker.PHASE.HAND_OVER) {
-      if (t.currentPlayerIndex === foundSeatIdx) {
-        poker.applyAction(t, foundSeatIdx, 'fold');
-      } else if (t.seats[foundSeatIdx]) {
-        t.seats[foundSeatIdx].folded = true;
-      }
+    // Fold through the engine when possible, then remove the seat. This
+    // preserves betting rotation and never leaves a live hand referencing
+    // a kicked player.
+    if (t && t.phase !== poker.PHASE.WAITING && t.phase !== poker.PHASE.HAND_OVER && t.seats[foundSeatIdx]) {
+      if (t.currentPlayerIndex === foundSeatIdx) poker.applyAction(t, foundSeatIdx, 'fold');
+      else t.seats[foundSeatIdx].folded = true;
+    }
+    const kickedPlayerId = t && t.seats[foundSeatIdx] && t.seats[foundSeatIdx].playerId;
+    if (kickedPlayerId && disconnectTimers.has(kickedPlayerId)) {
+      clearTimeout(disconnectTimers.get(kickedPlayerId).timer);
+      disconnectTimers.delete(kickedPlayerId);
     }
 
     // Notify the kicked player via any of their sockets.
@@ -1356,6 +1549,12 @@ io.on('connection', (socket) => {
   // guesser can't tell wrong-password from an internal fault.
   socket.on('admin_login', async ({ password }, cb) => {
     try {
+      // The dedicated Admin Room is for persisted admin accounts only.
+      // The old shared-password modal is retained in markup for compatibility
+      // but can no longer grant admin privileges.
+      if (!socket.data.player || !socket.data.player.isAdmin) {
+        return cb && cb({ ok: false, error: 'Not admin' });
+      }
       const expected = await db.getAdminPassword();
       if (typeof password !== 'string' || password !== expected) {
         return cb && cb({ ok: false, error: 'Wrong password' });
@@ -1403,6 +1602,7 @@ io.on('connection', (socket) => {
       startingStack: t.startingStack,
       houseFeePercent: t.houseFeePercent,
       maxSeats: t.maxSeats,
+      minPoints: t.minPoints || 0,
     };
     // Validate + apply in-memory.
     const validated = db.validateTableSettings(
@@ -1419,13 +1619,12 @@ io.on('connection', (socket) => {
     // broadcast on this — broadcastTable below runs eagerly so the
     // admin + every viewer sees the new settings immediately.
     try {
-      await db.upsertTableSettings(t.name, applied.settings, socket.data.player.name);
+      await db.upsertTableSettings(t.name, { ...previous, ...applied.settings }, socket.data.player.name);
     } catch (err) {
       // Roll back the in-memory change. The cache row we just wrote
       // via updateTableSettings also needs to flip back so a restart
       // doesn't restore the unpersisted values.
-      rooms.updateTableSettings(tableId, previous, socket.data.player.name)
-        .catch(() => {}); // best-effort
+      rooms.updateTableSettings(tableId, previous, socket.data.player.name); // best-effort
       return cb && cb({ ok: false, error: 'Persist failed: ' + err.message });
     }
     db.logAdminAction(socket.data.player.name, t.name, 'update_session', 'Updated table settings').catch(() => {});
@@ -1455,6 +1654,9 @@ io.on('connection', (socket) => {
     const activeSeats = t.seats.filter((s) => s && !s.removed);
     if (activeSeats.length > 0) {
       return cb && cb({ ok: false, error: "Can't delete a table with active players — remove or kick all players first" });
+    }
+    if (t.phase !== poker.PHASE.WAITING && t.phase !== poker.PHASE.HAND_OVER) {
+      return cb && cb({ ok: false, error: 'Cannot delete a table while a hand is in progress' });
     }
     // Cancel any pending next-hand timer so a deferred startHand doesn't
     // fire after the table is gone.
@@ -1521,6 +1723,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     const name = socketToPlayer.get(socket.id);
+    const playerId = socket.data.player && socket.data.player.id;
     if (name) {
       const set = playerSockets.get(name);
       if (set) {
@@ -1530,31 +1733,79 @@ io.on('connection', (socket) => {
     }
     socketToPlayer.delete(socket.id);
 
-    const tid = socket.data.tableId;
-    const sidx = socket.data.seatIdx;
-    if (tid != null && sidx != null) {
-      const t = rooms.get(tid);
-      if (t && t.seats[sidx]) {
-        const seat = t.seats[sidx];
-        seat.disconnected = true;
-        // #6: Don't immediately fold mid-hand — the turn timer will
-        // auto-fold after 25 seconds if they don't reconnect.
-        // Between-hand disconnects still mark removed immediately.
-        if (t.phase === poker.PHASE.WAITING || t.phase === poker.PHASE.HAND_OVER) {
-          seat.removed = true;
-        }
-        // Cancel any existing turn timer for this seat.
-        cancelTurnTimer(tid, sidx);
-        // Persist stacks on disconnect so a server crash doesn't lose
-        // the disconnected player's chip state.
-        saveStacksToDB(t).catch((err) => console.error('save stacks on disconnect:', err));
-      }
-      rooms.clearChatIfEmpty(tid);
-      broadcastTable(tid);
+    // A player may have more than one browser tab. Only start the grace
+    // period after their last authenticated socket disappears, and locate
+    // the seat by playerId rather than relying on the socket that happened
+    // to disconnect (a lobby tab has no tableId).
+    const stillConnected = name && playerSockets.has(name) && playerSockets.get(name).size > 0;
+    if (stillConnected || !playerId) {
+      broadcastLobby();
+      return;
     }
+
+    const seats = [];
+    for (const table of rooms.tables.values()) {
+      for (let i = 0; i < table.seats.length; i++) {
+        if (table.seats[i] && table.seats[i].playerId === playerId) {
+          seats.push({ tableId: table.id, seatIdx: i, table, seat: table.seats[i] });
+        }
+      }
+    }
+    if (!seats.length) {
+      broadcastLobby();
+      return;
+    }
+
+    const deadline = Date.now() + GRACE_PERIOD_MS;
+    for (const entry of seats) {
+      entry.seat.disconnected = true;
+      entry.seat.reconnectDeadline = deadline;
+      cancelTurnTimer(entry.tableId, entry.seatIdx);
+      saveStacksToDB(entry.table).catch((err) => console.error('save stacks on disconnect:', err));
+      rooms.clearChatIfEmpty(entry.tableId);
+      broadcastTable(entry.tableId);
+    }
+
+    if (!disconnectTimers.has(playerId)) {
+      const timer = setTimeout(() => {
+        disconnectTimers.delete(playerId);
+        expiredSessions.add(playerId);
+        const endedTables = new Set();
+        for (const table of rooms.tables.values()) {
+          for (let i = 0; i < table.seats.length; i++) {
+            const seat = table.seats[i];
+            if (!seat || seat.playerId !== playerId || !seat.disconnected) continue;
+            if (table.phase !== poker.PHASE.WAITING && table.phase !== poker.PHASE.HAND_OVER) {
+              if (table.currentPlayerIndex === i) {
+                // Grace expiry ends the disconnected player's participation
+                // in the current hand; do not grant a free check at the
+                // deadline.
+                const result = poker.applyAction(table, i, 'fold');
+                if (result && result.ok && table.phase === poker.PHASE.HAND_OVER) endedTables.add(table.id);
+              } else {
+                seat.folded = true;
+              }
+            }
+            seat.removed = true;
+            seat.disconnected = true;
+            seat.reconnectDeadline = 0;
+            if (table.phase !== poker.PHASE.WAITING && table.phase !== poker.PHASE.HAND_OVER) seat.folded = true;
+            broadcastTable(table.id);
+          }
+        }
+        for (const tableId of endedTables) {
+          scheduleNextHand(tableId).catch((err) => console.error('schedule expired disconnect:', err));
+        }
+        broadcastLobby();
+      }, GRACE_PERIOD_MS);
+      disconnectTimers.set(playerId, { timer, tableId: seats[0].tableId, seatIdx: seats[0].seatIdx });
+    }
+    console.log('[disconnect] 45-second grace period started for ' + (name || playerId));
     broadcastLobby();
   });
 });
+
+setInterval(() => broadcastPresence().catch(err => console.error('presence interval error:', err)), PRESENCE_INTERVAL_MS);
 
 function clampInt(value, min, max, fallback) {
   const n = parseInt(value, 10);

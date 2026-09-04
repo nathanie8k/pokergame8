@@ -80,10 +80,45 @@ const state = {
   prevMobileHandNumber: -1,  // tracks last hand shown for mobile perf animations
   turnTimerRaf: null,
   turnTimerStart: 0,
+  presence: { count: 0, players: [] },
+  accessGranted: false,
+  a11y: { fontScale: 1, contrast: false, grayscale: false, readable: false, highlight: false, animations: false },
 };
 
-const socket = io({ reconnection: true });
+const socket = io({ reconnection: true, autoConnect: false });
 state.socket = socket;
+
+async function ensureSiteAccess() {
+  const gate = $('accessGate');
+  try {
+    const status = await fetch('/api/access/status', { credentials: 'same-origin' });
+    const data = await status.json();
+    if (data.ok) { socket.connect(); return; }
+  } catch (e) {}
+  if (gate) { gate.style.display = ''; const input = $('accessPassword'); if (input) input.focus(); }
+}
+
+async function submitSiteAccess(event) {
+  if (event) event.preventDefault();
+  const input = $('accessPassword');
+  const error = $('accessGateError');
+  try {
+    const response = await fetch('/api/access', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: input ? input.value : '' }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error('Incorrect password');
+    if (error) error.textContent = '';
+    if ($('accessGate')) $('accessGate').style.display = 'none';
+    if (input) input.value = '';
+    socket.connect();
+  } catch (e) {
+    if (error) error.textContent = 'Incorrect password';
+    if (input) { input.value = ''; input.focus(); }
+  }
+}
 
 // ---------- Utilities ----------
 
@@ -375,6 +410,182 @@ function setStoredOwnerToken(name, token) {
 
 
 
+function renderAvatar(parent, name, avatar) {
+  if (!parent) return;
+  parent.innerHTML = '';
+  const node = el('div', { class: 'mini-avatar', text: avatar ? '' : getInitials(name), 'aria-hidden': 'true' });
+  if (avatar) { node.style.backgroundImage = `url(${avatar})`; node.classList.add('has-photo'); }
+  parent.appendChild(node);
+}
+
+function renderPresence() {
+  const count = $('presenceCount');
+  if (count) count.textContent = String(state.presence.count || 0);
+  const host = $('presencePlayers');
+  if (!host) return;
+  host.innerHTML = '';
+  const players = state.presence.players || [];
+  if (!players.length) host.appendChild(el('div', { class: 'muted small', text: 'No connected players.' }));
+  players.slice(0, 6).forEach(p => {
+    const row = el('div', { class: 'presence-row' });
+    const avatar = el('span', { class: 'presence-avatar' });
+    renderAvatar(avatar, p.name, p.avatar);
+    row.appendChild(avatar);
+    row.appendChild(el('span', { class: 'presence-name', text: p.name }));
+    row.appendChild(el('span', { class: 'presence-location muted small', text: p.tableName || 'In Lobby' }));
+    host.appendChild(row);
+  });
+}
+
+function renderOnlineModal() {
+  const host = $('onlinePlayersList');
+  if (!host) return;
+  host.innerHTML = '';
+  (state.presence.players || []).forEach(p => {
+    const row = el('div', { class: 'online-row' });
+    const avatar = el('span', { class: 'online-avatar' });
+    renderAvatar(avatar, p.name, p.avatar);
+    row.appendChild(avatar);
+    row.appendChild(el('strong', { text: p.name }));
+    row.appendChild(el('span', { class: 'muted small', text: p.tableName === 'In Lobby' ? 'In Lobby' : `${p.tableName} · Seat ${p.seat}` }));
+    host.appendChild(row);
+  });
+}
+function openOnlineModal() { renderOnlineModal(); if ($('onlineModal')) $('onlineModal').style.display = ''; }
+function closeOnlineModal() { if ($('onlineModal')) $('onlineModal').style.display = 'none'; }
+function togglePresence() {
+  const panel = $('presencePanel'); const button = $('presenceToggle');
+  if (!panel || !button) return;
+  const expanded = panel.hidden;
+  panel.hidden = !expanded; button.setAttribute('aria-expanded', String(expanded));
+  try { localStorage.setItem('pokerPresenceExpanded', expanded ? '1' : '0'); } catch (e) {}
+}
+
+function openProfileModal() {
+  if (!state.player || !$('profileModal')) return;
+  $('profileModal').style.display = '';
+  renderProfilePreview(state.player.profilePhoto || '');
+}
+function closeProfileModal() { if ($('profileModal')) $('profileModal').style.display = 'none'; }
+function renderProfilePreview(photo) {
+  const host = $('profilePhotoPreview'); if (!host) return;
+  host.innerHTML = '';
+  const avatar = el('div', { class: 'profile-avatar', text: photo ? '' : getInitials(state.player && state.player.name) });
+  if (photo) { avatar.style.backgroundImage = `url(${photo})`; avatar.classList.add('has-photo'); }
+  host.appendChild(avatar);
+}
+function previewProfilePhoto() {
+  const input = $('profilePhotoInput'); const file = input && input.files && input.files[0];
+  if (!file) return;
+  if (!/^image\/(jpeg|png|gif|webp)$/.test(file.type) || file.size > 500 * 1024) {
+    $('profileFeedback').textContent = 'Choose a JPG, PNG, GIF, or WebP image up to 500 KB.';
+    input.value = ''; return;
+  }
+  const reader = new FileReader(); reader.onload = () => renderProfilePreview(reader.result); reader.readAsDataURL(file);
+}
+function saveProfilePhoto(value) {
+  const input = $('profilePhotoInput');
+  if (value === undefined) {
+    const file = input && input.files && input.files[0];
+    if (!file) { showToast('Choose an image first', 'error'); return; }
+    const reader = new FileReader(); reader.onload = () => saveProfilePhoto(reader.result); reader.readAsDataURL(file); return;
+  }
+  socket.emit('update_profile_photo', { photo: value }, res => {
+    if (!res || !res.ok) { $('profileFeedback').textContent = res && res.error || 'Could not save photo'; return; }
+    state.player = res.player; updateTopBar(); closeProfileModal(); showToast('Profile photo saved', 'good');
+  });
+}
+
+function applyAccessibility() {
+  const a = state.a11y;
+  document.documentElement.style.fontSize = `${a.fontScale}em`;
+  document.body.classList.toggle('a11y-contrast', a.contrast);
+  document.body.classList.toggle('a11y-grayscale', a.grayscale);
+  document.body.classList.toggle('a11y-readable', a.readable);
+  document.body.classList.toggle('a11y-highlight', a.highlight);
+  document.body.classList.toggle('a11y-stop-motion', a.animations);
+  try { localStorage.setItem('pokerA11y', JSON.stringify(a)); } catch (e) {}
+}
+function setupAccessibility() {
+  try { Object.assign(state.a11y, JSON.parse(localStorage.getItem('pokerA11y') || '{}')); } catch (e) {}
+  try { const expanded = localStorage.getItem('pokerPresenceExpanded'); if (expanded === '0') { $('presencePanel').hidden = true; $('presenceToggle').setAttribute('aria-expanded', 'false'); } } catch (e) {}
+  const toggle = $('accessibilityToggle'); const panel = $('accessibilityPanel');
+  if (!toggle || !panel) return;
+  toggle.addEventListener('click', () => { panel.hidden = !panel.hidden; toggle.setAttribute('aria-expanded', String(!panel.hidden)); });
+  panel.addEventListener('click', e => {
+    const button = e.target.closest('[data-a11y]'); if (!button) return;
+    const key = button.dataset.a11y;
+    if (key === 'fontUp') state.a11y.fontScale = Math.min(1.5, state.a11y.fontScale + 0.1);
+    else if (key === 'fontDown') state.a11y.fontScale = Math.max(0.8, state.a11y.fontScale - 0.1);
+    else if (key === 'reset') state.a11y = { fontScale: 1, contrast: false, grayscale: false, readable: false, highlight: false, animations: false };
+    else if (key === 'animations') state.a11y.animations = !state.a11y.animations;
+    else if (key === 'contrast') state.a11y.contrast = !state.a11y.contrast;
+    else if (key === 'grayscale') state.a11y.grayscale = !state.a11y.grayscale;
+    else if (key === 'readable') state.a11y.readable = !state.a11y.readable;
+    else if (key === 'highlight') state.a11y.highlight = !state.a11y.highlight;
+    applyAccessibility();
+  });
+  applyAccessibility();
+}
+
+function renderAdminRoom(snapshot) {
+  const roster = $('adminConnectedPlayers'); if (!roster) return;
+  roster.innerHTML = '';
+  (snapshot.players || []).forEach(p => {
+    const row = el('div', { class: 'admin-roster-row' }); const av = el('span', { class: 'admin-roster-avatar' });
+    renderAvatar(av, p.name, p.avatar); row.appendChild(av);
+    row.appendChild(el('strong', { text: p.name })); row.appendChild(el('span', { class: p.online ? 'online' : 'offline', text: p.online ? 'Online' : 'Offline' }));
+    row.appendChild(el('span', { class: 'muted small', text: p.tableName || 'In Lobby' })); roster.appendChild(row);
+  });
+  const last = snapshot.lastHand || {};
+  $('adminLastHand').textContent = last.player ? `${last.player} · ${new Date(last.at).toLocaleString()}` : 'No completed hands yet.';
+  const busy = snapshot.busiest;
+  const busyHost = $('adminBusiestTable'); busyHost.innerHTML = '';
+  if (busy) { busyHost.appendChild(el('strong', { text: `${busy.name} (${busy.seated.length} seated)` })); busy.seated.forEach(p => busyHost.appendChild(el('div', { class: 'small', text: `Seat ${p.seat}: ${p.name}` }))); } else busyHost.textContent = 'No seated players.';
+  renderAdminRank('adminEarners', snapshot.topEarners || []); renderAdminRank('adminLosers', snapshot.biggestLosers || []);
+  renderAdminSessionsGrid(snapshot.sessions || state.adminRoom.sessions || []);
+  const tables = $('adminTablesBreakdown'); tables.innerHTML = '';
+  (snapshot.tables || []).forEach(t => {
+    const box = el('section', { class: 'admin-table-box' }, [el('h4', { text: t.name })]);
+    t.seated.forEach(p => { const row = el('div', { class: 'admin-seated-row' }); row.appendChild(el('span', { text: `Seat ${p.seat} · ${p.name}` })); row.appendChild(el('button', { class: 'ghost-btn', text: 'Kick', onclick: () => kickAdminPlayer(p.name) })); box.appendChild(row); });
+    tables.appendChild(box);
+  });
+}
+function renderAdminRank(id, rows) { const host = $(id); if (!host) return; host.innerHTML = ''; rows.slice(0, 10).forEach((p, i) => host.appendChild(el('div', { class: 'admin-rank-row', text: `${i + 1}. ${p.name} · ${formatNumber(p.points)} pts` }))); }
+
+function renderMobileLeaderboard() {
+  const host = $('mobileLeaderboardRows');
+  if (!host) return;
+  host.innerHTML = '';
+  const rows = (state.leaderboardData || []).slice(0, 5);
+  if (!rows.length) {
+    host.appendChild(el('li', { class: 'muted', text: 'No completed hands yet.' }));
+    return;
+  }
+  const me = state.player && state.player.name;
+  rows.forEach((p, index) => {
+    host.appendChild(el('li', {
+      class: me && p.name === me ? 'is-self' : '',
+      text: `#${index + 1} ${p.name} · ${formatNumber(p.points)} pts`,
+    }));
+  });
+}
+
+async function loadMobileLeaderboard() {
+  try {
+    const response = await fetch('/api/leaderboard');
+    if (!response.ok) throw new Error('leaderboard');
+    const data = await response.json();
+    state.leaderboardData = data.players || [];
+    renderMobileLeaderboard();
+  } catch (err) {
+    const host = $('mobileLeaderboardRows');
+    if (host) { host.innerHTML = ''; host.appendChild(el('li', { class: 'muted', text: 'Leaderboard unavailable.' })); }
+  }
+}
+
+function kickAdminPlayer(name) { socket.emit('admin_kick', { name }, res => { if (!res || !res.ok) showToast(res && res.error || 'Kick failed', 'error'); else showToast(`Kicked ${name}`, 'good'); }); }
+
 function formatNumber(n) {
   // Format chips with thousand separators.
   return String(Math.floor(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -407,6 +618,21 @@ function getInitials(name) {
 
 // ---------- View switching ----------
 
+let loadingTimer = null;
+function showLoading(text, maxMs = 1400) {
+  const overlay = $('loadingOverlay');
+  if (!overlay) return;
+  $('loadingText').textContent = text || 'Loading Friendly Poker…';
+  overlay.style.display = '';
+  clearTimeout(loadingTimer);
+  loadingTimer = setTimeout(() => { overlay.style.display = 'none'; }, maxMs);
+}
+function hideLoading() {
+  clearTimeout(loadingTimer);
+  const overlay = $('loadingOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
 function setView(v) {
   state.view = v;
   // Toggle is-table-view body class so mobile CSS can scope compact
@@ -421,6 +647,8 @@ function setView(v) {
     if (node) node.style.display = (id === 'view-' + v) ? '' : 'none';
   });
   $('topInfo').style.display = (v === 'login') ? 'none' : '';
+  if (v === 'admin' && state.isAdmin) onEnterAdminRoom();
+  if (v !== 'table') hideLoading();
 }
 
 function updateTopBar() {
@@ -511,8 +739,8 @@ async function doLogin() {
 function syncAdminButtonVisibility() {
   const btn = $('adminBtn');
   if (!btn) return;
-  btn.style.display = '';
-  btn.title = 'Open the admin panel';
+  btn.style.display = state.isAdmin ? '' : 'none';
+  btn.title = 'Open the Admin Room';
 }
 
 // ----- Legacy shared-password admin modal -----
@@ -807,6 +1035,9 @@ function updateLobbyCard(card, table, index) {
   card.querySelector('.stakes-stat__status').textContent = status;
   card.querySelector('.stakes-stat__status').classList.toggle('is-live', inProgress);
   card.querySelector('.stakes-stat__blinds').textContent = `${table.smallBlind}/${table.bigBlind}`;
+  let minTag = card.querySelector('.stakes-card__min-points');
+  if (!minTag) { minTag = el('span', { class: 'stakes-card__min-points' }); card.appendChild(minTag); }
+  minTag.textContent = Number(table.minPoints || 0) > 0 ? `Min: ${formatNumber(table.minPoints)} pts` : 'Open access';
   const action = card.querySelector('.stakes-card__action');
   action.classList.toggle('stakes-card__action--watch', inProgress);
   action.textContent = inProgress ? 'Watch' : 'Join';
@@ -859,7 +1090,8 @@ function createTable() {
   const sb = parseInt($('newTableSB').value, 10);
   const bb = parseInt($('newTableBB').value, 10);
   const ms = parseInt($('newTableSeats').value, 10);
-  socket.emit('create_table', { name, smallBlind: sb, bigBlind: bb, maxSeats: ms }, res => {
+  const minPoints = parseInt(($('newTableMinPoints') || {}).value, 10) || 0;
+  socket.emit('create_table', { name, smallBlind: sb, bigBlind: bb, maxSeats: ms, minPoints }, res => {
     if (res && res.ok) {
       $('newTableName').value = '';
       showToast('Table created', 'good');
@@ -870,10 +1102,12 @@ function createTable() {
 }
 
 function joinTable(tableId, seatIdx) {
+  showLoading('Taking your seat…');
   socket.emit('join_table', { tableId, seatIdx }, res => {
     if (res && res.ok) {
       setView('table');
     } else {
+      hideLoading();
       showToast(res && res.error ? res.error : 'Failed to join', 'error');
     }
   });
@@ -1123,8 +1357,10 @@ function renderSeat(seat, idx, table, total) {
   // getInitials helper below. Purely cosmetic — the avatar is the
   // redesigned seat-pill's primary visual; the name row now sits
   // beneath it.
+  const avatar = el('div', { class: 'seat-avatar', 'aria-hidden': 'true', text: getInitials(seat.name) });
+  if (seat.avatar) { avatar.textContent = ''; avatar.style.backgroundImage = `url(${seat.avatar})`; avatar.classList.add('has-photo'); }
   const ringChildren = [
-    el('div', { class: 'seat-avatar', 'aria-hidden': 'true', text: getInitials(seat.name) }),
+    avatar,
     el('div', { class: nameClasses.join(' '), text: seat.name }),
   ];
   // Stack display — animate value changes via tickCount (purely cosmetic).
@@ -1478,7 +1714,11 @@ function populateMobileFelt(t, selfSeat) {
 
   // Seat info
   var av = $('mfcAvatar');
-  if (av) av.textContent = selfSeat ? getInitials(selfSeat.name) : '?';
+  if (av) {
+    av.textContent = selfSeat && !selfSeat.avatar ? getInitials(selfSeat.name) : (!selfSeat ? '?' : '');
+    av.style.backgroundImage = selfSeat && selfSeat.avatar ? `url(${selfSeat.avatar})` : '';
+    av.classList.toggle('has-photo', !!(selfSeat && selfSeat.avatar));
+  }
   var sn = $('mfcSeatName');
   if (sn) {
     sn.textContent = '';
@@ -1607,9 +1847,10 @@ function updateChatReadOnly() {
 }
 
 function seatEmpty(seatIdx, tableId) {
+  showLoading('Taking your seat…');
   socket.emit('join_table', { tableId, seatIdx }, res => {
     if (res && res.ok) setView('table');
-    else showToast(res && res.error ? res.error : 'Could not sit', 'error');
+    else { hideLoading(); showToast(res && res.error ? res.error : 'Could not sit', 'error'); }
   });
 }
 
@@ -2395,8 +2636,10 @@ function renderLeaderboard() {
   podiumOrder.forEach((p, idx) => {
     const card = el('div', { class: 'podium-card rank-' + podiumRanks[idx] + (p && me && p.name === me ? ' is-self' : '') });
     card.appendChild(el('span', { class: 'podium-rank', text: '#' + podiumRanks[idx] }));
-    card.appendChild(el('div', { class: 'podium-medal', text: podiumMedals[idx] }));
-    card.appendChild(el('div', { class: 'podium-name', text: p ? p.name : '—' }));
+    card.appendChild(el('div', { class: 'podium-medal', text: podiumMedals[idx] }));      const podiumAvatar = el('div', { class: 'podium-avatar' });
+      if (p) renderAvatar(podiumAvatar, p.name, p.avatar);
+      card.appendChild(podiumAvatar);
+      card.appendChild(el('div', { class: 'podium-name', text: p ? p.name : '—' }));
     card.appendChild(el('div', { class: 'podium-points', text: p ? formatNumber(p.points) + ' pts' : '' }));
     // Stats line: games played + wins. Only appears when we have at least
     // 1 game played (the server-side filter already guarantees this) so the
@@ -2421,6 +2664,7 @@ function renderLeaderboard() {
       const row = el('div', { class: 'lb-row' + (me && p.name === me ? ' is-self' : '') });
       row.appendChild(el('div', { class: 'lb-rank', text: '#' + rank }));
       const nameCell = el('div', { class: 'lb-name' });
+      const listAvatar = el('span', { class: 'lb-avatar' }); renderAvatar(listAvatar, p.name, p.avatar); nameCell.appendChild(listAvatar);
       nameCell.appendChild(el('span', { text: p.name }));
       // Inline stats under the name in the dense list — same info as the
       // podium chip but rendered smaller so it doesn't blow out the row
@@ -2554,7 +2798,7 @@ function renderAdminPlayers(players) {
 // settings via admin_update_session.
 
 function setAdminFeedback(text) {
-  const fb = $('adminActionFeedback');
+  const fb = $('adminRoomFeedback') || $('adminActionFeedback');
   if (fb) fb.textContent = text || '';
 }
 
@@ -2698,11 +2942,13 @@ function openAdminEditor(tableId) {
   const stackInput= labelledNumber('Starting stack',    'editStack',session.startingStack);
   const feeInput  = labelledNumber('House fee %',       'editFee',  session.houseFeePercent);
   const seatsInput= labelledNumber('Max seats',         'editSeats',session.maxSeats);
+  const minPointsInput = labelledNumber('Minimum points', 'editMinPoints', session.minPoints || 0);
   grid.appendChild(bbInput.field);
   grid.appendChild(sbInput.field);
   grid.appendChild(stackInput.field);
   grid.appendChild(feeInput.field);
   grid.appendChild(seatsInput.field);
+  grid.appendChild(minPointsInput.field);
   host.appendChild(grid);
   const actions = el('div', { class: 'form-row' });
   const saveBtn = el('button', { class: 'primary-btn', text: 'Save', onclick: () => saveAdminEditor(tableId) });
@@ -2735,9 +2981,10 @@ function saveAdminEditor(tableId) {
   const stk  = parseInt($('editStack').value, 10);
   const fee  = parseFloat($('editFee').value);
   const seats= parseInt($('editSeats').value, 10);
+  const minPoints = parseInt($('editMinPoints').value, 10);
   socket.emit('admin_update_session', {
     tableId,
-    settings: { bigBlind: bb, smallBlind: sb, startingStack: stk, houseFeePercent: fee, maxSeats: seats },
+    settings: { bigBlind: bb, smallBlind: sb, startingStack: stk, houseFeePercent: fee, maxSeats: seats, minPoints },
   }, (res) => {
     if (res && res.ok) {
       setAdminFeedback('Saved.');
@@ -2964,31 +3211,38 @@ function renderPoolBreakdown(sessions) {
 
 socket.on('connect', () => {
   console.log('Connected to server.');
-  // Drop any cached leaderboard snapshot so the next modal open refetches
-  // with up-to-date points; without this, a stale page could show ranks
-  // and points from the prior session on a fast Refresh click.
   state.leaderboardData = null;
-  // Only clear the admin flag on a *reconnect* — the server already
-  // removed our prior socket from socketToAdmin on the previous disconnect,
-  // so on a true reconnect the local flag is stale. `state.player` is the
-  // simplest discriminator: it's null on a fresh page load (auto-login has
-  // not yet run) and stays truthy across reconnects within the same page.
-  if (state.player) state.isAdmin = false;
-  // Auto-login if we have a saved name
+  const reconnecting = !!state.player;
+  if (reconnecting) {
+    document.body.classList.add('is-disconnected');
+    showLoading('Disconnected — Reconnecting…', 45000);
+  }
+  // Re-register every Socket.IO connection. A reconnect creates a new
+  // socket id, so the server cannot restore the old seat until the player
+  // authenticates again. This is deliberately server-authoritative and
+  // lets the hello payload carry the exact table/seat to restore.
   try {
-    const saved = localStorage.getItem('pokerName');
+    const saved = localStorage.getItem('pokerName') || (state.player && state.player.name);
     if (saved && !state.player) {
       $('loginName').value = saved;
       doLogin();
+    } else if (saved && state.player) {
+      socket.emit('register', {
+        name: saved,
+        token: getStoredOwnerToken(saved) || undefined,
+      });
     }
   } catch (e) {}
 });
 
-socket.on('hello', ({ player, reconnectInfo }) => {
+socket.on('hello', ({ player, reconnectInfo, reconnectExpired }) => {
+  hideLoading();
+  document.body.classList.remove('is-disconnected');
   state.player = player;
   state.isAdmin = player.isAdmin === true;
   updateTopBar();
   syncAdminButtonVisibility();
+  loadMobileLeaderboard();
   // #7: Reconnect support — if the server tells us we were seated before,
   // auto-rejoin that table. Only fires once (cleared after use).
   if (reconnectInfo) {
@@ -2996,8 +3250,16 @@ socket.on('hello', ({ player, reconnectInfo }) => {
       if (res && res.ok) {
         setView('table');
         showToast('Reconnected to your seat', 'good');
+      } else {
+        state.currentTable = null;
+        setView('lobby');
+        showToast(res && res.error ? res.error : 'Your table session expired', 'error');
       }
     });
+  } else if (reconnectExpired) {
+    state.currentTable = null;
+    setView('lobby');
+    showToast('Your table session expired — you are back in the lobby', 'info');
   }
   // #9: Handle pending table invite link (set from hash on page load).
   if (window._pendingTableInvite) {
@@ -3010,12 +3272,27 @@ socket.on('hello', ({ player, reconnectInfo }) => {
   }
 });
 
+socket.on('presence_update', ({ count, players }) => {
+  state.presence = { count: count || 0, players: players || [] };
+  renderPresence();
+  renderOnlineModal();
+});
+
+socket.on('admin_snapshot', ({ players, tables, sessions, busiest, topEarners, biggestLosers, lastHand }) => {
+  if (!state.isAdmin) return;
+  renderAdminRoom({ players, tables, sessions, busiest, topEarners, biggestLosers, lastHand });
+});
+
 socket.on('lobby_update', ({ tables }) => {
-  state.tables = tables || [];
-  if (state.view === 'lobby') renderLobby();
+  state.tables = tables || [];    if (state.view === 'lobby') {
+      renderLobby();
+      renderMobileLeaderboard();
+    }
 });
 
 socket.on('table_state', ({ table }) => {
+  hideLoading();
+  document.body.classList.remove('is-disconnected');
   state.currentTable = table;
   if (state.view === 'lobby') setView('table');
   if (state.view === 'table') renderTable();
@@ -3026,7 +3303,15 @@ socket.on('server_message', ({ level, text }) => {
 });
 
 socket.on('disconnect', () => {
-  showToast('Disconnected. Reconnecting...', 'error');
+  showToast('Disconnected — Reconnecting…', 'error');
+  document.body.classList.add('is-disconnected');
+});
+
+socket.on('connect_error', (error) => {
+  if (error && error.message === 'Site access required') {
+    state.accessGranted = false;
+    if ($('accessGate')) $('accessGate').style.display = '';
+  }
 });
 
 // #2: Kicked from table by admin — notified in real-time via socket.
@@ -3084,9 +3369,9 @@ socket.on('chat_update', ({ tableId, messages }) => {
         if (toggle) toggle.setAttribute('aria-expanded', 'false');
       });
     }
-    $('loginBtn').addEventListener('click', doLogin);
+    $('accessGateForm').addEventListener('submit', submitSiteAccess);
+  $('loginBtn').addEventListener('click', doLogin);
   $('loginName').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-  $('refreshNamesBtn').addEventListener('click', () => socket.emit('random_names'));
 
   // Name change modal
   $('changeNameBtn').addEventListener('click', openNameChangeModal);
@@ -3102,6 +3387,8 @@ socket.on('chat_update', ({ tableId, messages }) => {
   // Refresh button + click-outside-to-close on the backdrop (but not the
   // inner content) match the admin modal pattern.
   $('leaderboardRefreshBtn').addEventListener('click', loadLeaderboard);
+  const mobileLeaderboardRefresh = $('mobileLeaderboardRefresh');
+  if (mobileLeaderboardRefresh) mobileLeaderboardRefresh.addEventListener('click', loadMobileLeaderboard);
   $('leaderboardModal').addEventListener('click', (e) => {
     if (e.target === $('leaderboardModal')) closeLeaderboard();
   });
@@ -3112,7 +3399,7 @@ socket.on('chat_update', ({ tableId, messages }) => {
   // reassembles the panel from local-state. The previous
   // openAdminRoom/view-admin path is retired (see #adminModal in
   // public/index.html).
-  $('adminBtn').addEventListener('click', openAdminModal);
+  $('adminBtn').addEventListener('click', () => { if (state.isAdmin) setView('admin'); });
 
   // Legacy shared-password modal controls.
   $('adminModalCloseBtn').addEventListener('click', closeAdminModal);
@@ -3157,7 +3444,7 @@ socket.on('chat_update', ({ tableId, messages }) => {
     if (input) input.addEventListener('input', () => validateCreateField(id, false));
   });
   const mobileAdminLink = $('mobileAdminLink');
-  if (mobileAdminLink) mobileAdminLink.addEventListener('click', e => { e.preventDefault(); openAdminModal(); });
+  if (mobileAdminLink) mobileAdminLink.addEventListener('click', e => { e.preventDefault(); if (state.isAdmin) setView('admin'); else showToast('Admin access required', 'error'); });
   const mobileLeaderboardLink = $('mobileLeaderboardLink');
   if (mobileLeaderboardLink) mobileLeaderboardLink.addEventListener('click', e => { e.preventDefault(); openLeaderboard(); });
   $('leaveTableBtn').addEventListener('click', leaveCurrentTable);
@@ -3244,5 +3531,24 @@ socket.on('chat_update', ({ tableId, messages }) => {
   if (mfsrSI) mfsrSI.addEventListener('click', sitIn);
   if (mfsrLV) mfsrLV.addEventListener('click', leaveCurrentTable);
 
-  loadRandomNames();
+  const adminBack = $('adminRoomBackBtn');
+  if (adminBack) adminBack.addEventListener('click', () => setView('lobby'));
+  const onlineBtn = $('onlinePlayersBtn');
+  if (onlineBtn) onlineBtn.addEventListener('click', openOnlineModal);
+  const onlineClose = $('onlineCloseBtn');
+  if (onlineClose) onlineClose.addEventListener('click', closeOnlineModal);
+  if ($('onlineModal')) $('onlineModal').addEventListener('click', e => { if (e.target === $('onlineModal')) closeOnlineModal(); });
+  const presenceToggle = $('presenceToggle');
+  if (presenceToggle) presenceToggle.addEventListener('click', togglePresence);
+  const profileBtn = $('profileBtn');
+  if (profileBtn) profileBtn.addEventListener('click', openProfileModal);
+  if ($('profileCloseBtn')) $('profileCloseBtn').addEventListener('click', closeProfileModal);
+  if ($('profilePhotoInput')) $('profilePhotoInput').addEventListener('change', previewProfilePhoto);
+  if ($('profilePhotoSaveBtn')) $('profilePhotoSaveBtn').addEventListener('click', saveProfilePhoto);
+  if ($('profilePhotoRemoveBtn')) $('profilePhotoRemoveBtn').addEventListener('click', () => saveProfilePhoto(''));
+  setupAccessibility();
+  ensureSiteAccess();
+  loadMobileLeaderboard();
 });
+
+renderPresence();

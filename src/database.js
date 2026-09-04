@@ -83,6 +83,7 @@ const playerSchema = new mongoose.Schema({
   // assignment logic). Existing docs that pre-date this field will read
   // as `false` because mongoose applies the default at read time.
   isAdmin:     { type: Boolean, default: false, index: true },
+  profilePhoto: { type: String, default: '' },
   // When the player last changed their display name (0 = never).
   // Enforced at 30-day cooldown by the change_name socket handler.
   lastNameChangeAt: { type: Number, default: 0 },
@@ -123,8 +124,8 @@ const tableSettingsSchema = new mongoose.Schema({
   bigBlind:        { type: Number, default: 10 },
   smallBlind:      { type: Number, default: 5 },
   startingStack:   { type: Number, default: 1000 },
-  houseFeePercent: { type: Number, default: 5 },
-  maxSeats:        { type: Number, default: 6 },
+  houseFeePercent: { type: Number, default: 5 },  maxSeats:       { type: Number, default: 6 },
+  minPoints:      { type: Number, default: 0 },
   updatedAt:       { type: Number, default: () => Date.now() },
   updatedBy:       { type: String, default: '' },
 }, { versionKey: false });
@@ -380,6 +381,8 @@ async function getLeaderboardRows(opts) {
     .lean();
   return players.map((p) => ({
     name: p.name,
+    id: p.id,
+    avatar: p.profilePhoto || '',
     points: Math.max(0, Math.floor(p.points || 0)),
     gamesPlayed: Math.floor(p.gamesPlayed || 0),
     wins: Math.floor(p.wins || 0),
@@ -645,6 +648,7 @@ function validateTableSettings(input, fallback) {
   const startingStack = clampInt(input.startingStack, 1, 1000000, fb.startingStack || 1000);
   const houseFeePercent = clampFloat(input.houseFeePercent, 0, 50, fb.houseFeePercent || 0);
   const maxSeats  = clampInt(input.maxSeats, 2, 9, fb.maxSeats || 6);
+  const minPoints = clampInt(input.minPoints, 0, 1000000000, typeof fb.minPoints === 'number' ? fb.minPoints : 0);
   // Sanity invariant: smallBlind must be strictly less than bigBlind
   // (equality leaves no raise room). If the user typed them equal, lift
   // smallBlind down to max(1, bigBlind-1) so the table is still
@@ -658,7 +662,24 @@ function validateTableSettings(input, fallback) {
     startingStack,
     houseFeePercent,
     maxSeats,
+    minPoints,
   };
+}
+
+async function updateProfilePhoto(name, photo) {
+  if (!name || typeof photo !== 'string') return { ok: false, error: 'Invalid photo' };
+  const value = photo.trim();
+  if (value && !/^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value)) {
+    return { ok: false, error: 'Unsupported image format' };
+  }
+  if (value.length > 700000) return { ok: false, error: 'Photo is too large' };
+  await connect();
+  const updated = await Player.findOneAndUpdate(
+    { name },
+    { $set: { profilePhoto: value, updated: Date.now() } },
+    { new: true }
+  ).lean();
+  return updated ? { ok: true, player: updated } : { ok: false, error: 'Player not found' };
 }
 
 async function getTableSettings(name) {
@@ -678,6 +699,7 @@ async function upsertTableSettings(name, settings, updatedBy) {
     startingStack:   settings.startingStack,
     houseFeePercent: settings.houseFeePercent,
     maxSeats:        settings.maxSeats,
+    minPoints:       settings.minPoints || 0,
     updatedAt:       Date.now(),
     updatedBy:       updatedBy || '',
   };
@@ -778,6 +800,7 @@ async function getPlayerStats(name) {
     lastSeenAt: p.lastSeenAt || 0,
     created: p.created || 0,
     isAdmin: p.isAdmin === true,
+    avatar: p.profilePhoto || '',
     lastNameChangeAt: p.lastNameChangeAt || 0,
   };
 }
@@ -846,6 +869,7 @@ module.exports = {
   validateTableSettings,
   // Name change
   changePlayerName,
+  updateProfilePhoto,
   // Player stats
   getPlayerStats,
   // Admin action log

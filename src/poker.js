@@ -195,6 +195,7 @@ function createTable(opts = {}) {
     // existed. Matches src/rooms.js#DEFAULT_TABLES (5% across the board).
     houseFeePercent: clampPercent(opts.houseFeePercent, 0, 50, 5),
     maxSeats: opts.maxSeats || 6,
+    minPoints: Math.max(0, Math.floor(Number(opts.minPoints) || 0)),
 
     seats: Array.from({ length: opts.maxSeats || 6 }, () => null),
     // seat = {

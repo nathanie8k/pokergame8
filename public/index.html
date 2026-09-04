@@ -5,10 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Friendly Poker - Texas Hold'em</title>
   <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/feature-update.css" />
   <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>♠</text></svg>" />
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
+  <div id="accessGate" class="access-gate" role="dialog" aria-modal="true" aria-labelledby="accessGateTitle" style="display:none">
+    <div class="access-gate-card">
+      <div class="access-chip" aria-hidden="true">♠</div>
+      <h1 id="accessGateTitle">Friendly Poker</h1>
+      <p>Enter today's access password to continue.</p>
+      <form id="accessGateForm">
+        <label for="accessPassword">Access password</label>
+        <div class="form-row"><input id="accessPassword" type="password" autocomplete="off" required /><button class="primary-btn" type="submit">Enter</button></div>
+      </form>
+      <div id="accessGateError" class="error-text" role="alert" aria-live="polite"></div>
+    </div>
+  </div>
+
   <header class="top-bar" id="topBar">
     <div class="brand">
       <span class="brand-icon" aria-hidden="true">♠♥♦♣</span>
@@ -17,6 +31,7 @@
     <div class="top-info" id="topInfo" style="display:none">
       <span class="player-chip" id="playerChip"></span>
       <span class="points-chip" id="pointsChip"></span>
+      <button class="ghost-btn" id="profileBtn" title="Account settings" aria-label="Account settings">⚙ Profile</button>
       <button class="ghost-btn" id="changeNameBtn" title="Change your display name (once every 30 days)">✎ Name</button>
       <button class="ghost-btn" id="leaderboardBtn" title="View top players">★ Leaderboard</button>
       <!-- Admin entry point: visible to everyone. Click-handler
@@ -24,9 +39,15 @@
            per-user isAdmin flag + socket.data.isAdmin still work as the
            server-side gate; this button is purely a UX gate. Label is
            "Admin Room" so non-admins see a single, unambiguous path. -->
-      <button class="ghost-btn" id="adminBtn" title="Open the admin panel" style="display:none">Admin Room</button>
+      <button class="ghost-btn" id="adminBtn" title="Open the Admin Room" style="display:none">Admin Room</button>
+      <a class="ghost-btn telegram-link" href="https://t.me/+PaawJay6PdFhNjhk" target="_blank" rel="noopener noreferrer" aria-label="Open Friendly Poker Telegram group">✈ Telegram</a>
     </div>
   </header>
+
+  <aside id="presenceWidget" class="presence-widget" aria-live="polite">
+    <button id="presenceToggle" class="presence-toggle" type="button" aria-expanded="true" aria-controls="presencePanel"><span aria-hidden="true">●</span> <strong id="presenceCount">0</strong> online <span class="presence-arrow" aria-hidden="true">⌃</span></button>
+    <div id="presencePanel" class="presence-panel"><div class="presence-panel-title">Connected players</div><div id="presencePlayers"></div><button id="onlinePlayersBtn" class="link-btn" type="button">View full list</button></div>
+  </aside>
 
   <main id="app">
     <!-- ===== Login view (with hero moment) ===== -->
@@ -52,7 +73,7 @@
             </div>
           </div>
           <h1>Friendly Texas Hold'em</h1>
-          <p class="tagline">No money. Just points. Pick a name — or grab a random one — and pull up a chair.</p>
+          <p class="tagline">No money. Just points. Choose your display name and pull up a chair.</p>
         </div>
 
         <!-- Login card -->
@@ -64,13 +85,7 @@
             <button id="loginBtn" class="primary-btn">Take a seat</button>
           </div>
 
-          <div class="random-block">
-            <div class="random-block-title">
-              <span>Or pick a random name:</span>
-            </div>
-            <div class="name-list" id="randomNameList"></div>
-            <button id="refreshNamesBtn" class="link-btn">Shuffle names ↻</button>
-          </div>
+          <p class="login-note muted small">Your display name is required so other players can recognize you.</p>
         </div>
 
         <!-- "How it works" — 3 visual steps with icons -->
@@ -136,13 +151,37 @@
             <input id="newTableSeats" type="number" min="2" max="9" value="6" aria-describedby="newTableSeatsError" />
             <small id="newTableSeatsError" class="field-error" role="alert"></small>
           </label>
+          <label>
+            <span>Minimum points</span>
+            <input id="newTableMinPoints" type="number" min="0" value="0" aria-describedby="newTableMinPointsError" />
+            <small id="newTableMinPointsError" class="field-error" role="alert"></small>
+          </label>
         </div>
         <button id="createTableBtn" class="primary-btn">Create table</button>
       </div>
+      <section id="mobileLeaderboardWidget" class="mobile-leaderboard-widget" aria-labelledby="mobileLeaderboardTitle">
+        <div class="mobile-leaderboard-heading"><h3 id="mobileLeaderboardTitle">Top players</h3><button id="mobileLeaderboardRefresh" class="link-btn" type="button" aria-label="Refresh mobile leaderboard">↻</button></div>
+        <ol id="mobileLeaderboardRows" class="mobile-leaderboard-rows"></ol>
+      </section>
       <div class="mobile-lobby-links">
         <a class="mobile-admin-link" id="mobileAdminLink" href="#admin" aria-label="Open Admin Room">Admin Room <span aria-hidden="true">›</span></a>
         <a class="mobile-admin-link" id="mobileLeaderboardLink" href="#leaderboard" aria-label="Open Leaderboard">Leaderboard <span aria-hidden="true">›</span></a>
       </div>
+    </section>
+
+    <!-- ===== Dedicated Admin Room ===== -->
+    <section id="view-admin" class="view admin-room" style="display:none" aria-labelledby="adminRoomTitle">
+      <div class="admin-room-header"><div><p class="lobby-eyebrow">RESTRICTED FLOOR CONTROL</p><h2 id="adminRoomTitle">Admin Room</h2><p class="muted">Live operations overview. Only authenticated admin accounts can open this room.</p></div><button id="adminRoomBackBtn" class="ghost-btn">Back to lobby</button></div>
+      <div class="admin-room-grid">
+        <section class="admin-room-card admin-room-wide"><h3>Connected players</h3><div id="adminConnectedPlayers" class="admin-roster"></div></section>
+        <section class="admin-room-card"><h3>Last hand taken</h3><div id="adminLastHand" class="admin-highlight">No completed hands yet.</div></section>
+        <section class="admin-room-card"><h3>Busiest table</h3><div id="adminBusiestTable" class="admin-highlight">No seated players.</div></section>
+        <section class="admin-room-card"><h3>Top point earners</h3><div id="adminEarners" class="admin-ranking"></div></section>
+        <section class="admin-room-card"><h3>Biggest point losers</h3><div id="adminLosers" class="admin-ranking"></div></section>
+        <section class="admin-room-card admin-room-wide"><h3>Tables and actions</h3><div id="adminTablesBreakdown" class="admin-table-breakdown"></div></section>
+        <section class="admin-room-card admin-room-wide"><h3>Table settings</h3><div id="adminSessionsGrid" class="admin-session-grid"></div><div id="adminEditor" class="admin-editor" style="display:none"></div></section>
+      </div>
+      <div id="adminRoomFeedback" class="muted small admin-feedback"></div>
     </section>
 
     <!-- ===== Table view ===== -->
@@ -388,6 +427,12 @@
     </div>
   </main>
 
+  <div id="onlineModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="onlineTitle" style="display:none"><div class="modal-content online-modal-content"><div class="modal-header"><h3 id="onlineTitle">Online players</h3><button id="onlineCloseBtn" class="close-btn" aria-label="Close online players">×</button></div><div id="onlinePlayersList" class="online-list"></div></div></div>
+
+  <div id="profileModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="profileTitle" style="display:none"><div class="modal-content profile-content"><div class="modal-header"><h3 id="profileTitle">Account settings</h3><button id="profileCloseBtn" class="close-btn" aria-label="Close account settings">×</button></div><p class="muted small">Optional profile photo. JPG, PNG, GIF, or WebP; maximum 500 KB.</p>          <label class="photo-upload"><span>Profile photo</span><input id="profilePhotoInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" /></label><div id="profilePhotoPreview" class="profile-photo-preview"></div><button id="profilePhotoSaveBtn" class="primary-btn">Save photo</button><button id="profilePhotoRemoveBtn" class="ghost-btn">Remove photo</button><div id="profileFeedback" class="error-text" role="alert"></div></div></div>
+
+  <div id="accessibilityToolbar" class="accessibility-toolbar" aria-label="Accessibility tools"><button id="accessibilityToggle" type="button" aria-expanded="false" aria-controls="accessibilityPanel" aria-label="Open accessibility tools">♿</button><div id="accessibilityPanel" class="accessibility-panel" hidden><strong>Accessibility</strong><button data-a11y="fontDown">A− Font</button><button data-a11y="fontUp">A+ Font</button><button data-a11y="contrast">High contrast</button><button data-a11y="grayscale">Grayscale</button><button data-a11y="readable">Readable font</button><button data-a11y="highlight">Highlight links/buttons</button><button data-a11y="animations">Stop animations</button><button data-a11y="reset">Reset</button><a href="/accessibility-statement.html">Accessibility statement</a></div></div>
+
   <!-- Name change modal — lets players change their display name once
        every 30 days. The 30-day cooldown is enforced server-side via
        Player.lastNameChangeAt. The client shows remaining days when locked. -->
@@ -499,6 +544,8 @@
       </section>
     </div>
   </div>
+
+  <div id="loadingOverlay" class="loading-overlay" role="status" aria-live="polite" aria-label="Loading Friendly Poker" style="display:none"><div class="loading-chip" aria-hidden="true"><span>♠</span></div><strong id="loadingText">Loading Friendly Poker…</strong></div>
 
   <script src="/js/client.js"></script>
 </body>

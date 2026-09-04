@@ -94,11 +94,13 @@ class RoomManager {
         handNumber: t.handNumber,
         handInProgress: ![poker.PHASE.WAITING, poker.PHASE.HAND_OVER].includes(t.phase),
         pendingHouseFees: t._pendingHouseFees || 0,
+        minPoints: t.minPoints || 0,
+        default: t.default === true,
       };
     });
   }
 
-  createTable({ name, smallBlind, bigBlind, maxSeats, startingStack, houseFeePercent }) {
+  createTable({ name, smallBlind, bigBlind, maxSeats, startingStack, houseFeePercent, minPoints }) {
     const id = 't' + (this.idCounter++);
     // If a persisted-settings cache entry exists for this name (either
     // from the server-startup load OR from a prior admin edit on a
@@ -113,6 +115,7 @@ class RoomManager {
     const finalMS     = persisted?.maxSeats       ?? maxSeats       ?? 6;
     const finalStack  = persisted?.startingStack  ?? startingStack  ?? 1000;
     const finalFee    = persisted?.houseFeePercent ?? houseFeePercent ?? 5;
+    const finalMinPts = persisted?.minPoints ?? minPoints ?? 0;
     const table = poker.createTable({
       id,
       name: name || ('Table ' + id),
@@ -121,6 +124,7 @@ class RoomManager {
       startingStack: finalStack,
       houseFeePercent: finalFee,
       maxSeats: finalMS,
+      minPoints: finalMinPts,
     });
     table.chatMessages = [];
     this.tables.set(id, table);
@@ -192,7 +196,16 @@ class RoomManager {
     }
     if (Object.prototype.hasOwnProperty.call(partialSettings, 'maxSeats')) {
       t.maxSeats = partialSettings.maxSeats;
+      if (t.seats.length < t.maxSeats) {
+        while (t.seats.length < t.maxSeats) t.seats.push(null);
+      } else if (t.seats.length > t.maxSeats) {
+        t.seats.length = t.maxSeats;
+      }
       next.maxSeats = t.maxSeats;
+    }
+    if (Object.prototype.hasOwnProperty.call(partialSettings, 'minPoints')) {
+      t.minPoints = Math.max(0, Math.floor(partialSettings.minPoints));
+      next.minPoints = t.minPoints;
     }
     // Refresh the cache so a restart (or a same-name recreate) keeps
     // the new values. The server's admin_update_session handler runs
@@ -204,6 +217,7 @@ class RoomManager {
       startingStack: t.startingStack,
       houseFeePercent: t.houseFeePercent,
       maxSeats: t.maxSeats,
+      minPoints: t.minPoints || 0,
       updatedAt: Date.now(),
       updatedBy: updatedBy || '',
     });
@@ -359,6 +373,7 @@ class RoomManager {
     t.seats[seatIdx] = {
       playerId: player.id,
       name: player.name,
+      avatar: player.profilePhoto || player.avatar || '',
       stack: player.points,         // points become table chips
       holeCards: [],
       folded: false,
@@ -507,6 +522,7 @@ class RoomManager {
       startingStack: t.startingStack,
       houseFeePercent: t.houseFeePercent,
       maxSeats: t.maxSeats,
+      minPoints: t.minPoints || 0,
       phase: t.phase,
       handNumber: t.handNumber,
       communityCards: t.communityCards.map(serializeCard),
@@ -541,6 +557,7 @@ class RoomManager {
           occupied: true,
           isSelf,
           name: s.name,
+          avatar: s.avatar || '',
           stack: s.stack,
           contributed: s.contributed,
           folded: s.folded,
@@ -580,6 +597,7 @@ function loadPersistedSettingsIntoCache(rows) {
       startingStack: row.startingStack,
       houseFeePercent: row.houseFeePercent,
       maxSeats: row.maxSeats,
+      minPoints: row.minPoints || 0,
       updatedAt: row.updatedAt,
       updatedBy: row.updatedBy,
     });
