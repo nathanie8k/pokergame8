@@ -969,6 +969,30 @@ async function main() {
        'point audit records a timestamp');
   }
 
+  // ====================================================================
+  // 14. Profile photo validation: accepted image MIME types, processed
+  //     payload ceiling, and rejection of non-image data.
+  // ====================================================================
+  {
+    await db.resetForTests();
+    await db.getOrCreatePlayer('PhotoPlayer');
+    const tinyJpeg = 'data:image/jpeg;base64,' + 'A'.repeat(128);
+    const saved = await db.updateProfilePhoto('PhotoPlayer', tinyJpeg);
+    ok(saved.ok && saved.player.profilePhoto === tinyJpeg,
+       'profile photo: processed JPEG data URL is persisted');
+    const cleared = await db.updateProfilePhoto('PhotoPlayer', '');
+    ok(cleared.ok && cleared.player.profilePhoto === '',
+       'profile photo: removing the photo remains supported');
+    const badType = await db.updateProfilePhoto('PhotoPlayer', 'data:text/html;base64,AAAA');
+    ok(!badType.ok && /format/i.test(badType.error),
+       'profile photo: non-image data URL is rejected');
+    const oversized = await db.updateProfilePhoto('PhotoPlayer', 'data:image/jpeg;base64,' + 'A'.repeat(2 * 1024 * 1024 + 1));
+    ok(!oversized.ok && /large/i.test(oversized.error),
+       'profile photo: oversized processed payload is rejected');
+    const png = await db.updateProfilePhoto('PhotoPlayer', 'data:image/png;base64,AAAA');
+    ok(png.ok, 'profile photo: PNG data URL remains accepted for trusted processed callers');
+  }
+
   // Final env cleanup so downstream shells / restarts don't inherit a test token.
   setOwnerTokenEnv(null);
 

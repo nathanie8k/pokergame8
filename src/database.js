@@ -822,12 +822,15 @@ function validateTableSettings(input, fallback) {
 }
 
 async function updateProfilePhoto(name, photo) {
-  if (!name || typeof photo !== 'string') return { ok: false, error: 'Invalid photo' };
+  if (!name || typeof name !== 'string' || typeof photo !== 'string') return { ok: false, error: 'Invalid photo' };
   const value = photo.trim();
-  if (value && !/^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value)) {
+  if (value && !/^data:image\/(jpeg|png|webp|gif|jpg);base64,[A-Za-z0-9+/=]+$/.test(value)) {
     return { ok: false, error: 'Unsupported image format' };
   }
-  if (value.length > 700000) return { ok: false, error: 'Photo is too large' };
+  // The browser submits a 256x256 JPEG thumbnail. Keep a generous encoded
+  // ceiling here as defense-in-depth for direct socket callers, while the
+  // original upload-size limit is enforced before canvas processing in the UI.
+  if (value.length > 2 * 1024 * 1024) return { ok: false, error: 'Processed photo is too large' };
   await connect();
   const updated = await Player.findOneAndUpdate(
     { name },

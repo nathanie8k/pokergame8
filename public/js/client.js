@@ -57,6 +57,8 @@ const state = {
   // Profile / stats modals
   profileModalPlayer: null,
   statsModalPlayer: null,
+  profilePhotoDraft: null,
+  profilePhotoProcessToken: 0,
   // Notification permission (asked once)
   notificationsAsked: false,
   // Owner-secret modal reentrancy state. Same pattern as
@@ -463,10 +465,14 @@ function togglePresence() {
 
 function openProfileModal() {
   if (!state.player || !$('profileModal')) return;
+  state.profilePhotoDraft = null;
   $('profileModal').style.display = '';
   renderProfilePreview(state.player.profilePhoto || '');
 }
-function closeProfileModal() { if ($('profileModal')) $('profileModal').style.display = 'none'; }
+function closeProfileModal() {
+  if ($('profileModal')) $('profileModal').style.display = 'none';
+  state.profilePhotoDraft = null;
+}
 function renderProfilePreview(photo) {
   const host = $('profilePhotoPreview'); if (!host) return;
   host.innerHTML = '';
@@ -474,25 +480,109 @@ function renderProfilePreview(photo) {
   if (photo) { avatar.style.backgroundImage = `url(${photo})`; avatar.classList.add('has-photo'); }
   host.appendChild(avatar);
 }
-function previewProfilePhoto() {
+
+const PROFILE_PHOTO_MAX_SOURCE_BYTES = 10 * 1024 * 1024;
+const PROFILE_PHOTO_THUMBNAIL_SIZE = 256;
+const PROFILE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+function processProfilePhotoFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !PROFILE_PHOTO_TYPES.has(file.type)) {
+      reject(new Error('Choose a JPG, PNG, GIF, or WebP image.'));
+      return;
+    }
+    if (file.size > PROFILE_PHOTO_MAX_SOURCE_BYTES) {
+      reject(new Error('File too large, please choose a smaller file.'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read that image.'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error('That file is not a readable image.'));
+      image.onload = () => {
+        const width = image.naturalWidth || image.width;
+        const height = image.naturalHeight || image.height;
+        if (!width || !height) {
+          reject(new Error('That file has no usable image dimensions.'));
+          return;
+        }
+        const cropSize = Math.min(width, height);
+        const sourceX = (width - cropSize) / 2;
+        const sourceY = (height - cropSize) / 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = PROFILE_PHOTO_THUMBNAIL_SIZE;
+        canvas.height = PROFILE_PHOTO_THUMBNAIL_SIZE;
+        const context = canvas.getContext('2d');
+        if (!context) {
+          reject(new Error('Your browser cannot process this image.'));
+          return;
+        }
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(
+          image,
+          sourceX, sourceY, cropSize, cropSize,
+          0, 0, PROFILE_PHOTO_THUMBNAIL_SIZE, PROFILE_PHOTO_THUMBNAIL_SIZE
+        );
+        try {
+          // Always store the compact processed thumbnail, regardless of the
+          // source format. GIFs are represented by their first decoded frame.
+          resolve(canvas.toDataURL('image/jpeg', 0.86));
+        } catch (err) {
+          reject(new Error('Could not process that image.'));
+        }
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function previewProfilePhoto() {
   const input = $('profilePhotoInput'); const file = input && input.files && input.files[0];
   if (!file) return;
-  if (!/^image\/(jpeg|png|gif|webp)$/.test(file.type) || file.size > 500 * 1024) {
-    $('profileFeedback').textContent = 'Choose a JPG, PNG, GIF, or WebP image up to 500 KB.';
-    input.value = ''; return;
+  const feedback = $('profileFeedback');
+  const token = ++state.profilePhotoProcessToken;
+  state.profilePhotoDraft = null;
+  if (feedback) feedback.textContent = '';
+  try {
+    const processed = await processProfilePhotoFile(file);
+    if (token !== state.profilePhotoProcessToken) return;
+    state.profilePhotoDraft = processed;
+    renderProfilePreview(processed);
+  } catch (err) {
+    if (token !== state.profilePhotoProcessToken) return;
+    if (feedback) feedback.textContent = err.message;
+    input.value = '';
+    renderProfilePreview(state.player && state.player.profilePhoto || '');
   }
-  const reader = new FileReader(); reader.onload = () => renderProfilePreview(reader.result); reader.readAsDataURL(file);
 }
-function saveProfilePhoto(value) {
+
+async function saveProfilePhoto(value) {
   const input = $('profilePhotoInput');
   if (value === undefined) {
-    const file = input && input.files && input.files[0];
-    if (!file) { showToast('Choose an image first', 'error'); return; }
-    const reader = new FileReader(); reader.onload = () => saveProfilePhoto(reader.result); reader.readAsDataURL(file); return;
+    if (state.profilePhotoDraft) {
+      value = state.profilePhotoDraft;
+    } else {
+      const file = input && input.files && input.files[0];
+      if (!file) { showToast('Choose an image first', 'error'); return; }
+      try {
+        value = await processProfilePhotoFile(file);
+        state.profilePhotoDraft = value;
+        renderProfilePreview(value);
+      } catch (err) {
+        const feedback = $('profileFeedback');
+        if (feedback) feedback.textContent = err.message;
+        return;
+      }
+    }
   }
   socket.emit('update_profile_photo', { photo: value }, res => {
     if (!res || !res.ok) { $('profileFeedback').textContent = res && res.error || 'Could not save photo'; return; }
-    state.player = res.player; updateTopBar(); closeProfileModal(); showToast('Profile photo saved', 'good');
+    state.player = res.player;
+    state.profilePhotoDraft = null;
+    updateTopBar(); closeProfileModal(); showToast('Profile photo saved', 'good');
   });
 }
 

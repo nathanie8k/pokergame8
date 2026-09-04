@@ -84,7 +84,10 @@ function isHardcodedOwnerName(name) {
 
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, { maxHttpBufferSize: 1e6 });
+// Profile uploads are resized in the browser before they reach Socket.IO.
+// Leave enough room for a worst-case 256px JPEG while still keeping the
+// transport bounded against oversized direct socket payloads.
+const io     = new Server(server, { maxHttpBufferSize: 3e6 });
 io.use((socket, next) => {
   if (hasValidSignedCookie(socket.handshake.headers.cookie)) return next();
   next(new Error('Site access required'));
