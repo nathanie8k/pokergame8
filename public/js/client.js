@@ -24,6 +24,10 @@ const state = {
     house: null,
     actionLog: null,     // latest admin_action_log payload
   },
+  // Admin point inputs are redrawn when live snapshots arrive. Keep the
+  // in-progress values outside the DOM so a snapshot cannot overwrite an
+  // unsaved adjustment or balance.
+  adminPointDrafts: {},
   leaderboardData: null,
   view:          'login',    // 'login' | 'lobby' | 'table' | 'admin' | 'profile' | 'stats'
   toastTimer:    null,
@@ -644,6 +648,11 @@ function renderAdminRoom(snapshot) {
 }
 function renderAdminRank(id, rows) { const host = $(id); if (!host) return; host.innerHTML = ''; rows.slice(0, 10).forEach((p, i) => host.appendChild(el('div', { class: 'admin-rank-row', text: `${i + 1}. ${p.name} · ${formatNumber(p.points)} pts` }))); }
 
+function getAdminPointDraft(name) {
+  if (!state.adminPointDrafts[name]) state.adminPointDrafts[name] = {};
+  return state.adminPointDrafts[name];
+}
+
 function renderAdminPlayerManagement(players) {
   const host = $('adminRoomPlayerManagement');
   if (!host) return;
@@ -660,10 +669,25 @@ function renderAdminPlayerManagement(players) {
     ]);
     row.appendChild(identity);
 
+    const draft = getAdminPointDraft(p.name);
     const adjustment = el('input', { type: 'number', class: 'admin-points-input', placeholder: 'Amount', min: '1', step: '1', 'aria-label': `Point amount for ${p.name}` });
+    adjustment.value = draft.adjustmentDirty ? draft.adjustment : '';
+    adjustment.addEventListener('input', () => {
+      const currentDraft = getAdminPointDraft(p.name);
+      currentDraft.adjustment = adjustment.value;
+      currentDraft.adjustmentDirty = true;
+    });
     const addBtn = el('button', { class: 'ghost-btn', text: 'Add points', onclick: () => doAdminRoomAdjust(p.name, adjustment.value, 1) });
     const removeBtn = el('button', { class: 'ghost-btn admin-remove-points-btn', text: 'Remove points', onclick: () => doAdminRoomAdjust(p.name, adjustment.value, -1) });
-    const balance = el('input', { type: 'number', class: 'admin-points-input', value: String(Math.max(0, Math.floor(p.points || 0))), min: '0', step: '1', 'aria-label': `Set points for ${p.name}` });
+    const balance = el('input', { type: 'number', class: 'admin-points-input', min: '0', step: '1', 'aria-label': `Set points for ${p.name}` });
+    balance.value = draft.balanceDirty
+      ? draft.balance
+      : String(Math.max(0, Math.floor(p.points || 0)));
+    balance.addEventListener('input', () => {
+      const currentDraft = getAdminPointDraft(p.name);
+      currentDraft.balance = balance.value;
+      currentDraft.balanceDirty = true;
+    });
     const setBtn = el('button', { class: 'ghost-btn', text: 'Set', onclick: () => doAdminRoomSet(p.name, balance.value) });
     const pointsControls = el('div', { class: 'admin-player-controls' }, [adjustment, addBtn, removeBtn, balance, setBtn]);
     row.appendChild(pointsControls);
@@ -692,22 +716,19 @@ function doAdminRoomAdjust(name, value, direction = 1) {
     setAdminFeedback(`${name}: ${res.oldBalance} → ${res.newBalance} points.`);
     const row = Array.from(document.querySelectorAll('.admin-player-row'))
       .find((candidate) => candidate.dataset.playerName === name);
+    const draft = getAdminPointDraft(name);
     if (row) {
       const balance = row.querySelector('.admin-player-balance');
       if (balance) balance.textContent = `${formatNumber(res.newBalance)} pts`;
       const setInput = row.querySelectorAll('.admin-points-input')[1];
-      if (setInput) setInput.value = String(res.newBalance);
+      if (setInput && !draft.balanceDirty) setInput.value = String(res.newBalance);
     }
-    // Clear the one-shot adjustment input after the server confirms the
-    // database write. The admin snapshot broadcast re-renders the balance
-    // for every connected admin, while the target socket receives hello.
-    const inputs = document.querySelectorAll('.admin-player-row');
-    inputs.forEach((row) => {
-      if (row.dataset.playerName === name) {
-        const input = row.querySelector('.admin-points-input');
-        if (input) input.value = '';
-      }
-    });
+    // Clear the one-shot adjustment draft after the server confirms the
+    // database write. The balance draft is committed to the acknowledged
+    // server value so a concurrent snapshot cannot put the old value back.
+    draft.adjustment = '';
+    draft.adjustmentDirty = false;
+    if (!draft.balanceDirty) draft.balance = String(res.newBalance);
   });
 }
 
@@ -719,10 +740,15 @@ function doAdminRoomSet(name, value) {
     setAdminFeedback(`${name}: ${res.oldBalance} → ${res.newBalance} points.`);
     const row = Array.from(document.querySelectorAll('.admin-player-row'))
       .find((candidate) => candidate.dataset.playerName === name);
+    const draft = getAdminPointDraft(name);
     if (row) {
       const balance = row.querySelector('.admin-player-balance');
       if (balance) balance.textContent = `${formatNumber(res.newBalance)} pts`;
+      const setInput = row.querySelectorAll('.admin-points-input')[1];
+      if (setInput) setInput.value = String(res.newBalance);
     }
+    draft.balance = String(res.newBalance);
+    draft.balanceDirty = false;
   });
 }
 
@@ -2927,8 +2953,15 @@ function renderAdminPlayers(players) {
     const _nameTdEl = tr.firstChild;
     if (_nameTdEl && _nameTdEl.tagName === 'TD') _nameTdEl.setAttribute('data-label', 'Name');
 
-    const addInput = el('input', { type: 'number', value: '' });
+    const draft = getAdminPointDraft(p.name);
+    const addInput = el('input', { type: 'number' });
     addInput.placeholder = '+/-';
+    addInput.value = draft.adjustmentDirty ? draft.adjustment : '';
+    addInput.addEventListener('input', () => {
+      const currentDraft = getAdminPointDraft(p.name);
+      currentDraft.adjustment = addInput.value;
+      currentDraft.adjustmentDirty = true;
+    });
     addInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(p.name, addInput.value); });
     const addCell = el('td', { 'data-label': 'Add' });
     const addBtn = el('button', { text: 'Add',  onclick: () => doAdd(p.name, addInput.value) });
@@ -2936,7 +2969,13 @@ function renderAdminPlayers(players) {
     addCell.appendChild(addBtn);
     tr.appendChild(addCell);
 
-    const setInput = el('input', { type: 'number', value: p.points });
+    const setInput = el('input', { type: 'number' });
+    setInput.value = draft.balanceDirty ? draft.balance : String(p.points);
+    setInput.addEventListener('input', () => {
+      const currentDraft = getAdminPointDraft(p.name);
+      currentDraft.balance = setInput.value;
+      currentDraft.balanceDirty = true;
+    });
     setInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSet(p.name, setInput.value); });
     const setCell = el('td', { 'data-label': 'Set' });
     const setBtn = el('button', { text: 'Set', onclick: () => doSet(p.name, setInput.value) });
@@ -3197,6 +3236,10 @@ function doAdd(name, delta) {
   socket.emit('admin_add_points', { name, delta: n }, (res) => {
     if (res && res.ok) {
       setAdminFeedback(`Added ${n} to ${name}.`);
+      const draft = getAdminPointDraft(name);
+      draft.adjustment = '';
+      draft.adjustmentDirty = false;
+      if (!draft.balanceDirty) draft.balance = String(res.newBalance);
       refreshAdminList();
     } else {
       setAdminFeedback(res && res.error ? res.error : 'Failed');
@@ -3211,6 +3254,9 @@ function doSet(name, points) {
   socket.emit('admin_set_points', { name, points: p }, (res) => {
     if (res && res.ok) {
       setAdminFeedback(`Set ${name} to ${p}.`);
+      const draft = getAdminPointDraft(name);
+      draft.balance = String(res.newBalance);
+      draft.balanceDirty = false;
       refreshAdminList();
     } else {
       setAdminFeedback(res && res.error ? res.error : 'Failed');
