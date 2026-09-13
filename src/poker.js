@@ -1,4 +1,4 @@
-// Texas Hold'em poker engine.
+// Texas holdem poker engine.
 // Provides: deck creation/shuffling, hand evaluation (best 5 of 7 cards), and the
 // full game state machine (blinds, betting rounds, showdown).
 //
@@ -182,7 +182,7 @@ function createTable(opts = {}) {
     // pot that the engine siphons off into `table._pendingHouseFees`.
     // The server's scheduleNextHand flushes that accumulator to the
     // admin user via `db.creditHousePoints`. Default 0 keeps the
-    // friendly-game feel; the admin panel exposes it as an editable
+    // points-only game feel; the admin panel exposes it as an editable
     // slider / number input. The cap (50%) is enforced both server-side
     // in db.validateTableSettings and at the engine layer below.
     // Default 5% per user spec: every settled hand takes a 5% cut from
@@ -711,7 +711,7 @@ function applyAction(table, seatIdx, action, amountParam) {
   //       round would not advance until the raiser re-acted with
   //       pay=0. Tracking `acted` instead closes the round the moment
   //       everyone has had a turn AND matched the bet, which is the
-  //       natural Texas-Hold'em semantics (raises re-open, calls
+  //       natural Texas holdem semantics (raises re-open, calls
   //       close-as-soon-as-matched).
   const liveCount = countLivePlayers(table);
   const acting = table.seats.filter(s => s && !s.removed && !s.folded && !s.allIn && !s.satOut);

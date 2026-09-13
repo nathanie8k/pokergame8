@@ -1,4 +1,4 @@
-/* Friendly Poker - client SPA.
+/* Poker8 - client SPA.
  *
  * Vanilla JS, no build step. Uses socket.io loaded from the server's
  * /socket.io/socket.io.js endpoint.
@@ -88,6 +88,7 @@ const state = {
   turnTimerRaf: null,
   turnTimerStart: 0,
   presence: { count: 0, players: [] },
+  presenceExpanded: false,
   accessGranted: false,
   a11y: { fontScale: 1, contrast: false, grayscale: false, readable: false, highlight: false, animations: false },
 };
@@ -428,27 +429,20 @@ function renderAvatar(parent, name, avatar) {
 function renderPresence() {
   const count = $('presenceCount');
   if (count) count.textContent = String(state.presence.count || 0);
-  const host = $('presencePlayers');
-  if (!host) return;
-  host.innerHTML = '';
-  const players = state.presence.players || [];
-  if (!players.length) host.appendChild(el('div', { class: 'muted small', text: 'No connected players.' }));
-  players.slice(0, 6).forEach(p => {
-    const row = el('div', { class: 'presence-row' });
-    const avatar = el('span', { class: 'presence-avatar' });
-    renderAvatar(avatar, p.name, p.avatar);
-    row.appendChild(avatar);
-    row.appendChild(el('span', { class: 'presence-name', text: p.name }));
-    row.appendChild(el('span', { class: 'presence-location muted small', text: p.tableName || 'In Lobby' }));
-    host.appendChild(row);
-  });
+  const widget = $('presenceWidget');
+  if (widget) widget.style.display = state.player ? '' : 'none';
 }
 
 function renderOnlineModal() {
   const host = $('onlinePlayersList');
   if (!host) return;
   host.innerHTML = '';
-  (state.presence.players || []).forEach(p => {
+  const players = state.presence.players || [];
+  const visiblePlayers = state.presenceExpanded ? players : players.slice(0, 4);
+  if (!visiblePlayers.length) {
+    host.appendChild(el('p', { class: 'muted small online-empty', text: 'No players online.' }));
+  }
+  visiblePlayers.forEach(p => {
     const row = el('div', { class: 'online-row' });
     const avatar = el('span', { class: 'online-avatar' });
     renderAvatar(avatar, p.name, p.avatar);
@@ -457,17 +451,23 @@ function renderOnlineModal() {
     row.appendChild(el('span', { class: 'muted small', text: p.tableName === 'In Lobby' ? 'In Lobby' : `${p.tableName} · Seat ${p.seat}` }));
     host.appendChild(row);
   });
+  const fullListButton = $('onlineSeeFullBtn');
+  if (fullListButton) {
+    fullListButton.textContent = state.presenceExpanded ? 'Show fewer' : 'See full list';
+    fullListButton.style.display = players.length > 0 ? '' : 'none';
+    fullListButton.setAttribute('aria-expanded', String(state.presenceExpanded));
+  }
 }
-function openOnlineModal() { renderOnlineModal(); if ($('onlineModal')) $('onlineModal').style.display = ''; }
-function closeOnlineModal() { if ($('onlineModal')) $('onlineModal').style.display = 'none'; }
-function togglePresence() {
-  const panel = $('presencePanel'); const button = $('presenceToggle');
-  if (!panel || !button) return;
-  const expanded = panel.hidden;
-  panel.hidden = !expanded; button.setAttribute('aria-expanded', String(expanded));
-  try { localStorage.setItem('pokerPresenceExpanded', expanded ? '1' : '0'); } catch (e) {}
+function openOnlineModal() {
+  state.presenceExpanded = false;
+  renderOnlineModal();
+  if ($('onlineModal')) $('onlineModal').style.display = '';
+  if ($('presenceToggle')) $('presenceToggle').setAttribute('aria-expanded', 'true');
 }
-
+function closeOnlineModal() {
+  if ($('onlineModal')) $('onlineModal').style.display = 'none';
+  if ($('presenceToggle')) $('presenceToggle').setAttribute('aria-expanded', 'false');
+}
 function setProfilePhotoStatus(status, message = '') {
   state.profilePhotoStatus = status;
   const saveButton = $('profilePhotoSaveBtn');
@@ -657,7 +657,6 @@ function applyAccessibility() {
 }
 function setupAccessibility() {
   try { Object.assign(state.a11y, JSON.parse(localStorage.getItem('pokerA11y') || '{}')); } catch (e) {}
-  try { const expanded = localStorage.getItem('pokerPresenceExpanded'); if (expanded === '0') { $('presencePanel').hidden = true; $('presenceToggle').setAttribute('aria-expanded', 'false'); } } catch (e) {}
   const toggle = $('accessibilityToggle'); const panel = $('accessibilityPanel');
   if (!toggle || !panel) return;
   toggle.addEventListener('click', () => { panel.hidden = !panel.hidden; toggle.setAttribute('aria-expanded', String(!panel.hidden)); });
@@ -883,7 +882,7 @@ let loadingTimer = null;
 function showLoading(text, maxMs = 1400) {
   const overlay = $('loadingOverlay');
   if (!overlay) return;
-  $('loadingText').textContent = text || 'Loading Friendly Poker…';
+  $('loadingText').textContent = text || 'Loading Poker8…';
   overlay.style.display = '';
   clearTimeout(loadingTimer);
   loadingTimer = setTimeout(() => { overlay.style.display = 'none'; }, maxMs);
@@ -899,10 +898,7 @@ function setView(v) {
   // Toggle is-table-view body class so mobile CSS can scope compact
   // top-bar rules to ONLY the table view (not login/lobby).
   if (document.body) document.body.classList.toggle('is-table-view', v === 'table');
-  // Include view-admin here so the Admin Room button's setView('admin')
-  // call actually un-hides the section. Without this entry the forEach
-  // loop iterates only the public-game views and never touches
-  // #view-admin, which stays at its HTML default of display:none.
+  // Admin Room entry comes from the bottom lobby link; no top-screen admin control is rendered.
   ['view-login', 'view-lobby', 'view-table', 'view-admin'].forEach(id => {
     const node = $(id);
     if (node) node.style.display = (id === 'view-' + v) ? '' : 'none';
@@ -973,7 +969,6 @@ async function doLogin() {
       state.isAdmin = res.player.isAdmin === true;
       try { localStorage.setItem('pokerName', state.player.name); } catch (e) {}
       updateTopBar();
-      syncAdminButtonVisibility();
       setView('lobby');
       socket.emit('random_names'); // refresh names for next time
     } else {
@@ -989,19 +984,6 @@ async function doLogin() {
       showToast(res && res.error ? res.error : 'Login failed', 'error');
     }
   });
-}
-
-// Top-bar Admin button is visible for EVERYONE (not gated on
-// state.isAdmin) so every host can attempt the shared-password login.
-// Per-user Player.isAdmin still works as a parallel gate: those users
-// get socket.data.isAdmin=true at register time and skip the modal.
-// Server rejects every admin_* event unless socket.data.isAdmin is set,
-// so showing the button to everyone is purely a UX gate.
-function syncAdminButtonVisibility() {
-  const btn = $('adminBtn');
-  if (!btn) return;
-  btn.style.display = state.isAdmin ? '' : 'none';
-  btn.title = 'Open the Admin Room';
 }
 
 // ----- Legacy shared-password admin modal -----
@@ -1126,7 +1108,6 @@ function submitOwnerSecret() {
       try { localStorage.setItem('pokerName', state.player.name); } catch (e) {}
       closeOwnerSecretModal();
       updateTopBar();
-      syncAdminButtonVisibility();
       setView('lobby');
       socket.emit('random_names');
     } else {
@@ -2469,8 +2450,7 @@ function hideShowdownModal() {
 // the moment it renders (no waiting for the first user input).
 socket.emit('random_names');
 
-// Initial state: Admin button hidden until register flips it visible.
-syncAdminButtonVisibility();
+  // Initial state: admin access remains available from the lobby's bottom link.
 
 function clearShowdown() {
   hideShowdownModal();
@@ -3522,7 +3502,6 @@ socket.on('hello', ({ player, reconnectInfo, reconnectExpired }) => {
   state.player = player;
   state.isAdmin = player.isAdmin === true;
   updateTopBar();
-  syncAdminButtonVisibility();
   loadMobileLeaderboard();
   // #7: Reconnect support — if the server tells us we were seated before,
   // auto-rejoin that table. Only fires once (cleared after use).
@@ -3680,14 +3659,6 @@ socket.on('chat_update', ({ tableId, messages }) => {
     if (e.target === $('leaderboardModal')) closeLeaderboard();
   });
 
-  // Admin entry point wires to openAdminRoom (defined above) instead of
-  // Admin entry point: opens the legacy shared-password modal.
-  // The modal itself performs admin_login; once ack'd, the modal
-  // reassembles the panel from local-state. The previous
-  // openAdminRoom/view-admin path is retired (see #adminModal in
-  // public/index.html).
-  $('adminBtn').addEventListener('click', () => { if (state.isAdmin) setView('admin'); });
-
   // Legacy shared-password modal controls.
   $('adminModalCloseBtn').addEventListener('click', closeAdminModal);
   $('adminLoginBtn').addEventListener('click', submitAdminPassword);
@@ -3820,13 +3791,28 @@ socket.on('chat_update', ({ tableId, messages }) => {
 
   const adminBack = $('adminRoomBackBtn');
   if (adminBack) adminBack.addEventListener('click', () => setView('lobby'));
-  const onlineBtn = $('onlinePlayersBtn');
-  if (onlineBtn) onlineBtn.addEventListener('click', openOnlineModal);
   const onlineClose = $('onlineCloseBtn');
   if (onlineClose) onlineClose.addEventListener('click', closeOnlineModal);
-  if ($('onlineModal')) $('onlineModal').addEventListener('click', e => { if (e.target === $('onlineModal')) closeOnlineModal(); });
+  const onlineSeeFull = $('onlineSeeFullBtn');
+  if (onlineSeeFull) onlineSeeFull.addEventListener('click', () => {
+    state.presenceExpanded = true;
+    renderOnlineModal();
+  });
   const presenceToggle = $('presenceToggle');
-  if (presenceToggle) presenceToggle.addEventListener('click', togglePresence);
+  if (presenceToggle) presenceToggle.addEventListener('click', () => {
+    const modal = $('onlineModal');
+    if (modal && modal.style.display !== 'none') closeOnlineModal();
+    else openOnlineModal();
+  });
+  document.addEventListener('click', e => {
+    const modal = $('onlineModal');
+    if (!modal || modal.style.display === 'none') return;
+    if (e.target.closest('#onlineModal .modal-content') || e.target.closest('#presenceToggle')) return;
+    closeOnlineModal();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && $('onlineModal') && $('onlineModal').style.display !== 'none') closeOnlineModal();
+  });
   const profileBtn = $('profileBtn');
   if (profileBtn) profileBtn.addEventListener('click', openProfileModal);
   if ($('profileCloseBtn')) $('profileCloseBtn').addEventListener('click', closeProfileModal);

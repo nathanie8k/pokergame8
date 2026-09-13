@@ -1,5 +1,5 @@
 /* ============================================================
-   Friendly Poker - Bold Redesign Stylesheet
+   Poker8 - Bold Redesign Stylesheet
    Cohesive dark casino theme with felt-green accents,
    card-suit motifs, premium playing cards, dramatic motion.
    100% visual/UX layer. No game logic touched.
@@ -2881,8 +2881,7 @@ input, button, select, textarea { color: inherit; }
     min-height: 28px;
     white-space: nowrap;
   }
-  body.is-table-view #topBar #leaderboardBtn,
-  body.is-table-view #topBar #adminBtn { display: none !important; }
+  body.is-table-view #topBar #leaderboardBtn { display: none !important; }
 
   /* ---- SUB-HEADER: table name + blinds + leave ---- */
   #view-table .table-info {
