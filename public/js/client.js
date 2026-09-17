@@ -2755,10 +2755,24 @@ function setupActionButtons(selfSeat, t) {
       presetsHost.appendChild(el('button', {
         text: p.label + ' (' + formatNumber(Math.max(selfSeat.contributed, p.val)) + ')',
         title: 'Set raise amount',
-        onclick: function() { raiseInput.value = p.val; },
+        // stageRaiseAmount also writes #raiseAmount (same value as before),
+        // and keeps the new drag bar in step with the tapped preset.
+        onclick: function() { stageRaiseAmount(p.val); },
       }));
     });
   }
+
+  // ---- Custom raise-amount sliders (desktop + mobile) ----
+  // Shown under exactly the condition that makes the Raise button usable,
+  // so they appear only for the viewer's own turn and vanish otherwise.
+  // Step = big blind, so dragged values land on round bet sizes.
+  syncRaiseSliders({
+    min: minRaiseTotal,
+    max: maxRaise,
+    step: t.bigBlind || 1,
+    action: (t.currentBet || 0) === 0 ? 'bet' : 'raise',
+    visible: !raiseDisabled,
+  });
 }
 
 function disableAllActions() {
@@ -2773,6 +2787,9 @@ function disableAllActions() {
   // Mobile sizing row
   var sizing = $('mobileFeltSizing');
   if (sizing) sizing.style.display = 'none';
+  // Custom raise-amount sliders (desktop + mobile) — off on every render
+  // where it isn't the viewer's turn to act.
+  hideRaiseSliders();
 }
 
 function performAction(action, amount) {
@@ -2783,6 +2800,195 @@ function performAction(action, amount) {
       showToast(res && res.error ? res.error : 'Action failed', 'error');
     }
   });
+}
+
+// ---------- Custom raise-amount slider (view layer only) ----------
+// A horizontal draggable track that picks a raise TOTAL. Two instances of
+// the same markup shape: #betSlider (inside .raise-row, desktop) and
+// #mobileRaiseSlider (the mobile felt stack). Both are pure views over the
+// EXISTING raise path — dragging only stages an amount; Confirm copies it
+// into #raiseAmount and re-fires #raiseBtn.click(), i.e. the very handler
+// the plain Raise button already uses. No betting, turn or socket logic is
+// touched here; the server still validates everything it validates today.
+var raiseSliders = [];
+// The one staged raise total, shared by both sliders and by #raiseAmount so
+// the drag bar, the number field and the presets can never disagree.
+var raiseSliderStage = null;
+
+function initRaiseSliders() {
+  ['betSlider', 'mobileRaiseSlider'].forEach(function(rootId) {
+    var root = $(rootId);
+    if (!root) return;
+    var track   = root.querySelector('.rs-track');
+    var fill    = root.querySelector('.rs-fill');
+    var thumb   = root.querySelector('.rs-thumb');
+    var valueEl = root.querySelector('.rs-value');
+    var confirm = root.querySelector('.rs-confirm');
+    var titleEl = root.querySelector('.rs-title');
+    if (!track || !fill || !thumb || !valueEl || !confirm) return;
+    var s = {
+      root: root, track: track, fill: fill, thumb: thumb,
+      valueEl: valueEl, confirm: confirm, titleEl: titleEl,
+      min: 0, max: 0, step: 1, value: 0, dragging: false,
+    };
+    raiseSliders.push(s);
+    wireRaiseSlider(s);
+  });
+}
+
+// Total for a 0..1 position along the track. Snaps to the big-blind grid so
+// dragging feels steppy rather than jittery, clamps at the legal minimum,
+// and lands exactly on the full stack when dragged to the far end.
+function raiseTotalAtRatio(s, ratio) {
+  if (ratio <= 0) return s.min;
+  if (ratio >= 1) return s.max;
+  var span = s.max - s.min;
+  if (span <= 0) return s.min;
+  var step = s.step > 0 ? s.step : 1;
+  var snapped = Math.round((s.min + ratio * span) / step) * step;
+  if (snapped < s.min) snapped = s.min;
+  if (snapped >= s.max) snapped = s.max;
+  return snapped;
+}
+
+// Stages a raise total: mirrors it into #raiseAmount (the exact field the
+// existing raise handler reads) and onto every visible slider view, clamped
+// per slider. Single writer for the staged amount.
+function stageRaiseAmount(v) {
+  raiseSliderStage = v;
+  var input = $('raiseAmount');
+  if (input) input.value = v;
+  raiseSliders.forEach(function(s) {
+    if (!s.root.classList.contains('is-visible')) return;
+    setRaiseSliderValue(s, Math.max(s.min, Math.min(s.max, v)));
+  });
+}
+
+function setRaiseSliderValue(s, v) {
+  s.value = v;
+  var span = s.max - s.min;
+  var pct = span > 0 ? ((v - s.min) / span) * 100 : 100;
+  if (pct < 0) pct = 0;
+  if (pct > 100) pct = 100;
+  s.fill.style.width = pct + '%';
+  s.thumb.style.left = pct + '%';
+  // Live label — updated on every drag frame, no release needed.
+  s.valueEl.textContent = formatNumber(v);
+  // Grey the bar/value while sitting at the legal minimum so the clamped
+  // state is visible instead of silently corrected at submit time.
+  s.root.classList.toggle('rs-at-min', v <= s.min);
+  s.track.setAttribute('aria-valuemin', String(s.min));
+  s.track.setAttribute('aria-valuemax', String(s.max));
+  s.track.setAttribute('aria-valuenow', String(v));
+  s.track.setAttribute('aria-valuetext', formatNumber(v));
+}
+
+// Releasing the drag only STAGES the amount — submitting is the explicit
+// second step (Confirm), so a mis-drag can never cost chips.
+function submitRaiseSlider(s) {
+  var t = state.currentTable;
+  if (!t || !s.root.classList.contains('is-visible')) return;
+  stageRaiseAmount(s.value);          // the value the plain Raise path reads
+  var btn = $('raiseBtn');
+  if (btn && !btn.disabled) {
+    btn.click();                      // reuse the existing submit handler verbatim
+    return;
+  }
+  // Defensive fallback: exactly what the plain Raise button would have sent.
+  performAction((t.currentBet || 0) === 0 ? 'bet' : 'raise', s.value);
+}
+
+function wireRaiseSlider(s) {
+  function applyFromClientX(clientX) {
+    var r = s.track.getBoundingClientRect();
+    if (!r.width) return;
+    stageRaiseAmount(raiseTotalAtRatio(s, (clientX - r.left) / r.width));
+  }
+
+  s.track.addEventListener('pointerdown', function(e) {
+    if (!s.root.classList.contains('is-visible')) return;
+    s.dragging = true;
+    s.root.classList.add('rs-dragging');
+    applyFromClientX(e.clientX);
+    e.preventDefault();
+  });
+  // Window-level move/up so a drag keeps tracking when the finger or cursor
+  // leaves the (thin) bar — no pointer-capture dependency.
+  window.addEventListener('pointermove', function(e) {
+    if (!s.dragging) return;
+    applyFromClientX(e.clientX);
+    e.preventDefault();
+  }, { passive: false });
+  ['pointerup', 'pointercancel'].forEach(function(type) {
+    window.addEventListener(type, function() {
+      if (!s.dragging) return;
+      s.dragging = false;
+      s.root.classList.remove('rs-dragging');
+    });
+  });
+
+  // Keyboard path for the focusable role="slider" track.
+  s.track.addEventListener('keydown', function(e) {
+    var step = s.step > 0 ? s.step : 1;
+    var nudge = function(delta) {
+      stageRaiseAmount(Math.max(s.min, Math.min(s.max, s.value + delta)));
+    };
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp')        { nudge(step);     e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown')  { nudge(-step);    e.preventDefault(); }
+    else if (e.key === 'PageUp')                              { nudge(step * 5); e.preventDefault(); }
+    else if (e.key === 'PageDown')                            { nudge(-step * 5); e.preventDefault(); }
+    else if (e.key === 'Home')                                { stageRaiseAmount(s.min); e.preventDefault(); }
+    else if (e.key === 'End')                                 { stageRaiseAmount(s.max); e.preventDefault(); }
+    else if (e.key === 'Enter' || e.key === ' ')              { submitRaiseSlider(s); e.preventDefault(); }
+  });
+
+  s.confirm.addEventListener('click', function() { submitRaiseSlider(s); });
+}
+
+// Bounds + visibility, driven from setupActionButtons / disableAllActions —
+// the same two places that already decide whether the raise buttons are
+// usable, so the control is up exactly when Fold/Call/Raise/All-in are.
+function syncRaiseSliders(opts) {
+  var visible = !!opts.visible && opts.max >= opts.min && opts.max > 0;
+  if (!visible) raiseSliderStage = null;
+  raiseSliders.forEach(function(s) {
+    s.min = opts.min;
+    s.max = opts.max;
+    // Snap grid: multiples of the big blind. A short stack whose whole
+    // raise range is narrower than one big blind would collapse the bar
+    // into two positions, so fall back to a finer grid there.
+    var grid = opts.step > 0 ? opts.step : 1;
+    var span = opts.max - opts.min;
+    s.step = span >= grid ? grid : Math.max(1, Math.round(span / 10));
+    s.root.classList.toggle('is-visible', visible);
+    s.confirm.disabled = !visible;
+    if (s.titleEl) s.titleEl.textContent = opts.action === 'bet' ? 'Bet to' : 'Raise to';
+    s.confirm.textContent = opts.action === 'bet' ? 'Confirm bet' : 'Confirm raise';
+  });
+  if (visible) {
+    // setupActionButtons has just reset #raiseAmount back to the minimum, so
+    // restore whatever the player had already staged — clamped into the fresh
+    // legal range — instead of dropping a chosen amount on the next broadcast.
+    var keep = typeof raiseSliderStage === 'number' && Number.isFinite(raiseSliderStage)
+      ? raiseSliderStage
+      : opts.min;
+    stageRaiseAmount(Math.max(opts.min, Math.min(opts.max, keep)));
+  }
+  // The slider adds a row to the mobile overlay strip, so the felt reserves
+  // the extra bottom padding only while it's actually on screen.
+  var center = $('mobileFeltCenter');
+  if (center) center.classList.toggle('has-raise-slider', visible);
+}
+
+function hideRaiseSliders() {
+  raiseSliderStage = null;
+  raiseSliders.forEach(function(s) {
+    s.dragging = false;
+    s.root.classList.remove('is-visible', 'rs-dragging', 'rs-at-min');
+    s.confirm.disabled = true;
+  });
+  var center = $('mobileFeltCenter');
+  if (center) center.classList.remove('has-raise-slider');
 }
 
 // ---------- Leaderboard modal ----------
@@ -3714,6 +3920,10 @@ socket.on('chat_update', ({ tableId, messages }) => {
   $('chatInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
   });
+
+  // Custom raise-amount sliders (desktop + mobile). DOM wiring only —
+  // bounds and visibility come from setupActionButtons / disableAllActions.
+  initRaiseSliders();
 
   // Action buttons
   document.querySelectorAll('.action-btn[data-action]').forEach(b => {

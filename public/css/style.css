@@ -4282,6 +4282,69 @@ input, button, select, textarea { color: inherit; }
   }
 
   /* ============================================================
+     Mobile felt raise slider — drag bar pinned under the Raise pill
+     ============================================================ */
+  .mobile-felt-raise {
+    display: flex;
+    justify-content: center;
+    padding: 2px 10% 0;
+    position: relative;
+    z-index: 3;
+    flex: 0 0 auto;
+    /* Same pattern as the action / sizing rows: the row itself never eats
+       taps, only its interactive contents opt back in. */
+    pointer-events: none;
+  }
+  .mobile-felt-raise .raise-slider {
+    width: 100%;
+    gap: 6px;
+    padding: 4px 8px;
+    min-height: 46px;
+    border-radius: 999px;
+    /* Translucent dark-green glass, matching the action pills. */
+    background: rgba(7, 24, 17, 0.66);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.20) inset;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  /* Mobile raise palette is the red of the .mfa-raise pill, so the slider
+     reads as the same control family as the buttons it sits under. */
+  .mobile-felt-raise .rs-head { min-width: 62px; }
+  .mobile-felt-raise .rs-value {
+    color: #e63946;
+    text-shadow: 0 0 12px rgba(230, 57, 70, 0.40);
+  }
+  .mobile-felt-raise .rs-track {
+    height: 16px;
+    background: rgba(0, 0, 0, 0.45);
+    border-color: rgba(255, 255, 255, 0.10);
+  }
+  .mobile-felt-raise .rs-fill {
+    background: linear-gradient(90deg, rgba(230, 57, 70, 0.40), rgba(230, 57, 70, 0.95));
+    box-shadow: 0 0 10px rgba(230, 57, 70, 0.40);
+  }
+  .mobile-felt-raise .rs-thumb { width: 22px; height: 22px; border-color: #e63946; }
+  .mobile-felt-raise .rs-confirm {
+    min-height: 38px;
+    border-radius: 999px;
+    color: #e63946;
+    border-color: rgba(230, 57, 70, 0.50);
+    background: rgba(38, 10, 12, 0.62);
+  }
+  /* Clamped-at-min cue, restated for the red mobile palette. */
+  .mobile-felt-raise .raise-slider.rs-at-min .rs-value { color: var(--text-dim); text-shadow: none; }
+  .mobile-felt-raise .raise-slider.rs-at-min .rs-fill {
+    background: rgba(230, 57, 70, 0.25);
+    box-shadow: none;
+  }
+  .mobile-felt-raise .raise-slider.rs-at-min .rs-thumb { border-color: rgba(255, 255, 255, 0.35); }
+
+  /* The slider adds a row to the overlaid bottom strip, so the felt only
+     reserves the extra interior padding while it is actually on screen. */
+  .mobile-felt-center.has-raise-slider { padding-bottom: 158px; }
+
+  /* ============================================================
      Mobile felt phase display — floating pill on felt
      ============================================================ */
   .mobile-felt-phase {
@@ -4334,12 +4397,133 @@ input, button, select, textarea { color: inherit; }
   .mobile-felt-second-row,
   .mobile-felt-center,
   .mobile-felt-actions,
+  .mobile-felt-raise,
   .mobile-felt-sizing,
   .mobile-felt-phase,
   .mobile-felt-seat-markers {
     display: none !important;
   }
 }
+
+/* ============================================================
+   CUSTOM RAISE-AMOUNT SLIDER (shared by desktop + mobile)
+   A draggable track that picks a raise TOTAL. Largely a view
+   layer: dragging only stages an amount, and Confirm hands that
+   amount to the existing raise submission path. Hidden unless it
+   is the viewer's own turn to act.
+   ============================================================ */
+.raise-slider {
+  /* Shown via .is-visible, toggled by syncRaiseSliders() from the same
+     places that decide whether the Raise button is usable. */
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.40);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-sm);
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.raise-slider.is-visible { display: flex; }
+
+.rs-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 0 0 auto;
+  min-width: 70px;
+}
+.rs-title {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.rs-value {
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.1;
+  /* Same gold family as .action-btn.raise. */
+  color: #ffd97a;
+  font-variant-numeric: tabular-nums;
+}
+.rs-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 110px;
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  /* A drag must pick an amount, never scroll the page. */
+  touch-action: none;
+}
+.rs-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 217, 122, 0.45), rgba(255, 217, 122, 0.95));
+  box-shadow: 0 0 10px rgba(255, 217, 122, 0.30);
+  pointer-events: none;
+}
+.rs-thumb {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #ffd97a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  transition: box-shadow 100ms;
+}
+.raise-slider.rs-dragging .rs-thumb { box-shadow: 0 0 14px rgba(255, 217, 122, 0.55); }
+/* Clamped at the legal minimum — the bar and the value grey out rather
+   than quietly submitting an illegal raise later. */
+.raise-slider.rs-at-min .rs-value { color: var(--text-dim); }
+.raise-slider.rs-at-min .rs-fill {
+  background: rgba(255, 217, 122, 0.28);
+  box-shadow: none;
+}
+.raise-slider.rs-at-min .rs-thumb { border-color: rgba(255, 255, 255, 0.40); }
+
+.rs-confirm {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  color: #ffd97a;
+  border: 1px solid rgba(255, 217, 122, 0.45);
+  background: rgba(255, 217, 122, 0.10);
+  border-radius: var(--radius-sm);
+  transition: background 120ms, border-color 120ms, transform 80ms;
+}
+.rs-confirm:not(:disabled):hover { background: rgba(255, 217, 122, 0.20); filter: brightness(1.08); }
+.rs-confirm:active:not(:disabled) { transform: scale(0.97); }
+.rs-confirm:disabled { opacity: 0.40; cursor: not-allowed; }
+
+/* Desktop placement: first child of .raise-row, i.e. directly beneath the
+   action bar that holds the Raise button. */
+.raise-row > .raise-slider { width: 100%; margin-bottom: 8px; }
 
 /* ============================================================
    ANIMATIONS — Game-feel layer (all visual, no logic)

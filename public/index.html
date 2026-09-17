@@ -247,6 +247,25 @@
         <span class="mfa-label mfa-allin" id="mfaAllin" data-action="all_in">All-in</span>
       </div>
 
+      <!-- Mobile full-felt raise slider: drag to pick a raise TOTAL, then
+           Confirm to send it through the existing raise path. Visible only
+           while it's the viewer's turn to act. Same widget as the desktop
+           #betSlider — one markup shape, two placements. -->
+      <div class="mobile-felt-raise" id="mobileFeltRaise">
+        <div class="raise-slider" id="mobileRaiseSlider">
+          <div class="rs-head">
+            <span class="rs-title">Raise to</span>
+            <span class="rs-value" aria-hidden="true">0</span>
+          </div>
+          <div class="rs-track" role="slider" tabindex="0" aria-label="Raise amount"
+               aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+            <div class="rs-fill"></div>
+            <div class="rs-thumb"></div>
+          </div>
+          <button type="button" class="rs-confirm" disabled>Confirm</button>
+        </div>
+      </div>
+
       <!-- Mobile full-felt sizing row: bet-sizing labels -->
       <div class="mobile-felt-sizing" id="mobileFeltSizing">
         <span class="mfs-label" data-sizing="min">Min</span>
@@ -313,6 +332,22 @@
             </div>
 
             <div class="raise-row" id="betControls">
+              <!-- Custom raise-amount slider: drag to pick a raise TOTAL,
+                   then Confirm to send it. Purely a view over the existing
+                   raise path (#raiseAmount + #raiseBtn). Visible only while
+                   it's the viewer's turn to act. -->
+              <div class="raise-slider" id="betSlider">
+                <div class="rs-head">
+                  <span class="rs-title">Raise to</span>
+                  <span class="rs-value" aria-hidden="true">0</span>
+                </div>
+                <div class="rs-track" role="slider" tabindex="0" aria-label="Raise amount"
+                     aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+                  <div class="rs-fill"></div>
+                  <div class="rs-thumb"></div>
+                </div>
+                <button type="button" class="rs-confirm" disabled>Confirm</button>
+              </div>
               <span class="raise-price-label">Price</span>
               <input id="raiseAmount" type="number" min="1" step="1" />
               <div class="raise-presets" id="raisePresets"></div>
