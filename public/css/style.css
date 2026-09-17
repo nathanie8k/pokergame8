@@ -3746,8 +3746,9 @@ input, button, select, textarea { color: inherit; }
     margin: 0;
     display: flex;
     flex-direction: column;
-    /* Full-screen felt radial gradient: lighter center → darker edges */
-    background: #0d0d0d;
+    /* Deep felt-green backdrop instead of black so the curve of the table
+       never sits in a black void — the whole screen reads as one surface. */
+    background: #08130f;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
@@ -3843,7 +3844,7 @@ input, button, select, textarea { color: inherit; }
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px 16px 10px;
+    padding: 6px 16px 4px;
     position: relative;
     z-index: 2;
     flex: 0 0 auto;
@@ -3898,15 +3899,28 @@ input, button, select, textarea { color: inherit; }
     flex-direction: column;
     align-items: center;
     gap: 10px;
-    flex: 1 0 auto;
-    padding: 12px 16px 16px;
-    margin: 6px 10px 8px;
+    /* Grows/shrinks to own every pixel between the header row above and the
+       overlaid action pills below — no dead black margin around the felt. */
+    flex: 1 1 auto;
+    /* Generous bottom padding reserves the strip where the action / sizing /
+       phase rows are painted on top of the felt. */
+    padding: 10px 16px 106px;
+    margin: 0 6px;
     position: relative;
     z-index: 2;
     min-height: 0;
-    /* Zone 1: dark green felt rounded panel */
-    background: radial-gradient(ellipse 80% 70% at 50% 45%, #12352a 0%, #0d2a1f 50%, #081c15 100%);
-    border-radius: 24px;
+    overflow: hidden;
+    justify-content: center;
+    justify-content: safe center;
+    /* Tall portrait oval (real table rotated 90°): the top and bottom bow
+       inward far more than the long straight flanks. The felt gradient is
+       clipped to the padding box edge-to-edge while the 9px border ring
+       paints a warm wood-and-gold rail around it. */
+    background:
+      radial-gradient(ellipse 80% 70% at 50% 45%, #12352a 0%, #0d2a1f 50%, #081c15 100%) padding-box,
+      linear-gradient(165deg, #8a5a2c 0%, #d4a017 48%, #8a5a2c 100%) border-box;
+    border: 9px solid transparent;
+    border-radius: 45% / 20%;
     box-shadow: inset 0 0 40px rgba(0,0,0,0.45);
   }
 
@@ -4073,14 +4087,17 @@ input, button, select, textarea { color: inherit; }
     cursor: default;
     transition: opacity 200ms;
   }
-  /* Left positions — anchored at the felt panel edge */
-  .mfsm-left-upper   { left: 2px; top: 12%; }
-  .mfsm-left-middle  { left: 2px; top: 45%; }
-  .mfsm-left-lower   { left: 2px; top: 74%; }
-  /* Right positions */
-  .mfsm-right-upper  { right: 2px; top: 12%; }
-  .mfsm-right-middle { right: 2px; top: 45%; }
-  .mfsm-right-lower  { right: 2px; top: 74%; }
+  /* Seats hug the oval instead of sitting on the four corners of a
+     rectangle: the upper/lower pairs are pulled inward toward the middle
+     of the felt, near the top and bottom bow of the ellipse. The middle
+     pair stays on the wide straight flank. Position is purely visual —
+     the seat index/id and click handler bound in client.js are unchanged. */
+  .mfsm-left-upper   { left: 12%; top: 9%; }
+  .mfsm-left-middle  { left: 3%; top: 42%; }
+  .mfsm-left-lower   { left: 11%; bottom: 20%; }
+  .mfsm-right-upper  { right: 12%; top: 9%; }
+  .mfsm-right-middle { right: 3%; top: 42%; }
+  .mfsm-right-lower  { right: 11%; bottom: 20%; }
 
   .mfsm-seat .mfsm-name {
     font-size: 11px;
@@ -4100,20 +4117,29 @@ input, button, select, textarea { color: inherit; }
     line-height: 1.2;
   }
   .mfsm-seat .mfsm-sit-here {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--text-dim);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
     cursor: pointer;
-    padding: 6px 10px;
+    padding: 7px 12px;
+    min-height: 36px;
     border-radius: 999px;
-    border: none;
-    transition: color 120ms, background 120ms;
+    border: 1px solid rgba(212,160,23,0.45);
+    background: rgba(0,0,0,0.42);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: color 120ms, background 120ms, border-color 120ms, transform 100ms var(--ease);
     white-space: nowrap;
   }
   .mfsm-seat .mfsm-sit-here:hover,
   .mfsm-seat .mfsm-sit-here:active {
-    color: #e63946;
-    background: rgba(230,57,70,0.08);
+    color: #ffd97a;
+    border-color: rgba(212,160,23,0.85);
+    background: rgba(212,160,23,0.16);
+    transform: translateY(-1px);
   }
   .mfsm-seat.mfsm-current-turn .mfsm-name {
     color: #e63946;
@@ -4154,48 +4180,60 @@ input, button, select, textarea { color: inherit; }
     display: flex;
     justify-content: space-evenly;
     align-items: center;
-    padding: 12px 8px 6px;
+    flex-wrap: nowrap;
+    gap: 6px;
+    /* Negative margin pulls the row up out of its own black bar and onto the
+       bottom curve of the felt. The row stays a normal flex sibling — same
+       DOM, same labels, same click handlers, only its position changed. */
+    margin-top: -100px;
+    /* Keeps the pills inside the narrow bottom bow of the ellipse. */
+    padding: 0 15%;
     position: relative;
-    z-index: 2;
+    z-index: 3;
     flex: 0 0 auto;
-  }
-  .mobile-felt-actions::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 16px;
-    right: 16px;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+    /* The row's own padding must not eat taps aimed at the felt underneath
+       ("Sit here" seats) — only the pills opt back into pointer events. */
+    pointer-events: none;
   }
   .mfa-label {
-    font-size: 15px;
+    pointer-events: auto;
+    font-size: 11px;
     font-weight: 800;
-    letter-spacing: 0.4px;
-    padding: 10px 8px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    padding: 0 10px;
     min-height: 44px;
     min-width: 44px;
     cursor: pointer;
     text-align: center;
     user-select: none;
-    transition: transform 100ms var(--ease), opacity 100ms, text-shadow 100ms;
-    display: flex;
+    transition: transform 100ms var(--ease), opacity 100ms, box-shadow 100ms, background 100ms, border-color 100ms;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    border-radius: 999px;
+    /* Translucent dark-green fill so the felt shows through the pill. */
+    background: rgba(7, 24, 17, 0.66);
+    border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,0,0,0.20) inset;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
   .mfa-label:active {
     transform: scale(0.93);
+    background: rgba(7, 24, 17, 0.85);
   }
   .mfa-label.mfa-disabled {
     opacity: 0.28;
     pointer-events: none;
   }
-  /* Individual action colors */
-  .mfa-check  { color: var(--text); }
-  .mfa-fold   { color: #ffb8b8; }
-  .mfa-raise  { color: #e63946; text-shadow: 0 0 12px rgba(230,57,70,0.40); }
-  .mfa-call   { color: var(--info); }
-  .mfa-allin  { color: #e63946; }
+  /* Individual action colors — text plus a matching rim/tint on the pill.
+     Values are unchanged from the previous mobile action row. */
+  .mfa-check  { color: var(--text);  border-color: rgba(255,255,255,0.24); }
+  .mfa-fold   { color: #ffb8b8;      border-color: rgba(255,107,107,0.45); background: rgba(38,10,12,0.62); }
+  .mfa-raise  { color: #e63946;      border-color: rgba(230,57,70,0.50);  background: rgba(38,10,12,0.62); text-shadow: 0 0 12px rgba(230,57,70,0.40); }
+  .mfa-call   { color: var(--info);  border-color: rgba(92,205,255,0.45); background: rgba(7,24,32,0.62); }
+  .mfa-allin  { color: #e63946;      border-color: rgba(230,57,70,0.55);  background: rgba(38,10,12,0.62); }
 
   /* ============================================================
      Mobile felt sizing row — quick bet-sizing labels
@@ -4204,13 +4242,17 @@ input, button, select, textarea { color: inherit; }
     display: flex;
     justify-content: space-evenly;
     align-items: center;
-    padding: 4px 8px 12px;
-    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
+    flex-wrap: nowrap;
+    gap: 4px;
+    /* Sits directly beneath the action pills, also painted on the felt. */
+    padding: 0 10% 2px;
     position: relative;
-    z-index: 2;
+    z-index: 3;
     flex: 0 0 auto;
+    pointer-events: none;
   }
   .mfs-label {
+    pointer-events: auto;
     font-size: 12px;
     font-weight: 700;
     color: var(--text-dim);
@@ -4244,17 +4286,31 @@ input, button, select, textarea { color: inherit; }
      ============================================================ */
   .mobile-felt-phase {
     position: relative;
-    z-index: 2;
+    z-index: 3;
     flex: 0 0 auto;
     text-align: center;
-    padding: 4px 12px 10px;
+    padding: 4px 12px calc(8px + env(safe-area-inset-bottom, 0px));
     font-size: 10px;
     letter-spacing: 2px;
     text-transform: uppercase;
     font-weight: 700;
     color: var(--text-dim);
-    border-top: 1px solid rgba(255,255,255,0.06);
     margin: 0 16px;
+    pointer-events: none;
+  }
+
+  /* Very narrow phones (≤360px): tighten the action pills and their side
+     inset so all five still fit on one row inside the oval's bottom bow. */
+  @media (max-width: 360px) {
+    .mobile-felt-actions {
+      padding: 0 14%;
+      gap: 4px;
+    }
+    .mfa-label {
+      font-size: 10px;
+      padding: 0 7px;
+      min-width: 40px;
+    }
   }
 
   /* ============================================================
