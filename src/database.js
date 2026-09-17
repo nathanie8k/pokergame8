@@ -44,10 +44,10 @@ const mongoose  = require('mongoose');
 // BEFORE calling db.connect(); if MONGO_URI were captured at module
 // load (above the `await`), the test would lock in 'localhost:27017'
 // and then crash with ECONNREFUSED when connect() tried to use it.
-// The default ('localhost:27017/friendly-poker') is preserved for any
+// The default ('localhost:27017/poker8') is preserved for any
 // non-test caller that boots without setting the env var.
 function currentMongoUri() {
-  return process.env.MONGO_URI || 'mongodb://localhost:27017/friendly-poker';
+  return process.env.MONGO_URI || 'mongodb://localhost:27017/poker8';
 }
 // Keep engine selection snappy so a misconfigured deployment fails fast
 // instead of hanging the first DB call.

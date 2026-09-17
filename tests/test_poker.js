@@ -1,4 +1,4 @@
-// Texas Hold'em poker engine tests. Run with: npm test (or: node tests/test_poker.js)
+// Texas holdem poker engine tests. Run with: npm test (or: node tests/test_poker.js)
 // Exits 0 on success, 1 on any failure.
 
 'use strict';

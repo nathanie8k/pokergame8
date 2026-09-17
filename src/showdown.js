@@ -1,6 +1,6 @@
 // Server-side showdown module.
 //
-// Texas Hold'em end-of-hand showdown. Bridges the engine's in-memory
+// Texas holdem end-of-hand showdown. Bridges the engine's in-memory
 // card representation ({rank, suit}) to the format expected by the
 // `pokersolver` npm package (rank+suit strings like "Ah", "Td", "2s"),
 // evaluates each non-folded player's best 5-card hand off the board,
@@ -63,7 +63,7 @@ function solvePlayerHand(holeCards, boardCards) {
   if (holeCards.length !== 2) {
     throw new Error('showdown.solvePlayerHand: holeCards must be exactly 2 cards, got ' + holeCards.length);
   }
-  // Texas Hold'em board has 0..5 community cards (pre-flop / flop / turn /
+  // Texas holdem board has 0..5 community cards (pre-flop / flop / turn /
   // river). Anything > 5 is malformed: the engine never produces a >5-card
   // board and a manual >5-card call would propagate a category bug to the
   // UI banner (`storedHandName`). Reject explicitly so the test suite

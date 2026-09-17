@@ -1,4 +1,4 @@
-// Friendly Texas Hold'em Poker - server entry point.
+// Poker8 Texas holdem server entry point.
 //
 // Uses Express for HTTP/Socket.IO for real-time. Game state lives in
 // `poker.js` (engine) and `rooms.js` (in-memory table manager); player accounts
@@ -761,7 +761,7 @@ app.get('/api/health', (_req, res) => {
 // that never played) are filtered out at the database layer via
 // db.getLeaderboardRows().
 //
-// Intentionally unauthenticated: this is a friendly-points app where
+// Intentionally unauthenticated: this is a points-only app where
 // surfacing who leads the meta-game is part of the fun. Do not gate this
 // behind admin without first auditing whether things like admin_list
 // (which still uses socket-side admin) might be confusingly inconsistent.
@@ -1932,7 +1932,7 @@ function clampInt(value, min, max, fallback) {
 
 server.listen(PORT, HOST, () => {
   console.log('=================================================');
-  console.log('  Friendly Poker server is up!');
+  console.log('  Poker8 server is up!');
   console.log('  Open: http://localhost:' + PORT);
   if (getOwnerToken() == null) {
     console.log('  Owner account: LOCKED (OWNER_TOKEN env unset).');

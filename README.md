@@ -1,10 +1,10 @@
-# Friendly Poker - Texas Hold'em (No Money)
+# Poker8 - Texas holdem (No Money)
 
-A friendly Texas Hold'em poker game you can run on your own computer and
+Poker8 is a Texas holdem poker game you can run on your own computer and
 optionally host on the web so people worldwide can play together.
 
 - **No money. No gambling.** Players earn points (admin-managed). For fun only.
-- **Real Texas Hold'em rules** - blinds, dealer rotation, betting rounds,
+- **Real Texas holdem rules** - blinds, dealer rotation, betting rounds,
   full hand evaluation (best 5 of 7), ties, splits.
 - **Random player names** ready to pick for new players.
 - **Persistent accounts**: every player's name and points are saved in a
@@ -17,7 +17,7 @@ optionally host on the web so people worldwide can play together.
 ## Quick start
 
 ```bash
-cd poker-game
+cd poker8
 npm install
 npm start
 ```
@@ -42,7 +42,7 @@ players sit down.
 6. After each hand, points are automatically rebalanced and the next hand
    starts in ~5 seconds.
 
-### Texas Hold'em rules implemented
+### Texas holdem rules implemented
 
 - Dealer button rotates clockwise each hand.
 - Heads-up (2 players): dealer is small blind, acts first pre-flop and
@@ -58,8 +58,7 @@ players sit down.
 
 ## Admin panel
 
-Open by clicking the **Admin** button in the top bar, then enter the admin
-password.
+Open the **Admin** entry at the bottom of the lobby, then enter the admin password.
 
 - **Add points** to any player (default +X, can be negative for a deduction).
 - **Set points** to an exact value.
@@ -74,13 +73,13 @@ sit down.
 ## Project layout
 
 ```
-poker-game/
+poker8/
 ├── data.json                # Persistent player accounts (auto-created)
 ├── package.json
 ├── README.md
 ├── server.js                # Express + Socket.IO entry point
 ├── src/
-│   ├── poker.js             # Texas Hold'em engine (deck, eval, state machine)
+│   ├── poker.js             # Texas holdem engine (deck, eval, state machine)
 │   ├── rooms.js             # In-memory table manager
 │   └── database.js          # JSON-file persistence
 └── public/

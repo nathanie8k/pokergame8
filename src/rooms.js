@@ -1,4 +1,4 @@
-// In-memory table management for FriendLy Poker.
+// In-memory table management for Poker8.
 //
 // Holds the authoritative game state for every active table. Player persisted
 // data (points, name, etc.) lives in `database.js`; only the table/session

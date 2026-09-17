@@ -1,4 +1,4 @@
-// Friendly Poker — in-memory dev bootstrap.
+// Poker8 — in-memory dev bootstrap.
 //
 // What this is for
 // ----------------
@@ -43,7 +43,7 @@ async function main() {
   const mongod = await MongoMemoryServer.create({
     // Spawn mongod detached but bound to a free localhost port so the
     // Express + Socket.IO server can attach to the default :3000.
-    instance: { port: 0, dbName: 'friendly-poker' },
+    instance: { port: 0, dbName: 'poker8' },
     binary: { downloadDir: path.join(require('os').tmpdir(), 'mongodb-binaries') },
   });
   const uri = mongod.getUri();
