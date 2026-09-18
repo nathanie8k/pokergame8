@@ -205,6 +205,22 @@
           <button class="mfsr-pill-btn" id="mfsrSitOutBtn" style="display:none">Sit out</button>
           <button class="mfsr-pill-btn" id="mfsrSitInBtn" style="display:none">Sit in</button>
           <button class="mfsr-pill-btn" id="mfsrLeaveBtn">Leave</button>
+          <!-- Mobile 3-dot table menu — mirrors the desktop #tableMenu. -->
+          <div class="table-menu mfsr-menu" id="mfsrTableMenu">
+            <button id="mfsrTableMenuBtn" class="table-menu-btn" type="button"
+                    aria-haspopup="true" aria-expanded="false" aria-controls="mfsrTableMenuPanel"
+                    title="Table menu" aria-label="Table menu">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <circle cx="12" cy="5"  r="2.1" fill="currentColor"/>
+                <circle cx="12" cy="12" r="2.1" fill="currentColor"/>
+                <circle cx="12" cy="19" r="2.1" fill="currentColor"/>
+              </svg>
+            </button>
+            <div class="table-menu-panel" id="mfsrTableMenuPanel" role="menu" aria-labelledby="mfsrTableMenuBtn" hidden>
+              <button class="table-menu-item" id="mfsrMenuLeaveItem" type="button" role="menuitem">Leave table</button>
+              <button class="table-menu-item" id="mfsrMenuChangeSeatItem" type="button" role="menuitem">Change seat</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -286,6 +302,24 @@
           <button id="sitOutBtn" class="ghost-btn" style="display:none">Sit out</button>
           <button id="sitInBtn"  class="ghost-btn" style="display:none">Sit in</button>
           <button id="leaveTableBtn" class="ghost-btn">Leave table</button>
+          <!-- 3-dot table menu: Change seat / Leave table. Hidden by default;
+               opened by the ⋮ toggle below. Same structure as the mobile
+               .mfsr-menu wrapper so both layouts share one JS wiring. -->
+          <div class="table-menu" id="tableMenu">
+            <button id="tableMenuBtn" class="table-menu-btn" type="button"
+                    aria-haspopup="true" aria-expanded="false" aria-controls="tableMenuPanel"
+                    title="Table menu" aria-label="Table menu">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <circle cx="12" cy="5"  r="2.1" fill="currentColor"/>
+                <circle cx="12" cy="12" r="2.1" fill="currentColor"/>
+                <circle cx="12" cy="19" r="2.1" fill="currentColor"/>
+              </svg>
+            </button>
+            <div class="table-menu-panel" id="tableMenuPanel" role="menu" aria-labelledby="tableMenuBtn" hidden>
+              <button class="table-menu-item" id="tableMenuLeaveItem" type="button" role="menuitem">Leave table</button>
+              <button class="table-menu-item" id="tableMenuChangeSeatItem" type="button" role="menuitem">Change seat</button>
+            </div>
+          </div>
         </div>
       </div>
 

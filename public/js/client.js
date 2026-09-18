@@ -18,6 +18,11 @@ const state = {
   isAdmin:       false,
   tables:        [],
   currentTable:  null,
+  // 3-dot table menu (⋮) — closed by default. `open` tracks the toggle
+  // state; `changeSeatMode` is true while the player is picking a new
+  // seat (empty seats then read "Move here" and click → move_seat).
+  tableMenuOpen: false,
+  changeSeatMode: false,
   adminRoom: {
     sessions: [],
     editorTableId: null,
@@ -1455,6 +1460,10 @@ function renderTable() {
   seatsHost.innerHTML = '';
   const N = t.maxSeats;
   let playerSeatedHere = false;
+  // Self seat lookup happens BEFORE the render loop: the empty-seat pills
+  // below read it to decide whether clicks should join (spectator) or
+  // move (change-seat mode).
+  const selfSeatObj = t.seats.find(s => s.occupied && s.isSelf);
   // Find the viewer's server-side seat index, then lay players out
   // clockwise starting at the viewer's relative position so the
   // viewer always lands at slot 0 (front, bottom-center). Server
@@ -1484,13 +1493,17 @@ function renderTable() {
       // The label is hidden on narrow viewports (≤480px via CSS) so it never
       // truncates mid-character ("...ere"). serverIdx is passed to the join
       // API; slotIdx drives CSS positioning via data-slot.
+      // While change-seat mode is on (3-dot menu → "Change seat") the same
+      // pill becomes a "Move here" target: clicking emits move_seat instead
+      // of join_table. The gold .change-seat class + label swap are cosmetic.
+      const changing = state.changeSeatMode && !!selfSeatObj;
       const emptyEl = el('div', {
-        class: 'empty-seat',
-        title: 'Click to sit here',
-        onclick: () => seatEmpty(serverIdx, t.id),
+        class: 'empty-seat' + (changing ? ' change-seat' : ''),
+        title: changing ? 'Click to move to this seat' : 'Click to sit here',
+        onclick: changing ? () => moveSeat(serverIdx) : () => seatEmpty(serverIdx, t.id),
       }, [
-        el('span', { class: 'empty-seat-icon', text: '+', 'aria-hidden': 'true' }),
-        el('span', { class: 'empty-seat-label', text: 'Sit here' }),
+        el('span', { class: 'empty-seat-icon', text: changing ? '⇄' : '+', 'aria-hidden': 'true' }),
+        el('span', { class: 'empty-seat-label', text: changing ? 'Move here' : 'Sit here' }),
       ]);
       emptyEl.dataset.slot = String(slotIdx);
       seatsHost.appendChild(emptyEl);
@@ -1498,7 +1511,7 @@ function renderTable() {
   }
 
   // Sit-out / Sit-in buttons for self
-  const selfSeat = t.seats.find(s => s.occupied && s.isSelf);
+  const selfSeat = selfSeatObj;
   // Self-panel: single horizontal row with three flex segments
   //  [info | cards | action buttons]. Each segment is populated
   // independently so the static action-bar (Fold/Check/Call/Raise/All-in)
@@ -1515,6 +1528,20 @@ function renderTable() {
   $('sitOutBtn').style.display = (selfSeat && !selfSeat.folded && !selfSeat.allIn && !selfSeat.satOut && selfSeat.stack > 0) ? '' : 'none';
   // Sit-in only makes sense between hands (not folded / not all-in for current round).
   $('sitInBtn').style.display  = (selfSeat && selfSeat.satOut && !selfSeat.folded && !selfSeat.allIn && selfSeat.stack > 0) ? '' : 'none';
+  // Change-seat hint: overrides the phase pill text while the player is
+  // picking a new seat (set by the 3-dot menu → "Change seat"). Both the
+  // desktop #phaseDisplay and the mobile #mobileFeltPhase pill get the
+  // gold hint so the mode is obvious on either layout.
+  const phaseEl = $('phaseDisplay');
+  if (phaseEl) {
+    phaseEl.classList.toggle('change-seat-hint', state.changeSeatMode);
+    if (state.changeSeatMode) phaseEl.textContent = 'Tap an open seat to move';
+  }
+  var mobilePhaseEl = $('mobileFeltPhase');
+  if (mobilePhaseEl) {
+    mobilePhaseEl.classList.toggle('change-seat-hint', state.changeSeatMode);
+    if (state.changeSeatMode) mobilePhaseEl.textContent = 'Tap an open seat to move';
+  }
 
   // Action bar: enable only on viewer's turn.
   const showAct = !!selfSeat
@@ -1889,14 +1916,19 @@ function populateMobileFelt(t, selfSeat) {
             }
           }
         } else {
-          // Empty: "Sit here"
+          // Empty: "Sit here" — or "Move here" while change-seat mode is on
+          // (same reuse as the desktop empty-seat pills above).
+          var changingHere = state.changeSeatMode && !!selfSeat;
           var sitEl = el('span', {
             class: 'mfsm-sit-here',
-            text: 'Sit here',
-            title: 'Click to sit here',
-            onclick: (function(seatIdx, tableId) {
-              return function() { seatEmpty(seatIdx, tableId); };
-            })(serverIdx, t.id),
+            text: changingHere ? 'Move here' : 'Sit here',
+            title: changingHere ? 'Tap to move to this seat' : 'Click to sit here',
+            onclick: (function(seatIdx, tableId, changing) {
+              return function() {
+                if (changing) moveSeat(seatIdx);
+                else seatEmpty(seatIdx, tableId);
+              };
+            })(serverIdx, t.id, changingHere),
           });
           markerEl.appendChild(sitEl);
         }
@@ -2008,16 +2040,24 @@ function populateMobileFelt(t, selfSeat) {
   // Phase display on mobile
   var mp = $('mobileFeltPhase');
   if (mp) {
-    var phaseLabel = ({
-      waiting: 'Waiting for players',
-      pre_flop: 'Pre-flop',
-      flop: 'Flop',
-      turn: 'Turn',
-      river: 'River',
-      showdown: 'Showdown',
-      hand_over: 'Hand complete',
-    })[t.phase] || t.phase;
-    mp.textContent = phaseLabel;
+    // Change-seat mode replaces the phase text with the pick-a-seat hint
+    // (renderTable already set it for desktop; keep mobile in sync).
+    if (state.changeSeatMode) {
+      mp.classList.add('change-seat-hint');
+      mp.textContent = 'Tap an open seat to move';
+    } else {
+      mp.classList.remove('change-seat-hint');
+      var phaseLabel = ({
+        waiting: 'Waiting for players',
+        pre_flop: 'Pre-flop',
+        flop: 'Flop',
+        turn: 'Turn',
+        river: 'River',
+        showdown: 'Showdown',
+        hand_over: 'Hand complete',
+      })[t.phase] || t.phase;
+      mp.textContent = phaseLabel;
+    }
   }
 }
 
@@ -2093,6 +2133,87 @@ function seatEmpty(seatIdx, tableId) {
   socket.emit('join_table', { tableId, seatIdx }, res => {
     if (res && res.ok) setView('table');
     else { hideLoading(); showToast(res && res.error ? res.error : 'Could not sit', 'error'); }
+  });
+}
+
+// ---------- 3-dot table menu (⋮): Change seat / Leave table ----------
+// The menu lives in both the desktop .table-actions strip and the mobile
+// .mfsr-right pill row (same markup shape, one wiring below). Closed by
+// default; click-outside + Escape + option-select all close it.
+
+function setTableMenuOpen(open) {
+  state.tableMenuOpen = !!open;
+  [['tableMenu', 'tableMenuBtn', 'tableMenuPanel'],
+   ['mfsrTableMenu', 'mfsrTableMenuBtn', 'mfsrTableMenuPanel']].forEach(([wrapId, btnId, panelId]) => {
+    const panel = $(panelId);
+    const btn = $(btnId);
+    if (panel) {
+      if (open) panel.removeAttribute('hidden'); else panel.setAttribute('hidden', '');
+    }
+    if (btn) {
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.classList.toggle('is-open', !!open);
+    }
+    // Keep both wrappers in sync visually too (is-open styles the button).
+    const wrap = $(wrapId);
+    if (wrap) wrap.classList.toggle('is-open', !!open);
+  });
+}
+
+function toggleTableMenu() {
+  setTableMenuOpen(!state.tableMenuOpen);
+}
+
+function closeTableMenu() {
+  if (state.tableMenuOpen) setTableMenuOpen(false);
+}
+
+// Exit change-seat mode and restore the normal phase display + seats.
+function cancelChangeSeat() {
+  state.changeSeatMode = false;
+  if (state.currentTable) renderTable();   // re-renders phase text + seat pills
+  else {
+    // No table in state (shouldn't happen — the menu only exists on the
+    // table view) — just strip the hint classes directly.
+    ['phaseDisplay', 'mobileFeltPhase'].forEach((id) => {
+      const node = $(id);
+      if (node) node.classList.remove('change-seat-hint');
+    });
+  }
+}
+
+// "Change seat" menu option: flip every empty-seat pill into a "Move here"
+// target. Only seated players can enter the mode.
+function startChangeSeat() {
+  closeTableMenu();
+  const t = state.currentTable;
+  const seated = !!(t && t.seats && t.seats.some(s => s && s.occupied && s.isSelf));
+  if (!seated) {
+    showToast('You need to be seated to change seats', 'error');
+    return;
+  }
+  state.changeSeatMode = true;
+  renderTable();   // seats now read "Move here" + phase pill shows the hint
+}
+
+// Move-seat click target (shared by desktop pills + mobile markers).
+// Emits move_seat; the server frees the old seat and seats the player at
+// targetSeat between hands. table_state broadcast re-renders the view.
+function moveSeat(targetSeat) {
+  const t = state.currentTable;
+  if (!t) return;
+  socket.emit('move_seat', { targetSeat }, res => {
+    if (res && res.ok) {
+      state.changeSeatMode = false;
+      showToast('Moved to seat ' + ((res.seatIdx || 0) + 1), 'good');
+      // table_state arrives via broadcast, but re-render immediately so
+      // the phase pill + seat labels snap back without waiting on it.
+      renderTable();
+    } else {
+      showToast((res && res.error) ? res.error : 'Could not move', 'error');
+      // Mid-hand rejection is the common failure — leave the mode on so
+      // the player can retry the moment the hand ends.
+    }
   });
 }
 
@@ -3913,6 +4034,27 @@ socket.on('chat_update', ({ tableId, messages }) => {
   if (mobileLeaderboardLink) mobileLeaderboardLink.addEventListener('click', e => { e.preventDefault(); openLeaderboard(); });
   $('leaveTableBtn').addEventListener('click', leaveCurrentTable);
   $('sitOutBtn').addEventListener('click', sitOut);
+
+  // ---- 3-dot table menu (⋮) — desktop + mobile (same wiring) ----
+  $('tableMenuBtn').addEventListener('click', (e) => { e.stopPropagation(); toggleTableMenu(); });
+  $('mfsrTableMenuBtn').addEventListener('click', (e) => { e.stopPropagation(); toggleTableMenu(); });
+  $('tableMenuLeaveItem').addEventListener('click', () => { closeTableMenu(); leaveCurrentTable(); });
+  $('mfsrMenuLeaveItem').addEventListener('click', () => { closeTableMenu(); leaveCurrentTable(); });
+  $('tableMenuChangeSeatItem').addEventListener('click', startChangeSeat);
+  $('mfsrMenuChangeSeatItem').addEventListener('click', startChangeSeat);
+  // Click-outside-to-close: any tap that isn't inside one of the two menu
+  // wrappers closes the open panel (matches the online-modal pattern).
+  document.addEventListener('click', (e) => {
+    if (!state.tableMenuOpen) return;
+    if (e.target.closest('#tableMenu') || e.target.closest('#mfsrTableMenu')) return;
+    closeTableMenu();
+  });
+  // Escape closes the menu — and a second Escape exits change-seat mode.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (state.tableMenuOpen) { closeTableMenu(); return; }
+    if (state.changeSeatMode) cancelChangeSeat();
+  });
   // Chat panel: Enter submits, clicking Send submits. The HTML maxlength=200
   // caps paste length natively so the server-side slice(0,200) is just
   // defense-in-depth.

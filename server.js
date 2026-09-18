@@ -1181,6 +1181,79 @@ io.on('connection', (socket) => {
     cb && cb({ ok: true });
   });
 
+  // Change seat (3-dot table menu → "Change seat"). Lets an already-seated
+  // player move to a different seat AT THE SAME TABLE between hands. The
+  // client shows the player their current seat + every open seat as pickable
+  // "Move here" pills (reuse of the empty-seat "Sit here" logic); this
+  // handler is where the actual seat swap happens.
+  //
+  // Same-table contract: the player must already occupy a seat on `tid`.
+  // (Cross-table moves would be a leave + join; this endpoint is only for
+  // rearranging where you sit.) Mid-hand moves are rejected to keep chip
+  // accounting coherent — a mid-hand move would strand `contributed` chips
+  // on the old seat and relocate hole cards between engine turns. The same
+  // WAITING/HAND_OVER gate applies to all seats so a relocated player can
+  // never silently drop out of an in-progress hand.
+  //
+  // Race protection: the seat lookup is by playerId, so a double-tap on
+  // "Move here" resolves to the same seat (first move succeeds; the
+  // second finds the caller already at targetSeat → unchanged:true).
+  socket.on('move_seat', ({ targetSeat } = {}, cb) => {
+    const tid = socket.data.tableId;
+    const player = socket.data.player;
+    if (!tid) return cb && cb({ ok: false, error: 'Not at a table' });
+    if (!player) return cb && cb({ ok: false, error: 'Not logged in' });
+    // Rate limit: max 10 move attempts per minute per player (same budget
+    // as join_table — a change-seat burst is a UI accident, not a strategy).
+    if (!checkRateLimit(player.name, 'move_seat', 10)) {
+      return cb && cb({ ok: false, error: 'Too many requests — slow down' });
+    }
+    const t = rooms.get(tid);
+    if (!t) return cb && cb({ ok: false, error: 'No such table' });
+    // Look up the caller's seat by playerId. socket.data.seatIdx could be
+    // stale after certain reconnect paths, so scan the seat array. (Same
+    // cap of one seat per player as the disconnect handler above.)
+    const fromIdx = t.seats.findIndex(s => s && s.playerId === player.id);
+    if (fromIdx === -1) return cb && cb({ ok: false, error: 'Not seated at this table' });
+    const seatCount = t.seats.length;
+    if (!Number.isInteger(targetSeat) || targetSeat < 0 || targetSeat >= seatCount) {
+      return cb && cb({ ok: false, error: 'Bad seat' });
+    }
+    // Moving to your own current seat: nothing to do. Report success so
+    // the UI closes cleanly (also covers a double-tap race).
+    if (targetSeat === fromIdx) {
+      return cb && cb({ ok: true, seatIdx: fromIdx, unchanged: true });
+    }
+    // A player must keep enough points to remain seated. Same rule as a
+    // fresh join_table; the seat they leave is about to be freed.
+    const playerPoints = Number(player.points) || 0;
+    if (playerPoints < (Number(t.minPoints) || 0)) {
+      return cb && cb({ ok: false, error: 'You need at least ' + t.minPoints + ' points to sit at this table — you have ' + playerPoints });
+    }
+    // Delegate the swap to rooms.moveSeat: rejects mid-hand moves (seat-
+    // indexed engine bookkeeping would corrupt), frees the old seat and
+    // seats the player at targetSeat with stack/avatar/satOut carried over
+    // — see src/rooms.js#moveSeat.
+    const result = rooms.moveSeat(tid, fromIdx, targetSeat);
+    if (!result.ok) {
+      console.error('move_seat failed:', result.error);
+      return cb && cb({ ok: false, error: result.error || 'Move failed' });
+    }
+    // Cancel any turn timer left pointing at the OLD index: the seat there
+    // is now null (or unchanged), and a stale timer could otherwise
+    // auto-act for a seat that no longer exists.
+    cancelTurnTimer(tid, fromIdx);
+    // Refresh socket.data.seatIdx (UI + leave_table use it).
+    socket.data.seatIdx = result.seatIdx;
+    // Server-side stack save — the same async save path join_table relies
+    // on (seatPlayer wrote the moved stack as the new seat's chips; the DB
+    // row must match). saveStacksToDB iterates seats + updates playerSockets.
+    saveStacksToDB(t).catch((err) => console.error('save stacks on move_seat:', err));
+    broadcastTable(tid);
+    broadcastLobby();
+    cb && cb({ ok: true, seatIdx: result.seatIdx });
+  });
+
   socket.on('sit_out', (_, cb) => {
     const tid = socket.data.tableId;
     const sidx = socket.data.seatIdx;

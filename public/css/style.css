@@ -4827,6 +4827,123 @@ input, button, select, textarea { color: inherit; }
 }
 
 /* ============================================================
+   TABLE MENU (⋮) — dark glass dropdown, black/gold accents.
+   One markup shape, two placements: desktop inside
+   #view-table .table-actions, mobile inside .mfsr-right.
+   Closed by default (the panel carries the `hidden` attribute);
+   client.js toggles hidden + aria-expanded.
+   ============================================================ */
+.table-menu {
+  position: relative;
+  display: inline-block;
+}
+.table-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.45);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms, box-shadow 120ms;
+}
+.table-menu-btn:hover,
+.table-menu-btn:focus-visible,
+.table-menu-btn.is-open {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,204,77,0.45);
+  box-shadow: 0 0 12px rgba(255,204,77,0.20);
+  color: var(--accent-2);
+}
+.table-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 168px;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(10,10,10,0.96);
+  border: 1px solid rgba(255,204,77,0.22);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.60);
+  z-index: 300;
+}
+.table-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #eaeaea;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 100ms, color 100ms;
+}
+.table-menu-item:hover,
+.table-menu-item:focus-visible {
+  background: rgba(255,204,77,0.12);
+  color: var(--accent);
+}
+/* Desktop placement: the menu lives in .table-actions, which sits in the
+   table-info strip BELOW the fixed top bar — the panel opens downward
+   into free space and cannot cover the player/points chips. */
+.table-menu:not(.mfsr-menu) .table-menu-btn {
+  width: 38px;
+  height: 34px;
+}
+/* Mobile placement: compact round button matching the 36px pill row;
+   panel still opens DOWNWARD so it clears the mftr player/points pills
+   above the second row. */
+.mfsr-menu .table-menu-btn {
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  background: rgba(0,0,0,0.40);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: var(--accent);
+}
+.mfsr-menu .table-menu-btn:hover,
+.mfsr-menu .table-menu-btn:active {
+  background: rgba(255,255,255,0.08);
+  color: var(--accent-2);
+  border-color: rgba(255,204,77,0.45);
+}
+
+/* ---- Change-seat mode (reuse of the lobby "Sit here" flow) ---- */
+/* Empty seats flip from "Sit here" to "Move here" while the player
+   is choosing a new seat via the 3-dot menu. */
+.empty-seat.change-seat .empty-seat-label { color: var(--accent); }
+.empty-seat.change-seat .empty-seat-icon {
+  border-style: solid;
+  border-color: rgba(255,204,77,0.55);
+  color: var(--accent);
+}
+.empty-seat.change-seat:hover,
+.empty-seat.change-seat:focus-visible {
+  border-color: rgba(255,204,77,0.75);
+  box-shadow: 0 0 18px rgba(255,204,77,0.18);
+}
+/* Hint text overlays, reusing the phase pill styling */
+.change-seat-hint {
+  color: var(--accent);
+  letter-spacing: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border: 1px solid rgba(255,204,77,0.30);
+  border-radius: 999px;
+  background: rgba(0,0,0,0.45);
+}
+
+/* ============================================================
    REDUCED-MOTION: disable all new animations
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
@@ -4855,4 +4972,5 @@ input, button, select, textarea { color: inherit; }
   .mfsm-seat.mfsm-perf-won .mfsm-name,
   .mfsm-seat.mfsm-perf-lost .mfsm-name,
   .mfsm-seat.mfsm-perf-fold .mfsm-name { animation: none; }
+  .change-seat-hint { animation: none; }
 }

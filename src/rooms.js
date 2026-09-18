@@ -407,6 +407,85 @@ class RoomManager {
     return true;
   }
 
+  // Move a seated player from one seat to another AT THE SAME TABLE
+  // (client: 3-dot menu → "Change seat"). Between-hands operation only —
+  // a mid-hand move would strand `contributed` chips on the old seat and
+  // relocate hole cards between engine turns, so phases other than
+  // WAITING / HAND_OVER are rejected. The caller (server.js#move_seat)
+  // resolves the player's current seat index + enforces rate limits and
+  // the table minimum-points rule; this method owns the seat-array swap.
+  //
+  // "Free target" uses the same reclaimable predicate as findEmptySeat /
+  // seatPlayer: a seat counts as free when it's null OR flagged removed
+  // (stale occupant). On success the seat keeps its stack, avatar and
+  // satOut flag, and positional engine state (button/SB/BB/current actor)
+  // is remapped so it still points at the same PERSON at the new index.
+  moveSeat(tableId, fromIdx, toIdx) {
+    const t = this.tables.get(tableId);
+    if (!t) return { ok: false, error: 'No such table' };
+    if (!Number.isInteger(fromIdx) || !Number.isInteger(toIdx)
+      || fromIdx < 0 || toIdx < 0 || fromIdx >= t.seats.length || toIdx >= t.seats.length) {
+      return { ok: false, error: 'Bad seat' };
+    }
+    if (fromIdx === toIdx) return { ok: true, seatIdx: fromIdx, unchanged: true };
+    if (t.phase !== poker.PHASE.WAITING && t.phase !== poker.PHASE.HAND_OVER) {
+      return { ok: false, error: 'Cannot change seats during a hand — wait for it to finish' };
+    }
+    const fromSeat = t.seats[fromIdx];
+    if (!fromSeat || fromSeat.removed) return { ok: false, error: 'Not seated at this table' };
+    const target = t.seats[toIdx];
+    if (target && !target.removed) return { ok: false, error: 'Seat taken' };
+    // Snapshot positional state so it can be remapped to the new index.
+    const wasCurrent = t.currentPlayerIndex === fromIdx;
+    const wasButton  = t.buttonIndex  === fromIdx;
+    const wasSB      = t.sbIndex      === fromIdx;
+    const wasBB      = t.bbIndex      === fromIdx;
+    // Belt-and-braces: pending-unseat entries are always for removed seats
+    // (unseat mid-hand marks removed=true first), and a removed seat can't
+    // be the move SOURCE, so this can only be true for pre-existing stale
+    // bookkeeping. Handled anyway so the array never points at a live seat.
+    const pendingIncludesFrom = !!(t._pendingUnseat && t._pendingUnseat.includes(fromIdx));
+    const staleTarget = target || null;   // removed-occupant shell we overwrite
+    // Null the old slot before claiming the new one so a failed seatPlayer
+    // can't produce a duplicated-occupant state.
+    t.seats[fromIdx] = null;
+    if (pendingIncludesFrom) {
+      t._pendingUnseat = t._pendingUnseat.filter((i) => i !== fromIdx);
+    }
+    // Claim the target seat via the same path a fresh join uses: seatPlayer
+    // rebuilds the seat object fresh (removed:false, acted:false, empty hole
+    // cards) and overwrites any removed-occupant shell wholesale.
+    const result = this.seatPlayer(tableId, toIdx, {
+      id: fromSeat.playerId,
+      name: fromSeat.name,
+      points: fromSeat.stack,
+      profilePhoto: fromSeat.avatar || '',
+    });
+    if (!result.ok) {
+      // Roll back so the player is never left seatless: the original seat
+      // object was never mutated (only the array slot was nulled), so put
+      // it back, restore the removed shell on the target, and restore the
+      // pending-unseat entry if there was one.
+      t.seats[fromIdx] = fromSeat;
+      if (staleTarget && staleTarget.removed) t.seats[toIdx] = staleTarget;
+      if (pendingIncludesFrom) {
+        t._pendingUnseat = t._pendingUnseat || [];
+        if (!t._pendingUnseat.includes(fromIdx)) t._pendingUnseat.push(fromIdx);
+      }
+      return result;
+    }
+    // Carry state the fresh seat object can't know: the satOut preference.
+    t.seats[toIdx].satOut = !!fromSeat.satOut;
+    // Remap positional engine state to the new index (between hands these
+    // are usually -1 or about to be recomputed by startHand; remapping
+    // keeps a WAITING table's carried-over buttonIndex coherent).
+    if (wasCurrent) t.currentPlayerIndex = toIdx;
+    if (wasButton)  t.buttonIndex  = toIdx;
+    if (wasSB)      t.sbIndex      = toIdx;
+    if (wasBB)      t.bbIndex      = toIdx;
+    return { ok: true, seatIdx: toIdx };
+  }
+
   finishPendingUnseats(table) {
     if (!table._pendingUnseat) return;
     for (const idx of table._pendingUnseat) {
