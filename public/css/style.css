@@ -4416,6 +4416,12 @@ input, button, select, textarea { color: inherit; }
   /* Shown via .is-visible, toggled by syncRaiseSliders() from the same
      places that decide whether the Raise button is usable. */
   display: none;
+  /* Pin the widget to left-to-right regardless of the page's writing
+     direction: drag right must always mean "raise more". The track's
+     geometry (fill/thumb anchored with `left`, drag math from the
+     track's left edge) is physical-LTR, so under a future RTL locale
+     this keeps the slider from mirroring backwards. */
+  direction: ltr;
   align-items: center;
   gap: 8px;
   min-height: 40px;
