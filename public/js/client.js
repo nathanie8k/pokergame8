@@ -1524,6 +1524,23 @@ function renderTable() {
     sidxForActive >= 0 && sidxForActive === t.currentPlayerIndex);
   populateSelfInfo($('selfPanelInfo'), selfSeat, t);
   populateSelfCards($('selfPanelCards'), selfSeat);
+  
+  // Own hand zone (C1): populate the bottom-anchored hand display
+  const ownHandZone = $('ownHandZone');
+  const ownHandCards = $('ownHandCards');
+  if (ownHandZone && ownHandCards) {
+    if (selfSeat && selfSeat.holeCards && selfSeat.holeCards.length === 2) {
+      ownHandZone.style.display = '';
+      ownHandCards.innerHTML = '';
+      ownHandCards.appendChild(renderHoleCards({
+        faceUp: true,
+        cards: selfSeat.holeCards,
+        small: true,
+      }));
+    } else {
+      ownHandZone.style.display = 'none';
+    }
+  }
 
   $('sitOutBtn').style.display = (selfSeat && !selfSeat.folded && !selfSeat.allIn && !selfSeat.satOut && selfSeat.stack > 0) ? '' : 'none';
   // Sit-in only makes sense between hands (not folded / not all-in for current round).
@@ -1670,16 +1687,21 @@ function renderSeat(seat, idx, table, total) {
   // face-down card backs otherwise. The server's publicView populates this
   // for (a) the seat's owner in any phase, and (b) every non-folded seat
   // during the showdown window (hand_over + lastHandResults) so all
-  // viewers can see everyone else's hole cards after the betting ends.
-  // Folded seats stay face-down (the muck). The CSS already has a
-  // `.card.face-down` design prepared in style.css — we just plug into it
-  // here so cards never render as blank placeholder boxes.
+  // Per-seat hole card displays (C2): every seated player gets a small
+  // HoleCards below their seat/avatar. Opponents render face-down, own seat
+  // renders face-down backs as a presence indicator (the readable hand lives
+  // in the bottom zone - see ownHandZone above).
+  // faceUp is a pure prop: own seat (isSelf) gets faceUp=false (backs),
+  // opponents get faceUp=false normally, faceUp=true only during showdown
+  // reveal when the server has populated their holeCards.
   var isShowdownReveal = table.phase === 'hand_over' && table.lastHandResults && !seat.folded && !seat.isSelf;
-  var cardEls = (seat.holeCards && seat.holeCards.length > 0)
-    ? seat.holeCards.map(function(c, i) { return renderCard(c, { delay: i * 80, small: true, showdown: isShowdownReveal }); })
-    : [renderCard(null, { small: true, faceDown: true }),
-       renderCard(null, { small: true, faceDown: true })];
-  ringChildren.push(el('div', { class: 'cards' }, cardEls));
+  var seatFaceUp = isShowdownReveal && seat.holeCards && seat.holeCards.length > 0;
+  ringChildren.push(renderHoleCards({
+    faceUp: seatFaceUp,
+    cards: seat.holeCards,
+    small: true,
+    seatIdx: idx,
+  }));
 
   // ONE seat-ring holding name + status + cards. Earlier this looped
   // over each child and wrapped each in its OWN seat-ring, producing 3
@@ -1757,36 +1779,86 @@ function buildRing(...kids) {
 }
 
 function renderCard(c, opts = {}) {
-  // Real playing card layout: rank + small suit pair in top-left and
-  // bottom-right corners (the bottom corner is mirrored via CSS rotate so
-  // the rank reads correctly when the card faces the player), with a large
-  // suit glyph centered. Face-down cards use the existing purple back
-  // design (.card.face-down in style.css) and skip these elements.
-  // `opts.faceDown` is also implied when no card data is available.
-  const faceDown = !!opts.faceDown || !c;
+  // Card component with 3D flip animation (Work item 4).
+  // Props:
+  //   c: card data { rank, suit } or null for face-down placeholder
+  //   opts.faceDown: force face-down (implied when c is null)
+  //   opts.small: use small card dimensions
+  //   opts.showdown: add showdown class for styling
+  //   opts.flip: add deal animation class
+  //   opts.faceUp: EXPLICIT face-up state (pure prop - component never
+  //     decides visibility from seat index, "is me", game phase, etc.)
+  // faceUp is a pure prop: all visibility decisions live in the caller.
+  const faceDown = !!opts.faceDown || !c || opts.faceUp === false;
+  const isRed = c && SUIT_COLOR[c.suit] === 'red';
+  
+  // Card flip wrapper with both faces rendered
   const card = el('div', {
-    class: (faceDown ? 'card face-down' : 'card' + (SUIT_COLOR[c.suit] === 'red' ? ' red' : ''))
-         + (opts.small ? ' card-small' : '')
-         + (opts.showdown ? ' card-showdown' : '')
+    class: 'card-flip' 
+         + (opts.small ? ' small' : '') 
+         + (faceDown ? ' face-down' : '') 
+         + (opts.showdown ? ' card-showdown' : '') 
          + (opts.flip ? ' card-deal' : ''),
   });
-  if (!faceDown) {
+  
+  // Front face (face-up content)
+  const frontFace = el('div', { class: 'card-face front' + (isRed ? ' card-red' : '') });
+  const cardContent = el('div', { class: 'card-content' });
+  
+  if (!faceDown && c) {
     const rank = rankLabel(c.rank);
-    // Add an extra class for "10" so CSS can tighten the corner spacing
-    // (two-character rank fits less comfortably than a single glyph).
     const rankClass = 'rank' + (rank === '10' ? ' is-ten' : '');
     const suit = SUIT_GLYPH[c.suit];
-    card.appendChild(el('div', { class: 'corner top' }, [
+    cardContent.appendChild(el('div', { class: 'corner top' }, [
       el('div', { class: rankClass, text: rank }),
       el('div', { class: 'suit', text: suit }),
     ]));
-    card.appendChild(el('div', { class: 'center-suit', text: suit }));
-    card.appendChild(el('div', { class: 'corner bottom' }, [
+    cardContent.appendChild(el('div', { class: 'center-suit', text: suit }));
+    cardContent.appendChild(el('div', { class: 'corner bottom' }, [
       el('div', { class: rankClass, text: rank }),
       el('div', { class: 'suit', text: suit }),
     ]));
   }
+  frontFace.appendChild(cardContent);
+  card.appendChild(frontFace);
+  
+  // Back face (face-down design) - always rendered, shown/hidden via CSS
+  const backFace = el('div', { class: 'card-face back' });
+  card.appendChild(backFace);
+  
   return card;
+}
+
+// HoleCards component: renders a pair of Card components.
+// Props:
+//   faceUp: boolean - controls whether cards are face-up or face-down
+//           (pure prop - component never decides from context)
+//   cards: array of card data {rank, suit} or null/undefined for placeholders
+//   label: optional string for a small label above the cards
+//   small: boolean - use small card dimensions
+//   seatIdx: optional seat index for data attribute
+function renderHoleCards(opts = {}) {
+  const { faceUp = false, cards = null, label = null, small = false, seatIdx = null } = opts;
+  const container = el('div', {
+    class: 'hole-cards' + (small ? ' hole-cards-small' : ''),
+    'data-seat-idx': seatIdx !== null ? String(seatIdx) : undefined,
+  });
+  
+  if (label) {
+    container.appendChild(el('div', { class: 'hole-cards-label', text: label }));
+  }
+  
+  // Render two cards, using provided card data or placeholders
+  const cardData = cards && cards.length === 2 ? cards : [null, null];
+  cardData.forEach((c, i) => {
+    container.appendChild(renderCard(c, {
+      faceUp: faceUp && c !== null,
+      small: small,
+      delay: i * 80,
+    }));
+  });
+  
+  return container;
 }
 
 function populateSelfInfo(infoEl, seat, t) {
@@ -2143,6 +2215,11 @@ function seatEmpty(seatIdx, tableId) {
 
 function setTableMenuOpen(open) {
   state.tableMenuOpen = !!open;
+  let previousFocus = null;
+  if (!open) {
+    // Returning focus to the trigger on close — capture before disabling.
+    previousFocus = document.activeElement;
+  }
   [['tableMenu', 'tableMenuBtn', 'tableMenuPanel'],
    ['mfsrTableMenu', 'mfsrTableMenuBtn', 'mfsrTableMenuPanel']].forEach(([wrapId, btnId, panelId]) => {
     const panel = $(panelId);
@@ -2158,6 +2235,13 @@ function setTableMenuOpen(open) {
     const wrap = $(wrapId);
     if (wrap) wrap.classList.toggle('is-open', !!open);
   });
+  if (open) {
+    // Focus first menu item on open.
+    const firstItem = document.querySelector('#tableMenuPanel .table-menu-item, #mfsrTableMenuPanel .table-menu-item');
+    if (firstItem) firstItem.focus();
+  } else if (previousFocus && previousFocus.focus) {
+    previousFocus.focus();
+  }
 }
 
 function toggleTableMenu() {
@@ -4040,11 +4124,13 @@ socket.on('chat_update', ({ tableId, messages }) => {
   $('mfsrTableMenuBtn').addEventListener('click', (e) => { e.stopPropagation(); toggleTableMenu(); });
   $('tableMenuLeaveItem').addEventListener('click', () => { closeTableMenu(); leaveCurrentTable(); });
   $('mfsrMenuLeaveItem').addEventListener('click', () => { closeTableMenu(); leaveCurrentTable(); });
+  $('tableMenuSitOutItem').addEventListener('click', () => { closeTableMenu(); sitOut(); });
   $('tableMenuChangeSeatItem').addEventListener('click', startChangeSeat);
   $('mfsrMenuChangeSeatItem').addEventListener('click', startChangeSeat);
-  // Click-outside-to-close: any tap that isn't inside one of the two menu
-  // wrappers closes the open panel (matches the online-modal pattern).
-  document.addEventListener('click', (e) => {
+  // Outside-dismiss uses pointerdown (not click) so a press that begins
+  // outside doesn't fire a stray action, and presses that start inside are
+  // ignored.
+  document.addEventListener('pointerdown', (e) => {
     if (!state.tableMenuOpen) return;
     if (e.target.closest('#tableMenu') || e.target.closest('#mfsrTableMenu')) return;
     closeTableMenu();
@@ -4054,6 +4140,28 @@ socket.on('chat_update', ({ tableId, messages }) => {
     if (e.key !== 'Escape') return;
     if (state.tableMenuOpen) { closeTableMenu(); return; }
     if (state.changeSeatMode) cancelChangeSeat();
+  });
+  // Keyboard navigation for the table menu: ArrowUp/ArrowDown move between
+  // items, Enter/Space activate.
+  document.addEventListener('keydown', (e) => {
+    if (!state.tableMenuOpen) return;
+    const panel = e.target.closest('#tableMenuPanel, #mfsrTableMenuPanel');
+    if (!panel) return;
+    const items = Array.from(panel.querySelectorAll('.table-menu-item'));
+    const idx = items.indexOf(e.target);
+    if (idx < 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = (idx + 1) % items.length;
+      items[next].focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = (idx - 1 + items.length) % items.length;
+      items[prev].focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.target.click();
+    }
   });
   // Chat panel: Enter submits, clicking Send submits. The HTML maxlength=200
   // caps paste length natively so the server-side slice(0,200) is just

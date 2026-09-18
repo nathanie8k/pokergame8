@@ -119,6 +119,11 @@ body.is-table-view {
     color: #e63946;
     border-color: rgba(230,57,70,0.30);
   }
+  /* Desktop: Sit out + Leave are reachable only via the 3-dot overflow menu. */
+  #view-table #sitOutBtn,
+  #view-table #leaveTableBtn {
+    display: none !important;
+  }
 }
 
 /* Suit-decoration watermark — faint card glyphs in the corners of the
@@ -622,10 +627,13 @@ input, button, select, textarea { color: inherit; }
    ============================================================ */
 .table-info {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: 10px;
   flex-wrap: wrap; gap: 10px;
+  /* Expose header height as a custom property for the table layout to consume. */
+  --header-height: 40px;
 }
-.table-info h2 { margin: 0; font-size: 22px; letter-spacing: 0.4px; }
+.table-info h2 { margin: 0; font-size: 12px; letter-spacing: 0.4px; }
+.table-info .muted { font-size: 7px; }
 .table-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .poker-table {
@@ -633,10 +641,11 @@ input, button, select, textarea { color: inherit; }
   width: 100%;
   /* Compact rounded-rect (not a wide horizontal oval). 1.2:1
      width-to-height reads like a felt-oval shape but corners are
-     still recognizably square. max-height caps vertical so the
-     table fits above the fold on tall desktops too. */
+     still recognizably square. 
+     max-height grows to consume freed vertical space from the smaller
+     header, using dvh for mobile browser chrome awareness. */
   aspect-ratio: 1.2 / 1;
-  max-height: 60vh;
+  max-height: calc(100dvh - var(--header-height, 40px) - 80px);
   border-radius: var(--radius-xl);
   background:
     radial-gradient(ellipse 80% 70% at center, #165237 0%, #0d3723 40%, #081c15 90%);
@@ -939,11 +948,198 @@ input, button, select, textarea { color: inherit; }
 .card-small .corner .suit  { font-size: 9px; }
 .card-small .center-suit   { font-size: 22px; }
 
+/* ============================================================
+   Card component with 3D flip animation (Work item 4)
+   - faceUp is a pure prop; the component never decides visibility.
+   - Flip animation uses CSS 3D transforms with backface-visibility.
+   - Duration constant: --card-flip-duration (default 400ms).
+   - Honors prefers-reduced-motion with instant cross-fade.
+   ============================================================ */
+:root {
+  --card-flip-duration: 400ms;
+}
+
+/* Base card wrapper for 3D flip */
+.card-flip {
+  position: relative;
+  width: var(--card-w);
+  height: var(--card-h);
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+.card-flip.small {
+  width: var(--card-w-sm);
+  height: var(--card-h-sm);
+}
+
+/* The two faces share the same dimensions and are positioned
+   in the same space. One is the front (face-up), one is the back
+   (face-down). We flip between them with rotateY. */
+.card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: transform var(--card-flip-duration) var(--ease);
+  transform-style: preserve-3d;
+}
+
+/* Face-up card (front) */
+.card-face.front {
+  /* Default: showing front face */
+}
+
+/* Face-down card (back) - rotated 180deg so back is visible */
+.card-face.back {
+  transform: rotateY(180deg);
+  background: linear-gradient(135deg, #4a2f99, #6b3fb5);
+  color: #fff;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.08) 0 8px, transparent 8px 16px),
+    linear-gradient(135deg, #4a2f99, #6b3fb5);
+  border-color: #2a1a55;
+}
+.card-face.back::before {
+  content: "";
+  position: absolute; inset: 6px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
+}
+
+/* When the card is face-down, rotate the whole wrapper 180deg.
+   The back face (already rotated 180deg) becomes visible,
+   and the front face is hidden by backface-visibility. */
+.card-flip.face-down {
+  transform: rotateY(180deg);
+}
+
+/* Reduced motion: instant cross-fade instead of 3D spin */
+@media (prefers-reduced-motion: reduce) {
+  .card-face {
+    transition: opacity var(--card-flip-duration) var(--ease);
+    backface-visibility: visible;
+    -webkit-backface-visibility: visible;
+  }
+  .card-flip.face-down {
+    transform: none;
+  }
+  .card-face.back {
+    transform: none;
+    position: absolute;
+    opacity: 0;
+  }
+  .card-flip.face-down .card-face.front {
+    opacity: 0;
+  }
+  .card-flip.face-down .card-face.back {
+    opacity: 1;
+  }
+}
+
+/* Card content styling (applies to front face) */
+.card-face.front .card-content {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(160deg, #ffffff 0%, #f7efdc 92%);
+  border-radius: 9px;
+  border: 1px solid #d7c7a8;
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 rgba(255,255,255,0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: "Trebuchet MS", "Helvetica Neue", sans-serif;
+  font-weight: 700;
+  color: #1f1a14;
+  position: relative;
+  overflow: hidden;
+}
+.card-face.front.card-red .card-content { color: var(--card-red); }
+
+.card-face.front .corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+}
+.card-face.front .corner.top    { top: 6px;     left: 7px; }
+.card-face.front .corner.bottom { bottom: 6px;  right: 7px; transform: rotate(180deg); }
+.card-face.front .corner .rank { font-size: 19px; letter-spacing: 0; }
+.card-face.front .corner .rank.is-ten { letter-spacing: -1.5px; }
+.card-face.front .corner .suit { font-size: 12px; margin-top: 1px; }
+.card-face.front .center-suit {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 40px;
+  line-height: 1;
+  opacity: 0.92;
+  pointer-events: none;
+}
+
+/* Small card variants */
+.card-flip.small .corner.top    { top: 3px;    left: 4px; }
+.card-flip.small .corner.bottom { bottom: 3px; right: 4px; transform: rotate(180deg); }
+.card-flip.small .corner .rank  { font-size: 13px; }
+.card-flip.small .corner .suit  { font-size: 9px; }
+.card-flip.small .center-suit   { font-size: 22px; }
+
 /* Cosmetic deal/reveal — JS toggles this class only at .append time.
    The animation fires AFTER the card is in the DOM, so no animation
    delays when the player gets a button-press available. */
-.community-cards .card.fade-in,
-.seat .cards .card.fade-in { animation: cardIn 320ms var(--ease) both; }
+.community-cards .card-flip.fade-in,
+.seat .cards .card-flip.fade-in { animation: cardIn 320ms var(--ease) both; }
+
+/* ============================================================
+   HoleCards component (Work item 4)
+   Renders a pair of Card components with a faceUp prop.
+   Per-seat displays use this; own hand uses it in the bottom zone.
+   ============================================================ */
+.hole-cards {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+}
+.hole-cards-small {
+  gap: 4px;
+}
+.hole-cards-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+/* Per-seat hole card displays (C2) */
+.seat .hole-cards {
+  margin-top: 6px;
+}
+
+/* Own hand zone (C1) - bottom-anchored below the table */
+.own-hand-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(0,0,0,0.40);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.own-hand-zone .hole-cards-label {
+  color: var(--accent);
+  font-size: 11px;
+}
 @keyframes cardIn {
   from { transform: translateY(-18px) scale(0.85); opacity: 0; }
   to   { transform: translateY(0) scale(1);     opacity: 1; }
@@ -2895,8 +3091,8 @@ input, button, select, textarea { color: inherit; }
     justify-content: space-between;
     gap: 8px;
   }
-  #view-table .table-info h2 { font-size: 13px; color: var(--accent); margin: 0; }
-  #view-table .table-info .muted { font-size: 9px; color: #5a6b63; }
+  #view-table .table-info h2 { font-size: 12px; color: var(--accent); margin: 0; }
+  #view-table .table-info .muted { font-size: 7px; color: #5a6b63; }
   #view-table .table-actions { gap: 4px; }
   #view-table .table-actions .ghost-btn {
     padding: 5px 8px;
@@ -4841,8 +5037,8 @@ input, button, select, textarea { color: inherit; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.12);
@@ -4896,8 +5092,8 @@ input, button, select, textarea { color: inherit; }
    table-info strip BELOW the fixed top bar — the panel opens downward
    into free space and cannot cover the player/points chips. */
 .table-menu:not(.mfsr-menu) .table-menu-btn {
-  width: 38px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
 }
 /* Mobile placement: compact round button matching the 36px pill row;
    panel still opens DOWNWARD so it clears the mftr player/points pills
