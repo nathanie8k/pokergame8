@@ -4892,6 +4892,203 @@ input, button, select, textarea { color: inherit; }
   background: rgba(255,204,77,0.12);
   color: var(--accent);
 }
+
+/* ================================================================
+   PORTRAIT TABLE PASS (360-430px)
+   Presentation-only override. The socket/game state remains unchanged.
+   ================================================================ */
+@media (max-width: 720px) and (orientation: portrait) {
+  :root { --mobile-action-h: 60px; }
+
+  html, body { width: 100%; min-width: 0; overflow-x: hidden; }
+  body.is-table-view { overflow: hidden; }
+
+  #view-table.view {
+    height: 100dvh;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+  body.is-table-view #topBar { min-height: 38px; height: 38px; padding: 3px 8px; }
+  body.is-table-view #topBar .brand { display: none; }
+  body.is-table-view #topBar .top-info { width: 100%; justify-content: flex-end; gap: 4px; }
+  body.is-table-view #topBar .player-chip,
+  body.is-table-view #topBar .points-chip { padding: 3px 7px; font-size: 10px; }
+  body.is-table-view #topBar #presenceWidget { z-index: 700; }
+
+  #view-table .mobile-felt-top-row {
+    display: none !important;
+  }
+  #view-table .mobile-felt-second-row {
+    order: 0;
+    flex: 0 0 40px;
+    min-height: 40px;
+    height: 40px;
+    padding: 4px 8px;
+    gap: 6px;
+    z-index: 600;
+  }
+  #view-table .mfsr-left { min-width: 0; overflow: hidden; }
+  #view-table .mfsr-table-name,
+  #view-table .mfsr-table-info {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #view-table .mfsr-table-name { font-size: 12px; line-height: 15px; }
+  #view-table .mfsr-table-info { font-size: 9px; line-height: 12px; }
+  #view-table .mfsr-right { position: relative; z-index: 800; flex: 0 0 auto; }
+  #view-table .mfsr-pill-btn { display: none !important; }
+  #view-table .table-info { display: none !important; }
+
+  #view-table .table-chat-row {
+    order: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    margin: 0;
+    padding: 4px 0 6px;
+    align-items: stretch;
+    overflow: visible;
+  }
+  #view-table .poker-table {
+    width: 96%;
+    max-width: none;
+    height: 100%;
+    min-height: 0;
+    aspect-ratio: auto;
+    flex: 1 1 auto;
+    border-width: clamp(7px, 2vw, 11px);
+    border-radius: 50% / 13%;
+    overflow: visible;
+  }
+  #view-table .table-felt { inset: 4% 5%; border-radius: 50% / 13%; }
+  #view-table .pot-display { transform: translateY(-4%); }
+  #view-table .pot-label { font-size: 8px; letter-spacing: 2px; }
+  #view-table .pot-amount { font-size: clamp(16px, 5vw, 23px); }
+  #view-table .community-cards { gap: 1.2vw; width: 70%; max-width: 70%; }
+  #view-table .community-cards .card,
+  #view-table .community-cards .empty-card {
+    width: clamp(28px, 8vw, 40px);
+    height: auto;
+    aspect-ratio: 5 / 7;
+    flex: 0 1 18%;
+    min-width: 0;
+  }
+  #view-table .community-cards .card .corner .rank { font-size: clamp(8px, 2.8vw, 13px); }
+  #view-table .community-cards .card .corner .suit { font-size: clamp(6px, 2vw, 9px); }
+  #view-table .community-cards .card .center-suit { font-size: clamp(14px, 5vw, 24px); }
+  #view-table .phase-display { font-size: 8px; padding: 3px 9px; letter-spacing: 2px; }
+
+  /* All six visual marker slots are unique anchors. The renderer maps the
+     server-relative slot to these positions, avoiding duplicate seat pixels. */
+  #view-table .mobile-felt-seat-markers { position: absolute; inset: 0; z-index: 12; pointer-events: none; }
+  #view-table .mfsm-seat { position: absolute; width: clamp(56px, 18vw, 76px); pointer-events: auto; }
+  #view-table .mfsm-left-upper { left: 2%; top: 15%; }
+  #view-table .mfsm-left-middle { left: 0; top: 40%; }
+  #view-table .mfsm-left-lower { left: 2%; top: 65%; }
+  #view-table .mfsm-right-upper { right: 2%; top: 15%; }
+  #view-table .mfsm-right-middle { right: 0; top: 40%; }
+  #view-table .mfsm-right-lower { right: 2%; top: 65%; }
+  #view-table .mfsm-seat .mfsm-name { font-size: 10px; max-width: 100%; }
+  #view-table .mfsm-seat .mfsm-stack { font-size: 11px; }
+  #view-table .mfsm-sit-here { min-height: 30px; padding: 4px 7px; font-size: 9px; }
+
+  #view-table .mfc-seat-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    max-width: 42%;
+    min-width: 0;
+  }
+  #view-table .mfc-avatar { width: 30px; height: 30px; flex: 0 0 30px; font-size: 10px; }
+  #view-table .mfc-seat-name { max-width: 70px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #view-table .mfc-stack { font-size: 11px; }
+  #view-table .mfc-hole-cards,
+  #view-table .mfc-hole-cards-back { display: flex; gap: 0; margin-left: 2px; }
+  #view-table .mfc-hole-cards .card,
+  #view-table .mfc-hole-cards-back .mfc-card-back {
+    width: clamp(28px, 7.5vw, 38px);
+    height: auto;
+    aspect-ratio: 5 / 7;
+    margin-left: -35%;
+  }
+  #view-table .mfc-hole-cards > :first-child,
+  #view-table .mfc-hole-cards-back > :first-child { margin-left: 0; }
+
+  /* The action row is the only content below the table and is pinned to the
+     viewport edge, including the home-indicator safe area. */
+  #view-table .mobile-felt-actions {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--mobile-action-h);
+    min-height: var(--mobile-action-h);
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 5px;
+    margin: 0;
+    background: rgba(7, 7, 7, .97);
+    border-top: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 -8px 24px rgba(0,0,0,.45);
+    pointer-events: auto;
+    z-index: 1000;
+  }
+  #view-table .mfa-label {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    height: 44px;
+    padding: 0 2px;
+    font-size: clamp(9px, 2.8vw, 12px);
+    line-height: 1;
+  }
+  #view-table .mfa-fold { color: #fff; background: #a5222c; border-color: #e63946; }
+  #view-table .mfa-check, #view-table .mfa-call { color: #fff; background: #145b75; border-color: #5ccdff; }
+  #view-table .mfa-raise { color: #17130b; background: #d4a017; border-color: #ffd54f; }
+  #view-table .mfa-allin { color: #fff; background: #c40d1a; border-color: #ff6b6b; }
+  #view-table .mfa-disabled { opacity: .28; filter: grayscale(.8); background: #292929; border-color: #555; }
+
+  #view-table .mobile-felt-sizing { display: flex !important; gap: 4px; width: 100%; margin-top: 6px; }
+  #view-table .mobile-felt-sizing .mfs-label { flex: 1 1 0; min-height: 32px; padding: 7px 2px; font-size: 10px; }
+  #view-table .mobile-felt-raise { position: fixed; left: 0; top: 42%; bottom: auto; z-index: 1100; display: none; }
+  #view-table .mobile-felt-raise:has(.raise-slider.is-visible) { display: block; }
+  #view-table .mobile-felt-raise .raise-slider { width: clamp(116px, 31vw, 142px); padding: 10px 8px; border-radius: 0 12px 12px 0; }
+  #view-table .mobile-felt-raise .rs-track { height: 116px; width: 18px; margin: 8px auto; }
+  #view-table .mobile-felt-raise .rs-fill { width: 100%; height: auto; bottom: 0; top: auto; }
+  #view-table .mobile-felt-raise .rs-thumb { left: 50%; top: auto; transform: translate(-50%, 50%); }
+  #view-table .mobile-felt-raise .rs-confirm { min-height: 40px; width: 100%; }
+
+  #view-table .table-menu { z-index: 2000; }
+  #view-table .table-menu-panel { z-index: 2100; min-width: 150px; }
+  #view-table .mfsr-menu .table-menu-panel { right: 0; }
+  #view-table .accessibility-widget,
+  #view-table #accessibilityWidget,
+  body.is-table-view #accessibilityToolbar {
+    bottom: calc(var(--mobile-action-h) + env(safe-area-inset-bottom) + 8px);
+    z-index: 1050;
+  }
+  #view-table .accessibility-widget button,
+  #view-table #accessibilityWidget button,
+  body.is-table-view #accessibilityToolbar > button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 380px) and (orientation: portrait) {
+  #view-table .mfa-label { font-size: 9px; }
+  #view-table .community-cards { gap: 1vw; }
+  #view-table .mfc-seat-info { max-width: 44%; }
+}
 /* Sit-out, sit-in, and leave controls relocated into the 3-dot menus. */
 .table-menu-panel .ghost-btn,
 .table-menu-panel .mfsr-pill-btn {

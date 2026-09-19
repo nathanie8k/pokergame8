@@ -2195,6 +2195,14 @@ function moveTableControlsIntoMenus() {
     if (mobileSitIn) mobileMenu.appendChild(mobileSitIn);
     if (mobileLeave) mobileMenu.appendChild(mobileLeave);
   }
+
+  // Keep mobile sizing controls with the raise panel instead of below the
+  // action row. The existing handlers still target the same elements.
+  const sizing = $('mobileFeltSizing');
+  const raisePanel = $('mobileRaiseSlider');
+  if (sizing && raisePanel && sizing.parentElement !== raisePanel) {
+    raisePanel.appendChild(sizing);
+  }
 }
 
 // Exit change-seat mode and restore the normal phase display + seats.
@@ -2331,6 +2339,7 @@ function submitNameChange() {
 }
 
 function leaveCurrentTable() {
+  if (!window.confirm('Leave this table?')) return;
   socket.emit('leave_table', null, res => {
     if (res && res.ok) {
       state.currentTable = null;
@@ -3020,8 +3029,16 @@ function setRaiseSliderValue(s, v) {
   var pct = span > 0 ? ((v - s.min) / span) * 100 : 100;
   if (pct < 0) pct = 0;
   if (pct > 100) pct = 100;
-  s.fill.style.width = pct + '%';
-  s.thumb.style.left = pct + '%';
+  var vertical = s.root.id === 'mobileRaiseSlider';
+  if (vertical) {
+    s.fill.style.width = '100%';
+    s.fill.style.height = pct + '%';
+    s.thumb.style.left = '50%';
+    s.thumb.style.bottom = pct + '%';
+  } else {
+    s.fill.style.width = pct + '%';
+    s.thumb.style.left = pct + '%';
+  }
   // Live label — updated on every drag frame, no release needed.
   s.valueEl.textContent = formatNumber(v);
   // Grey the bar/value while sitting at the legal minimum so the clamped
@@ -3051,6 +3068,11 @@ function submitRaiseSlider(s) {
 function wireRaiseSlider(s) {
   function applyFromClientX(clientX) {
     var r = s.track.getBoundingClientRect();
+    if (s.root.id === 'mobileRaiseSlider') {
+      if (!r.height) return;
+      stageRaiseAmount(raiseTotalAtRatio(s, 1 - ((window._raisePointerY - r.top) / r.height)));
+      return;
+    }
     if (!r.width) return;
     stageRaiseAmount(raiseTotalAtRatio(s, (clientX - r.left) / r.width));
   }
@@ -3059,6 +3081,7 @@ function wireRaiseSlider(s) {
     if (!s.root.classList.contains('is-visible')) return;
     s.dragging = true;
     s.root.classList.add('rs-dragging');
+    window._raisePointerY = e.clientY;
     applyFromClientX(e.clientX);
     e.preventDefault();
   });
@@ -3066,6 +3089,7 @@ function wireRaiseSlider(s) {
   // leaves the (thin) bar — no pointer-capture dependency.
   window.addEventListener('pointermove', function(e) {
     if (!s.dragging) return;
+    window._raisePointerY = e.clientY;
     applyFromClientX(e.clientX);
     e.preventDefault();
   }, { passive: false });
