@@ -235,22 +235,28 @@
           <div class="mfsm-seat mfsm-right-middle" data-mfsm-pos="rm"></div>
           <div class="mfsm-seat mfsm-right-lower" data-mfsm-pos="rl"></div>
         </div>
-        <!-- Pot -->
-        <div class="mfc-pot">
-          <span class="mfc-pot-label">POT</span>
-          <span class="mfc-pot-amount" id="mfcPotAmount">0</span>
+        <!-- Reserved board zone: pot + 5 community-card slots ONLY.
+             Nothing else may render or overlap here. -->
+        <div class="mfc-board-zone" id="mfcBoardZone">
+          <div class="mfc-pot">
+            <span class="mfc-pot-label">POT</span>
+            <span class="mfc-pot-amount" id="mfcPotAmount">0</span>
+          </div>
+          <div class="mfc-community-slots" id="mfcCommunitySlots"></div>
         </div>
-        <!-- Community card slots -->
-        <div class="mfc-community-slots" id="mfcCommunitySlots"></div>
-        <!-- Player hole cards -->
-        <div class="mfc-hole-cards" id="mfcHoleCards"></div>
-        <!-- Player seat info -->
-        <div class="mfc-seat-info" id="mfcSeatInfo">
-          <div class="mfc-avatar" id="mfcAvatar">?</div>
-          <div class="mfc-seat-name" id="mfcSeatName"></div>
-          <div class="mfc-stack" id="mfcStack"></div>
-          <div class="mfc-hole-cards-back" id="mfcHoleCardsBack"></div>
-          <div class="mfc-bet-chip" id="mfcBetChip"></div>
+        <!-- Hero seat: player's own two cards at medium size, slightly
+             overlapping, beside the name/stack — replaces the old center
+             hole-cards block and the small card-back icons. -->
+        <div class="mfc-hero-seat" id="mfcHeroSeat">
+          <div class="mfc-hero-cards" id="mfcHoleCards"></div>
+          <div class="mfc-seat-info" id="mfcSeatInfo">
+            <div class="mfc-avatar" id="mfcAvatar">?</div>
+            <div class="mfc-seat-text">
+              <div class="mfc-seat-name" id="mfcSeatName"></div>
+              <div class="mfc-stack" id="mfcStack"></div>
+            </div>
+            <div class="mfc-bet-chip" id="mfcBetChip"></div>
+          </div>
         </div>
       </div>
 

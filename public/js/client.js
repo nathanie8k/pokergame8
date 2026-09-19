@@ -1959,11 +1959,20 @@ function populateMobileFelt(t, selfSeat) {
         markerEl.style.display = '';
 
         if (seat && seat.occupied && !seat.removed && !seat.disconnected) {
-          // Occupied: name + stack
+          // Occupied: name + stack + small face-down cards
           var nameEl = el('span', { class: 'mfsm-name', text: seat.name });
           markerEl.appendChild(nameEl);
           var stackEl = el('span', { class: 'mfsm-stack', text: formatNumber(seat.stack) });
           markerEl.appendChild(stackEl);
+          // Opponents keep small face-down cards at their own seats (visual
+          // only — the server never sends other players' hole card values).
+          if (seat.holeCards && seat.holeCards.length === 2 && t.phase !== 'waiting') {
+            var cardsWrap = el('div', { class: 'mfsm-cards' });
+            seat.holeCards.forEach(function() {
+              cardsWrap.appendChild(renderCard(null, { faceDown: true, small: true }));
+            });
+            markerEl.appendChild(cardsWrap);
+          }
 
           // Highlight if this seat is the current active player
           if (serverIdx === t.currentPlayerIndex) {
@@ -2044,18 +2053,25 @@ function populateMobileFelt(t, selfSeat) {
     }
   }
 
-  // Player hole cards
+  // Player hole cards (hero seat row next to name/stack) — hidden while the
+  // viewer is not seated so the board zone stands alone on an empty table.
   var hc = $('mfcHoleCards');
+  var heroSeat = $('mfcHeroSeat');
   if (hc) {
     hc.innerHTML = '';
-    if (selfSeat && selfSeat.holeCards && selfSeat.holeCards.length === 2) {
-      selfSeat.holeCards.forEach(function(c, i) {
-        hc.appendChild(renderCard(c, { delay: i * 80 }));
-      });
-    } else {
-      hc.appendChild(renderCard(null, { faceDown: true }));
-      hc.appendChild(renderCard(null, { faceDown: true }));
+    if (selfSeat) {
+      if (selfSeat.holeCards && selfSeat.holeCards.length === 2) {
+        selfSeat.holeCards.forEach(function(c, i) {
+          hc.appendChild(renderCard(c, { delay: i * 80 }));
+        });
+      } else {
+        hc.appendChild(renderCard(null, { faceDown: true }));
+        hc.appendChild(renderCard(null, { faceDown: true }));
+      }
     }
+  }
+  if (heroSeat) {
+    heroSeat.style.display = selfSeat ? '' : 'none';
   }
 
   // Seat info
@@ -2080,12 +2096,10 @@ function populateMobileFelt(t, selfSeat) {
   var stk = $('mfcStack');
   if (stk) stk.textContent = formatNumber(selfSeat ? selfSeat.stack : 0);
 
-  // Purple card backs
+  // Card-back icons under the name were replaced by the hero's real cards.
   var hcb = $('mfcHoleCardsBack');
   if (hcb) {
     hcb.innerHTML = '';
-    hcb.appendChild(el('div', { class: 'mfc-card-back' }));
-    hcb.appendChild(el('div', { class: 'mfc-card-back' }));
   }
 
   // Bet chip

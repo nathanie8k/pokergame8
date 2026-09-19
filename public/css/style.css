@@ -4091,23 +4091,19 @@ input, button, select, textarea { color: inherit; }
      seat info — all stacked vertically
      ============================================================ */
   .mobile-felt-center {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    /* Grows/shrinks to own every pixel between the header row above and the
-       overlaid action pills below — no dead black margin around the felt. */
-    flex: 1 1 auto;
-    /* Generous bottom padding reserves the strip where the action / sizing /
-       phase rows are painted on top of the felt. */
-    padding: 10px 16px 106px;
-    margin: 0 6px;
+    /* PORTRAIT TABLE — ALWAYS.
+       A fixed 3:4 aspect ratio, sized from the viewport width, guarantees the
+       felt is taller than it is wide in EVERY state (waiting, mid-hand,
+       showdown) and that it never resizes or reflows when a hand starts or
+       ends. All in-table content is absolutely positioned on top of this box;
+       its size depends only on the viewport. */
     position: relative;
-    z-index: 2;
-    min-height: 0;
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: calc((100dvh - 320px) * 0.75);
+    margin: 0 auto;
+    aspect-ratio: 3 / 4;
     overflow: hidden;
-    justify-content: center;
-    justify-content: safe center;
     /* Tall portrait oval (real table rotated 90°): the top and bottom bow
        inward far more than the long straight flanks. The felt gradient is
        clipped to the padding box edge-to-edge while the 9px border ring
@@ -4120,7 +4116,23 @@ input, button, select, textarea { color: inherit; }
     box-shadow: inset 0 0 40px rgba(0,0,0,0.45);
   }
 
-  /* Pot */
+  /* Reserved center zone for the pot and the 5 community-card slots.
+     The board must never share this space with seats, "Sit here" pills or
+     anything else — everything else sits outside it at a lower z-index. */
+  .mfc-board-zone {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -52%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  /* Pot (inside the reserved board zone) */
   .mfc-pot {
     text-align: center;
     line-height: 1.1;
@@ -4174,31 +4186,55 @@ input, button, select, textarea { color: inherit; }
   .mfc-community-slots .card .corner .suit { font-size: 9px; }
   .mfc-community-slots .card .center-suit { font-size: 28px; }
 
-  /* Player hole cards */
-  .mfc-hole-cards {
+  /* Hero seat: the viewer's two real cards at medium size, slightly
+     overlapping, side by side with their name/stack — pinned INSIDE the
+     bottom bow of the portrait oval. Replaces the old center hole-cards
+     block and the small card-back icons. */
+  .mfc-hero-seat {
+    position: absolute;
+    bottom: 4.5%;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
-    gap: 8px;
-    justify-content: center;
-    min-height: 74px;
     align-items: center;
+    gap: 10px;
+    z-index: 20;
+    pointer-events: none;
   }
-  .mfc-hole-cards .card {
+  .mfc-hero-cards {
+    display: flex;
+    align-items: center;
+    min-height: 80px;
+  }
+  /* 56×80 medium cards with a slight overlap: each card after the first
+     slides 14px left over its sibling. */
+  .mfc-hero-cards .card-flip {
     width: 56px;
     height: 80px;
+    flex: 0 0 auto;
   }
-  .mfc-hole-cards .card .corner.top { top: 4px; left: 5px; }
-  .mfc-hole-cards .card .corner.bottom { bottom: 4px; right: 5px; }
-  .mfc-hole-cards .card .corner .rank { font-size: 16px; }
-  .mfc-hole-cards .card .corner .suit { font-size: 10px; }
-  .mfc-hole-cards .card .center-suit { font-size: 32px; }
+  .mfc-hero-cards .card-flip + .card-flip {
+    margin-left: -14px;
+  }
+  .mfc-hero-cards .corner.top { top: 4px; left: 5px; }
+  .mfc-hero-cards .corner.bottom { bottom: 4px; right: 5px; }
+  .mfc-hero-cards .corner .rank { font-size: 16px; }
+  .mfc-hero-cards .corner .suit { font-size: 10px; }
+  .mfc-hero-cards .center-suit { font-size: 32px; }
 
-  /* Player seat info */
+  /* Player seat info (hero row, next to the cards) */
   .mfc-seat-info {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    gap: 4px;
-    padding: 8px 0 0;
+    gap: 8px;
+    pointer-events: auto;
+  }
+  .mfc-seat-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    text-align: left;
   }
   .mfc-avatar {
     width: 52px;
@@ -4229,25 +4265,29 @@ input, button, select, textarea { color: inherit; }
     font-variant-numeric: tabular-nums;
     text-shadow: 0 1px 8px rgba(0,0,0,0.4);
   }
-  .mfc-hole-cards-back {
+  /* Small face-down mini-cards on OPPONENT seats (replaces the old
+     card-back icons that used to sit under the hero's name). */
+  .mfsm-cards {
     display: flex;
-    gap: 6px;
-    margin-top: 2px;
+    gap: -6px;
+    margin-top: 1px;
   }
-  .mfc-hole-cards-back .mfc-card-back {
-    width: 34px;
-    height: 48px;
-    background: linear-gradient(135deg, #4a2f99, #6b3fb5);
-    border: 1px solid #2a1a55;
-    border-radius: 4px;
-    position: relative;
+  .mfsm-cards .card-flip {
+    width: 22px;
+    height: 31px;
+    flex: 0 0 auto;
+    border-radius: 3px;
   }
-  .mfc-hole-cards-back .mfc-card-back::before {
-    content: "";
-    position: absolute;
-    inset: 4px;
-    border: 1.5px solid rgba(255,255,255,0.35);
+  .mfsm-cards .card-flip + .card-flip {
+    margin-left: -8px;
+  }
+  .mfsm-cards .card-face.back::before {
+    inset: 2px;
+    border-width: 1px;
     border-radius: 2px;
+  }
+  .mfc-hole-cards-back {
+    display: none;
   }
   .mfc-bet-chip {
     padding: 4px 14px;
@@ -4288,12 +4328,17 @@ input, button, select, textarea { color: inherit; }
      of the felt, near the top and bottom bow of the ellipse. The middle
      pair stays on the wide straight flank. Position is purely visual —
      the seat index/id and click handler bound in client.js are unchanged. */
-  .mfsm-left-upper   { left: 12%; top: 9%; }
-  .mfsm-left-middle  { left: 3%; top: 42%; }
-  .mfsm-left-lower   { left: 11%; bottom: 20%; }
-  .mfsm-right-upper  { right: 12%; top: 9%; }
-  .mfsm-right-middle { right: 3%; top: 42%; }
-  .mfsm-right-lower  { right: 11%; bottom: 20%; }
+  /* Seats hug the outer edge of the portrait oval: upper/lower pairs sit in
+     the top/bottom bows, the middle pair on the wide straight flank. All
+     positions are outside the reserved center board zone. Position is purely
+     visual — the seat index/id and click handler bound in client.js are
+     unchanged. */
+  .mfsm-left-upper   { left: 13%; top: 6.5%; }
+  .mfsm-left-middle  { left: 4%; top: 42%; }
+  .mfsm-left-lower   { left: 13%; bottom: 17%; }
+  .mfsm-right-upper  { right: 13%; top: 6.5%; }
+  .mfsm-right-middle { right: 4%; top: 42%; }
+  .mfsm-right-lower  { right: 13%; bottom: 17%; }
 
   .mfsm-seat .mfsm-name {
     font-size: 11px;
@@ -4312,16 +4357,20 @@ input, button, select, textarea { color: inherit; }
     font-variant-numeric: tabular-nums;
     line-height: 1.2;
   }
+  /* Compact "Sit here" pill: a small chip that hugs the table edge.
+     It must never grow wide enough to reach the reserved board zone. */
   .mfsm-seat .mfsm-sit-here {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    gap: 4px;
+    font-size: 10px;
     font-weight: 700;
     color: var(--text);
     cursor: pointer;
-    padding: 7px 12px;
-    min-height: 36px;
+    padding: 4px 8px;
+    min-height: 26px;
+    max-width: 92px;
     border-radius: 999px;
     border: 1px solid rgba(212,160,23,0.45);
     background: rgba(0,0,0,0.42);
@@ -4329,6 +4378,16 @@ input, button, select, textarea { color: inherit; }
     -webkit-backdrop-filter: blur(4px);
     transition: color 120ms, background 120ms, border-color 120ms, transform 100ms var(--ease);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mfsm-seat .mfsm-sit-here::before {
+    content: "+";
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--accent-2);
+    flex: 0 0 auto;
   }
   .mfsm-seat .mfsm-sit-here:hover,
   .mfsm-seat .mfsm-sit-here:active {
@@ -4378,11 +4437,11 @@ input, button, select, textarea { color: inherit; }
     align-items: center;
     flex-wrap: nowrap;
     gap: 6px;
-    /* Negative margin pulls the row up out of its own black bar and onto the
-       bottom curve of the felt. The row stays a normal flex sibling — same
-       DOM, same labels, same click handlers, only its position changed. */
-    margin-top: -100px;
-    /* Keeps the pills inside the narrow bottom bow of the ellipse. */
+    /* FIXED AREA BELOW THE TABLE: the action row is a normal flow sibling
+       under the portrait oval (no negative-margin overlay), so Check/Fold/
+       Raise/Call/All-in can never overlap the table, seats or board. */
+    margin-top: 10px;
+    /* Keeps the pills visually centered under the oval's bottom bow. */
     padding: 0 15%;
     position: relative;
     z-index: 3;
@@ -4538,13 +4597,14 @@ input, button, select, textarea { color: inherit; }
 
   /* The slider adds a row to the overlaid bottom strip, so the felt only
      reserves the extra interior padding while it is actually on screen. */
-  .mobile-felt-center.has-raise-slider { padding-bottom: 158px; }
+  .mobile-felt-center.has-raise-slider { padding-bottom: 0; }
 
   /* ============================================================
      Mobile felt phase display — floating pill on felt
      ============================================================ */
   .mobile-felt-phase {
-    position: relative;
+    /* Normal flow row below the action area — never floats over the felt. */
+    position: static;
     z-index: 3;
     flex: 0 0 auto;
     text-align: center;
@@ -4559,7 +4619,7 @@ input, button, select, textarea { color: inherit; }
   }
 
   /* Very narrow phones (≤360px): tighten the action pills and their side
-     inset so all five still fit on one row inside the oval's bottom bow. */
+     inset so all five still fit on one row below the oval's bottom bow. */
   @media (max-width: 360px) {
     .mobile-felt-actions {
       padding: 0 14%;
@@ -4570,6 +4630,21 @@ input, button, select, textarea { color: inherit; }
       padding: 0 7px;
       min-width: 40px;
     }
+  }
+
+  /* Portrait-table safety valves for short viewports: when the column
+     cannot fit header rows + portrait felt + fixed action area, the felt
+     (capped by min() with the dynamic viewport height) shrinks while
+     STAYING portrait. Content density is trimmed instead of letting the
+     fixed bottom area crowd the table. */
+  @media (max-height: 780px) {
+    .mobile-felt-top-row { padding-bottom: 4px; }
+    .mfc-pot-amount { font-size: 28px; }
+  }
+  @media (max-height: 700px) {
+    .mftr-player-pill,
+    .mftr-points-pill { display: none; }
+    .mfc-pot-amount { font-size: 22px; }
   }
 
   /* ============================================================
