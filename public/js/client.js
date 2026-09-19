@@ -2168,6 +2168,35 @@ function closeTableMenu() {
   if (state.tableMenuOpen) setTableMenuOpen(false);
 }
 
+// Move table-session controls into the existing 3-dot menus.
+// The controls remain the same DOM elements, so their existing state updates
+// and click handlers continue to work. This keeps the change client-only.
+function moveTableControlsIntoMenus() {
+  const desktopMenu = $('tableMenuPanel');
+  const mobileMenu = $('mfsrTableMenuPanel');
+
+  const desktopSitOut = $('sitOutBtn');
+  const desktopLeave = $('leaveTableBtn');
+  const mobileSitOut = $('mfsrSitOutBtn');
+  const mobileSitIn = $('mfsrSitInBtn');
+  const mobileLeave = $('mfsrLeaveBtn');
+
+  if (desktopMenu) {
+    const existingLeave = $('tableMenuLeaveItem');
+    if (existingLeave) existingLeave.remove();
+    if (desktopSitOut) desktopMenu.appendChild(desktopSitOut);
+    if (desktopLeave) desktopMenu.appendChild(desktopLeave);
+  }
+
+  if (mobileMenu) {
+    const existingLeave = $('mfsrMenuLeaveItem');
+    if (existingLeave) existingLeave.remove();
+    if (mobileSitOut) mobileMenu.appendChild(mobileSitOut);
+    if (mobileSitIn) mobileMenu.appendChild(mobileSitIn);
+    if (mobileLeave) mobileMenu.appendChild(mobileLeave);
+  }
+}
+
 // Exit change-seat mode and restore the normal phase display + seats.
 function cancelChangeSeat() {
   state.changeSeatMode = false;
@@ -4035,11 +4064,11 @@ socket.on('chat_update', ({ tableId, messages }) => {
   $('leaveTableBtn').addEventListener('click', leaveCurrentTable);
   $('sitOutBtn').addEventListener('click', sitOut);
 
+  moveTableControlsIntoMenus();
+
   // ---- 3-dot table menu (⋮) — desktop + mobile (same wiring) ----
   $('tableMenuBtn').addEventListener('click', (e) => { e.stopPropagation(); toggleTableMenu(); });
   $('mfsrTableMenuBtn').addEventListener('click', (e) => { e.stopPropagation(); toggleTableMenu(); });
-  $('tableMenuLeaveItem').addEventListener('click', () => { closeTableMenu(); leaveCurrentTable(); });
-  $('mfsrMenuLeaveItem').addEventListener('click', () => { closeTableMenu(); leaveCurrentTable(); });
   $('tableMenuChangeSeatItem').addEventListener('click', startChangeSeat);
   $('mfsrMenuChangeSeatItem').addEventListener('click', startChangeSeat);
   // Click-outside-to-close: any tap that isn't inside one of the two menu

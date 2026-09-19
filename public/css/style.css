@@ -4892,6 +4892,33 @@ input, button, select, textarea { color: inherit; }
   background: rgba(255,204,77,0.12);
   color: var(--accent);
 }
+/* Sit-out, sit-in, and leave controls relocated into the 3-dot menus. */
+.table-menu-panel .ghost-btn,
+.table-menu-panel .mfsr-pill-btn {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #eaeaea;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.table-menu-panel .ghost-btn:hover,
+.table-menu-panel .ghost-btn:focus-visible,
+.table-menu-panel .mfsr-pill-btn:hover,
+.table-menu-panel .mfsr-pill-btn:focus-visible {
+  background: rgba(255,204,77,0.12);
+  color: var(--accent);
+}
 /* Desktop placement: the menu lives in .table-actions, which sits in the
    table-info strip BELOW the fixed top bar — the panel opens downward
    into free space and cannot cover the player/points chips. */
