@@ -72,8 +72,10 @@
           <p class="subtitle">Your points are saved — return any time with the same name.</p>
           <div class="form-row">
             <input id="loginName" type="text" maxlength="20" placeholder="Enter your name" autocomplete="off" />
+            <input id="loginPassword" type="password" maxlength="60" placeholder="סיסמה יומית" autocomplete="off" />
             <button id="loginBtn" class="primary-btn">Take a seat</button>
           </div>
+          <div id="loginError" class="error-text" role="alert" aria-live="polite" style="display:none"></div>
 
           <p class="login-note muted small">Your display name is required so other players can recognize you.</p>
         </div>

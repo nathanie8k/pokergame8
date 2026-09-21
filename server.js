@@ -10,7 +10,15 @@ const express  = require('express');
 const http     = require('http');
 const path     = require('path');
 const { Server } = require('socket.io');
-const { isPasswordValid, hasValidSignedCookie, accessCookieHeader } = require('./src/access_gate');
+const {
+  isPasswordValid,
+  hasValidSignedCookie,
+  hasValidSignedCookieIsrael,
+  accessCookieHeader,
+  extractClientIp,
+  ipBlocked,
+  ipRecordFail,
+} = require('./src/access_gate');
 
 const poker  = require('./src/poker');
 const db     = require('./src/database');
@@ -102,8 +110,13 @@ app.get('/api/access/status', (req, res) => {
 });
 
 app.post('/api/access', (req, res) => {
+  const ip = extractClientIp(req);
+  if (ipBlocked(ip)) {
+    return res.status(429).json({ ok: false, error: 'סיסמה שגויה — חכו דקה' });
+  }
   if (!isPasswordValid(req.body && req.body.password)) {
-    return res.status(401).json({ ok: false, error: 'Incorrect password' });
+    ipRecordFail(ip);
+    return res.status(401).json({ ok: false, error: 'סיסמה שגויה' });
   }
   res.setHeader('Set-Cookie', accessCookieHeader());
   return res.json({ ok: true });

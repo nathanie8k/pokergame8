@@ -101,6 +101,59 @@ const state = {
 const socket = io({ reconnection: true, autoConnect: false });
 state.socket = socket;
 
+// ---- Daily rotating access password (client side) ----
+//
+// The server's source of truth is process.env.DAILY_PASSWORDS (JSON with
+// keys "0".."6", 0 = Sunday ... 6 = Saturday, matching JS getDay()).
+// This file NEVER contains the passwords and NEVER sends them to any
+// client. The client only ever sends a password the user typed to the
+// server for validation, and remembers (in localStorage) that today's
+// password was already passed so the user is not re-prompted the same
+// day.
+//
+// Today's date is computed in the Asia/Jerusalem timezone so the day
+// boundary matches the server's calendar day (the Render process runs in
+// UTC). The localStorage key includes the full yyyyMMdd so a guest who
+// passes the password at 23:50 Israel time is NOT re-prompted after
+// midnight.
+const LS_ACCESS_KEY_PREFIX = 'poker_access_';
+
+function israelDateString() {
+  try {
+    const iso = new Date().toLocaleString('en-CA', {
+      timeZone: 'Asia/Jerusalem',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    });
+    // en-CA produces "YYYY-MM-DD". Strip the hyphens to get yyyyMMdd.
+    return iso.replace(/[-]/g, '');
+  } catch (e) {
+    // Fallback: the server always validates against its own Israel day,
+    // so a client-side computation failure only means the guest is
+    // re-prompted — never that an invalid password is silently accepted.
+    return null;
+  }
+}
+
+function accessPassedToday() {
+  const key = israelDateString();
+  if (!key) return false;
+  try {
+    return localStorage.getItem(LS_ACCESS_KEY_PREFIX + key) === key;
+  } catch (e) {
+    return false;
+  }
+}
+
+function markAccessPassedToday() {
+  const key = israelDateString();
+  if (!key) return;
+  try { localStorage.setItem(LS_ACCESS_KEY_PREFIX + key, key); } catch (e) {}
+}
+
+// Track whether the daily gate has already been passed today so the
+// login screen can hide the password field for returning guests.
+state.accessPassedToday = accessPassedToday();
+
 async function ensureSiteAccess() {
   const gate = $('accessGate');
   try {
@@ -108,6 +161,14 @@ async function ensureSiteAccess() {
     const data = await status.json();
     if (data.ok) { socket.connect(); return; }
   } catch (e) {}
+  // If the guest already passed today's password (localStorage), do NOT
+  // show the gate overlay — the socket gate (cookie) is authoritative and
+  // will block the connection if the cookie is missing, in which case the
+  // caller will re-prompt via the login-screen password field.
+  if (state.accessPassedToday) {
+    if (gate) gate.style.display = 'none';
+    return;
+  }
   if (gate) { gate.style.display = ''; const input = $('accessPassword'); if (input) input.focus(); }
 }
 
@@ -122,13 +183,15 @@ async function submitSiteAccess(event) {
       body: JSON.stringify({ password: input ? input.value : '' }),
     });
     const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error('Incorrect password');
+    if (!response.ok || !data.ok) throw new Error(data && data.error ? data.error : 'Incorrect password');
     if (error) error.textContent = '';
     if ($('accessGate')) $('accessGate').style.display = 'none';
     if (input) input.value = '';
+    markAccessPassedToday();
+    state.accessPassedToday = true;
     socket.connect();
   } catch (e) {
-    if (error) error.textContent = 'Incorrect password';
+    if (error) error.textContent = e && e.message ? e.message : 'סיסמה שגויה';
     if (input) { input.value = ''; input.focus(); }
   }
 }
@@ -922,9 +985,20 @@ function updateTopBar() {
   if (mftrPP) mftrPP.textContent = state.player.name;
   var mftrPtP = $('mftrPointsPill');
   if (mftrPtP) mftrPtP.textContent = formatNumber(state.player.points) + ' pts';
-}
+}  // ---------- Login view ----------
 
-// ---------- Login view ----------
+// Restore the saved display name (if any) so a returning guest does not
+// have to retype it after a reload or reconnect. The name is persisted in
+// localStorage on every successful login, and re-sent to the server on the
+// next register call (including socket reconnects).
+(function restoreSavedName() {
+  try {
+    const saved = localStorage.getItem('pokerName');
+    if (saved && $('loginName')) $('loginName').value = saved;
+  } catch (e) {}
+})();
+
+updateLoginPasswordField();
 
 async function loadRandomNames() {
   try {
@@ -961,6 +1035,46 @@ function selectRandomName(name) {
 async function doLogin() {
   const name = $('loginName').value.trim();
   if (!name) { showToast('Please enter a name', 'error'); return; }
+
+  // If the socket is not yet connected, the guest must pass the daily gate
+  // first. The gate may already be marked as passed today (localStorage) but
+  // the cookie may be missing (cleared cookies / private browsing); in that
+  // case we re-prompt via the login-screen password field.
+  if (!state.socket.connected) {
+    // Show the password field if it was hidden because accessPassedToday was true.
+    const passwordField = $('loginPassword');
+    if (passwordField) {
+      passwordField.style.display = '';
+      passwordField.removeAttribute('aria-hidden');
+    }
+    const password = (passwordField ? passwordField.value : '').trim();
+    if (!password) {
+      const errEl = $('loginError');
+      if (errEl) { errEl.textContent = 'סיסמה שגויה'; errEl.style.display = ''; }
+      return;
+    }
+    try {
+      const response = await fetch('/api/access', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        const errEl = $('loginError');
+        if (errEl) { errEl.textContent = data && data.error ? data.error : 'סיסמה שגויה'; errEl.style.display = ''; }
+        return;
+      }
+      markAccessPassedToday();
+      state.accessPassedToday = true;
+      if (errEl) errEl.style.display = 'none';
+    } catch (e) {
+      const errEl = $('loginError');
+      if (errEl) { errEl.textContent = 'סיסמה שגויה'; errEl.style.display = ''; }
+      return;
+    }
+  }
+
   // Pre-attach any stored per-name secret so a returning owner
   // doesn't re-prompt on every device wake / socket reconnect. The
   // stored value is just a string the SPA carries between sessions;
@@ -989,6 +1103,21 @@ async function doLogin() {
       showToast(res && res.error ? res.error : 'Login failed', 'error');
     }
   });
+}
+
+// Toggling the password field visibility: hide it when the gate has been
+// passed today AND the socket is (or will be) connected; otherwise keep it
+// visible so a returning guest whose cookie was cleared can re-enter.
+function updateLoginPasswordField() {
+  const passwordField = $('loginPassword');
+  if (!passwordField) return;
+  if (state.accessPassedToday && state.socket.connected) {
+    passwordField.style.display = 'none';
+    passwordField.setAttribute('aria-hidden', 'true');
+  } else {
+    passwordField.style.display = '';
+    passwordField.removeAttribute('aria-hidden');
+  }
 }
 
 // ----- Legacy shared-password admin modal -----
@@ -4061,8 +4190,16 @@ socket.on('chat_update', ({ tableId, messages }) => {
       });
     }
     $('accessGateForm').addEventListener('submit', submitSiteAccess);
-  $('loginBtn').addEventListener('click', doLogin);
+  $('loginBtn').addEventListener('click', () => {
+    const errEl = $('loginError');
+    if (errEl) errEl.style.display = 'none';
+    doLogin();
+  });
   $('loginName').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  $('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  // Update password-field visibility whenever the socket connection state changes.
+  socket.on('connect', () => updateLoginPasswordField());
+  socket.on('disconnect', () => updateLoginPasswordField());
 
   // Name change modal
   $('changeNameBtn').addEventListener('click', openNameChangeModal);
