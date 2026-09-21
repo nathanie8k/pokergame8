@@ -183,134 +183,111 @@
     <!-- ===== Table view ===== -->
     <section id="view-table" class="view" style="display:none">
 
-      <!-- Mobile full-felt top row: brand + player info, floating on felt -->
-      <div class="mobile-felt-top-row" id="mobileFeltTopRow">
-        <div class="mftr-left">
-          <span class="mftr-suits">♠♥♦♣</span>
-          <span class="mftr-brand">Poker8</span>
-        </div>
-        <div class="mftr-right">
-          <span class="mftr-player-pill" id="mftrPlayerPill"></span>
-          <span class="mftr-points-pill" id="mftrPointsPill"></span>
-        </div>
-      </div>
-
-      <!-- Mobile full-felt second row: table info + table actions -->
-      <div class="mobile-felt-second-row" id="mobileFeltSecondRow">
-        <div class="mfsr-left">
-          <span class="mfsr-table-name" id="mfsrTableName">Table</span>
-          <span class="mfsr-table-info" id="mfsrTableInfo"></span>
-        </div>
-        <div class="mfsr-right">
-          <button class="mfsr-pill-btn" id="mfsrSitOutBtn" style="display:none">Sit out</button>
-          <button class="mfsr-pill-btn" id="mfsrSitInBtn" style="display:none">Sit in</button>
-          <button class="mfsr-pill-btn" id="mfsrLeaveBtn">Leave</button>
-          <!-- Mobile 3-dot table menu — mirrors the desktop #tableMenu. -->
-          <div class="table-menu mfsr-menu" id="mfsrTableMenu">
-            <button id="mfsrTableMenuBtn" class="table-menu-btn" type="button"
-                    aria-haspopup="menu" aria-expanded="false" aria-controls="mfsrTableMenuPanel"
-                    title="Table menu" aria-label="Table menu">
-              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                <circle cx="12" cy="5"  r="2.1" fill="currentColor"/>
-                <circle cx="12" cy="12" r="2.1" fill="currentColor"/>
-                <circle cx="12" cy="19" r="2.1" fill="currentColor"/>
-              </svg>
-            </button>
-            <div class="table-menu-panel" id="mfsrTableMenuPanel" role="menu" aria-labelledby="mfsrTableMenuBtn" hidden>
-              <button class="table-menu-item" id="mfsrMenuLeaveItem" type="button" role="menuitem">Leave table</button>
-              <button class="table-menu-item" id="mfsrMenuChangeSeatItem" type="button" role="menuitem">Change seat</button>
+      <!-- Mobile full-screen table: compact header · tall stadium felt · pinned action bar.
+           Hidden on desktop (>720px). On mobile it owns the whole #view-table column and
+           renders the desktop .poker-table beneath it (the desktop layer is retained for
+           the chat tab + chat panel, which are still inside .poker-table). -->
+      <div class="mobile-screen" id="mobileScreen">
+        <!-- (1) Compact header: brand · table name · hand/blinds subtitle · 3-dot menu · online pill -->
+        <header class="mobile-header" id="mobileHeader">
+          <div class="mh-left">
+            <span class="mh-suits" aria-hidden="true">♠♥♦♣</span>
+            <span class="mh-brand">Beginners Table</span>
+            <span class="mh-sub" id="mhSub">Hand #0 · Blinds 5/10 · 2/6</span>
+          </div>
+          <div class="mh-right">
+            <span class="mh-online" id="mhOnline">2 online</span>
+            <div class="table-menu" id="mfsrTableMenu">
+              <button id="mfsrTableMenuBtn" class="table-menu-btn" type="button"
+                      aria-haspopup="menu" aria-expanded="false" aria-controls="mfsrTableMenuPanel"
+                      title="Table menu" aria-label="Table menu">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <circle cx="12" cy="5"  r="2.1" fill="currentColor"/>
+                  <circle cx="12" cy="12" r="2.1" fill="currentColor"/>
+                  <circle cx="12" cy="19" r="2.1" fill="currentColor"/>
+                </svg>
+              </button>
+              <div class="table-menu-panel" id="mfsrTableMenuPanel" role="menu" aria-labelledby="mfsrTableMenuBtn" hidden>
+                <button class="table-menu-item" id="mfsrMenuSitOutItem" type="button" role="menuitem">Sit out</button>
+                <button class="table-menu-item" id="mfsrMenuChangeSeatItem" type="button" role="menuitem">Change seat</button>
+                <button class="table-menu-item" id="mfsrMenuLeaveItem" type="button" role="menuitem">Leave table</button>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </header>
 
-      <!-- Mobile full-felt center: pot + community cards + player cards + seat -->
-      <div class="mobile-felt-center" id="mobileFeltCenter">
-        <!-- Seat markers anchored to the felt panel edges -->
-        <div class="mobile-felt-seat-markers" id="mobileFeltSeatMarkers" aria-hidden="true">
-          <div class="mfsm-seat mfsm-left-upper" data-mfsm-pos="lu"></div>
-          <div class="mfsm-seat mfsm-left-middle" data-mfsm-pos="lm"></div>
-          <div class="mfsm-seat mfsm-left-lower" data-mfsm-pos="ll"></div>
-          <div class="mfsm-seat mfsm-right-upper" data-mfsm-pos="ru"></div>
-          <div class="mfsm-seat mfsm-right-middle" data-mfsm-pos="rm"></div>
-          <div class="mfsm-seat mfsm-right-lower" data-mfsm-pos="rl"></div>
-        </div>
-        <!-- Reserved board zone: pot + 5 community-card slots ONLY.
-             Nothing else may render or overlap here. -->
-        <div class="mfc-board-zone" id="mfcBoardZone">
-          <div class="mfc-pot">
-            <span class="mfc-pot-label">POT</span>
-            <span class="mfc-pot-amount" id="mfcPotAmount">0</span>
-          </div>
-          <div class="mfc-community-slots" id="mfcCommunitySlots"></div>
-        </div>
-        <!-- Hero seat: player's own two cards at medium size, slightly
-             overlapping, beside the name/stack — replaces the old center
-             hole-cards block and the small card-back icons. -->
-        <div class="mfc-hero-seat" id="mfcHeroSeat">
-          <div class="mfc-hero-cards" id="mfcHoleCards"></div>
-          <div class="mfc-seat-info" id="mfcSeatInfo">
-            <div class="mfc-avatar" id="mfcAvatar">?</div>
-            <div class="mfc-seat-text">
-              <div class="mfc-seat-name" id="mfcSeatName"></div>
-              <div class="mfc-stack" id="mfcStack"></div>
+        <!-- (2) Tall stadium table, flex:1, fills all remaining vertical space. -->
+        <div class="mobile-table" id="mobileTable">
+          <div class="mt-felt" id="mtFelt">
+            <!-- Seats distributed around the tall oval via percentage positions -->
+            <div class="mt-seats" id="mtSeats" aria-hidden="true"></div>
+
+            <!-- Center board zone: pot + 5 community-card slots -->
+            <div class="mt-board" id="mtBoard">
+              <div class="mt-pot">
+                <span class="mt-pot-label">POT</span>
+                <span class="mt-pot-amount" id="mtPotAmount">0</span>
+              </div>
+              <div class="mt-community" id="mtCommunity"></div>
             </div>
-            <div class="mfc-bet-chip" id="mfcBetChip"></div>
+
+            <!-- Hero: compact hole cards + avatar + name/stack, inside table -->
+            <div class="mt-hero" id="mtHero">
+              <div class="mt-hero-cards" id="mtHoleCards"></div>
+              <div class="mt-hero-info" id="mtHeroInfo">
+                <div class="mt-avatar" id="mtAvatar">?</div>
+                <div class="mt-hero-text">
+                  <div class="mt-hero-name" id="mtHeroName"></div>
+                  <div class="mt-hero-stack" id="mtHeroStack"></div>
+                </div>
+                <div class="mt-bet-chip" id="mtBetChip"></div>
+              </div>
+            </div>
+
+            <!-- Opponent card-back strip (compact, beside their avatar via seat render) -->
+            <div class="mt-opp-cards" id="mtOppCards"></div>
           </div>
         </div>
-      </div>
 
-      <!-- Mobile full-felt action row: text-only action labels -->
-      <div class="mobile-felt-actions" id="mobileFeltActions">
-        <span class="mfa-label mfa-check" id="mfaCheck" data-action="check">Check</span>
-        <span class="mfa-label mfa-fold" id="mfaFold" data-action="fold">Fold</span>
-        <span class="mfa-label mfa-raise" id="mfaRaise" data-action="raise">Raise</span>
-        <span class="mfa-label mfa-call" id="mfaCall" data-action="call">Call</span>
-        <span class="mfa-label mfa-allin" id="mfaAllin" data-action="all_in">All-in</span>
-      </div>
-
-      <!-- Mobile full-felt raise slider: drag to pick a raise TOTAL, then
-           Confirm to send it through the existing raise path. Visible only
-           while it's the viewer's turn to act. Same widget as the desktop
-           #betSlider — one markup shape, two placements. -->
-      <div class="mobile-felt-raise" id="mobileFeltRaise">
-        <div class="raise-slider" id="mobileRaiseSlider">
-          <div class="rs-head">
-            <span class="rs-title">Raise to</span>
-            <span class="rs-value" aria-hidden="true">0</span>
+        <!-- (3) Raise panel — docked on the far LEFT edge, over the lower half of the table. -->
+        <div class="raise-panel" id="raisePanel" hidden>
+          <div class="rp-head">
+            <span class="rp-title">Raise to</span>
+            <span class="rp-value" id="rpValue" aria-hidden="true">0</span>
           </div>
-          <div class="rs-track" role="slider" tabindex="0" aria-label="Raise amount"
+          <div class="rp-track" role="slider" tabindex="0" aria-label="Raise amount"
                aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
-            <div class="rs-fill"></div>
-            <div class="rs-thumb"></div>
+            <div class="rp-fill"></div>
+            <div class="rp-thumb"></div>
           </div>
-          <button type="button" class="rs-confirm" disabled>Confirm</button>
+          <div class="rp-presets" id="rpPresets">
+            <button type="button" data-rp="min">Min</button>
+            <button type="button" data-rp="x2">2×</button>
+            <button type="button" data-rp="x5">5×</button>
+            <button type="button" data-rp="all">All in</button>
+          </div>
+          <button type="button" class="rp-confirm" id="rpConfirm" disabled>Confirm</button>
+        </div>
+
+        <!-- (4) Pinned bottom action bar: single row, equal-height touch targets. -->
+        <div class="mobile-action-bar" id="mobileActionBar">
+          <button class="action-btn action-fold"  id="actFold"  data-action="fold">Fold</button>
+          <button class="action-btn action-check" id="actCheck" data-action="check">Check</button>
+          <button class="action-btn action-call"  id="actCall"  data-action="call">Call</button>
+          <button class="action-btn action-raise" id="actRaise" data-action="raise">Raise</button>
+          <button class="action-btn action-allin" id="actAllin" data-action="all_in">All-in</button>
         </div>
       </div>
-
-      <!-- Mobile full-felt sizing row: bet-sizing labels -->
-      <div class="mobile-felt-sizing" id="mobileFeltSizing">
-        <span class="mfs-label" data-sizing="min">Min</span>
-        <span class="mfs-label" data-sizing="x2">x2</span>
-        <span class="mfs-label" data-sizing="x5">x5</span>
-        <span class="mfs-label" data-sizing="all">All in</span>
-      </div>
-
-      <!-- Phase display (mobile, floating on felt) -->
-      <div class="mobile-felt-phase" id="mobileFeltPhase">Waiting...</div>
 
       <div class="table-info">
         <div>
           <h2 id="tableName">Table</h2>
           <span class="muted small" id="handInfo"></span>
-        </div>
-        <div class="table-actions">
-          <button id="sitOutBtn" class="ghost-btn" style="display:none">Sit out</button>
-          <button id="sitInBtn"  class="ghost-btn" style="display:none">Sit in</button>
-          <button id="leaveTableBtn" class="ghost-btn">Leave table</button>
-          <!-- 3-dot table menu: Change seat / Leave table. Hidden by default;
-               opened by the ⋮ toggle below. Same structure as the mobile
-               .mfsr-menu wrapper so both layouts share one JS wiring. -->
+        </div>          <div class="table-actions">
+          <!-- 3-dot table menu: Change seat / Sit out / Leave table.
+               Leave and Sit out are no longer exposed as direct buttons —
+               on mobile they live only in the ⋮ menu (per spec); on desktop
+               they were already hidden via CSS display:none !important. -->
           <div class="table-menu" id="tableMenu">
             <button id="tableMenuBtn" class="table-menu-btn" type="button"
                     aria-haspopup="menu" aria-expanded="false" aria-controls="tableMenuPanel"
@@ -322,9 +299,9 @@
               </svg>
             </button>
             <div class="table-menu-panel" id="tableMenuPanel" role="menu" aria-labelledby="tableMenuBtn" hidden>
-              <button class="table-menu-item" id="tableMenuLeaveItem" type="button" role="menuitem">Leave table</button>
               <button class="table-menu-item" id="tableMenuSitOutItem" type="button" role="menuitem">Sit out</button>
               <button class="table-menu-item" id="tableMenuChangeSeatItem" type="button" role="menuitem">Change seat</button>
+              <button class="table-menu-item" id="tableMenuLeaveItem" type="button" role="menuitem">Leave table</button>
             </div>
           </div>
         </div>

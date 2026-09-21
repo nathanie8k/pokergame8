@@ -2506,149 +2506,6 @@ input, button, select, textarea { color: inherit; }
    chat-panel (#chatPanel) is hidden by default; when .is-open it
    slides in from the right edge as a side overlay.
    ============================================================ */
-@media (max-width: 720px) {
-  /* Override the generic .view padding/margin so the flex children
-     can use width: 100% with no horizontal bleed. Top padding
-     reserves the sticky top-bar (56px) + safe-area + 8px gap. */
-  #view-table {
-    margin: 0;
-    max-width: none;
-    padding: calc(env(safe-area-inset-top, 0px) + 56px + 8px) 8px 8px;
-    /* 100dvh accounts correctly for mobile browser chrome (URL bar
-       collapsing). Height includes safe-area subtraction. We add
-       them back via padding-top so the sticky top-bar + safe-area
-       top never intrude on the table area. */
-    height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  /* Direct-children of #view-table: each zone reserves its own
-     height EXCEPT .poker-table which flex-shrinks to fill the
-     remaining vertical space. flex:0 0 auto = don't grow,
-     don't shrink, base size on content. flex:1 1 0 = fill the
-     available space. min-height:0 is critical on the flex-shrink
-     item or it can outgrow its parent in some browsers. */
-  #view-table > .table-info {
-    flex: 0 0 auto;
-    margin-bottom: 6px;
-  }
-  /* Compact rounded-rect on mobile too — aspect 1.2:1 width-to-
-     height, capped at the parent's flex budget via max-height.
-     When the parent shrinks (chat expanded, raise expanded) the
-     table keeps its aspect ratio by reducing width; centered via
-     margin auto so it always sits centered between the chat-strip
-     above and the self-panel below. */
-  #view-table > .poker-table {
-    flex: 1 1 0;
-    min-height: 0;             /* critical: allows flex-shrink to win */
-    aspect-ratio: 4 / 5;        /* portrait oval for mobile */
-    max-height: 100%;           /* shrink on tight heights; never overflow */
-    max-width: 100%;
-    margin: 0 auto;             /* center horizontally when width shrinks */
-  }
-  /* self-panel + action-bar + raise-row are now inside .table-felt
-     (absolute-positioned in the lower band). The old child-combinator
-     rules below no longer match and are kept as documentation. */
-  /* [DEAD] #view-table > .self-panel { ... } — moved inside .table-felt */
-  /* [DEAD] #view-table > .action-bar { ... } — moved inside .table-felt */
-  /* self-panel mobile tray — cards + name + stack + status row.
-     natural content height drives the zone's reserved height
-     (~110-130px) on phones. */
-  /* #view-table > .self-panel {
-    flex: 0 0 auto;
-    margin-top: 6px;
-    padding: 8px;
-  } */
-  /* Action-bar contains ONLY Fold/Check/Call/All-in on mobile
-     now — the raise controls live in .raise-row BELOW. The
-     flex-wrap:nowrap keeps all four buttons in a single tidy
-     row. Equal-share button sizing distributes the action-bar's
-     width evenly. */
-  /* #view-table > .action-bar {
-    flex: 0 0 auto;
-    margin-top: 6px;
-    padding: 8px;
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 6px;
-  }
-  #view-table > .action-bar > .action-btn {
-    flex: 1 1 0;
-    min-width: 0;
-    padding: 10px 6px;
-    min-height: 44px;
-    font-size: 13px;
-  } */
-  /* .raise-row holds the raise controls BELOW the action-bar.
-     Horizontal flex row: number input + Min/2x/Pot/All presets +
-     Raise submit button. Row's reserved height driven by largest
-     child (~48px button + 8px padding = ~64px). The bg panel
-     makes the raise UI distinguishable from the action row
-     above. */
-  /* #view-table > .raise-row {
-    flex: 0 0 auto;
-    margin-top: 6px;
-    padding: 8px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: nowrap;
-    background: rgba(0,0,0,0.40);
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: var(--radius-md);
-  }
-  #view-table > .raise-row > #raiseAmount {
-    width: 76px;
-    min-height: 40px;
-    font-size: 14px;
-    padding: 8px 10px;
-    flex: 0 0 auto;
-  }
-  #view-table > .raise-row > .raise-presets {
-    display: flex;
-    gap: 4px;
-    flex: 1 1 0;
-    min-width: 0;
-  }
-  #view-table > .raise-row > .raise-presets button {
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 40px;
-    padding: 8px 4px;
-    font-size: 11px;
-  }
-  #view-table > .raise-row > .action-btn.raise {
-    flex: 0 0 auto;
-    min-width: 84px;
-    min-height: 44px;
-  }
-  #view-table > .raise-row:not(.is-active) {
-    display: none;
-    height: 0;
-    margin-top: 0;
-    padding: 0;
-    border: none;
-    overflow: hidden;
-  } */
-
-  /* Hand-log is debug-only; on mobile we have no real estate for
-     it. (Existing mobile blocks already do this; reinforced here
-     for completeness.) */
-  #view-table > .hand-log {
-    display: none;
-  }
-
-  /* The right-edge chat toggle lives inside .poker-table (position:
-     absolute) so it doesn't reserve any flex-column height on
-     mobile. Same for the .chat-edge-panel overlay (also absolute
-     inside .poker-table). Nothing to declare here — the chat's
-     vertical contribution is zero in the flex column budget. */
-  /* Reduced-motion: caret rotation already disabled in the
-     default block; nothing else to do here. */
-
-}
 
 /* =============================================================
    Seat-position map — 6 fixed symmetric slots around the felt.
@@ -3727,7 +3584,7 @@ input, button, select, textarea { color: inherit; }
   /* ---- HAND LOG hidden on mobile ---- */
   #view-table .hand-log { display: none; }
 
-  /* ---- Narrowest device tweaks (clamp() handles most scaling; poker table + gap tweaks only) ---- */
+  /* ---- Narrowest device tweaks ---- */
   @media (max-width: 360px) {
     #view-table .poker-table { width: 96vw; }
     #view-table .action-bar { gap: 3px; }
@@ -3736,16 +3593,9 @@ input, button, select, textarea { color: inherit; }
 }
 
 /* ============================================================
-   DESKTOP (>720px): felt-embedded self-panel positioning.
-   The three interactive blocks (player-status-bar, self-panel,
-   raise-row) live inside .table-felt and need absolute positioning
-   in the lower band so they don't overlap the community cards.
-   Stack order (bottom→top): raise-row → status-bar → self-panel.
-   Base offset anchored at 4% from felt bottom per the user spec.
-   The self-panel height is capped to stay below the community-cards
-   row (cards sit at center of felt, ~92px from bottom at typical
-   378px felt height). Desktop sizing is intermediate — larger than
-   mobile compact but smaller than full desktop to fit the band.
+   DESKTOP (>721px): hide mobile-specific elements.
+   The new mobile layout lives in table-mobile.css; these desktop
+   rules remain unchanged so the existing desktop table keeps working.
    ============================================================ */
 @media (min-width: 721px) {
 
@@ -3974,147 +3824,7 @@ input, button, select, textarea { color: inherit; }
     display: none;
   }
 
-  /* ============================================================
-     Mobile felt top row — brand + player info
-     ============================================================ */
-  .mobile-felt-top-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    padding-top: max(12px, env(safe-area-inset-top, 12px));
-    position: relative;
-    z-index: 2;
-    flex: 0 0 auto;
-  }
-  .mftr-left {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .mftr-suits {
-    color: var(--accent);
-    font-size: 14px;
-    letter-spacing: 2px;
-    text-shadow: 0 0 10px var(--accent-glow);
-  }
-  .mftr-brand {
-    font-size: 16px;
-    font-weight: 800;
-    letter-spacing: 0.3px;
-    background: linear-gradient(135deg, #ffcc4d, #ffe27a);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-  .mftr-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .mftr-player-pill {
-    padding: 5px 12px;
-    background: rgba(0,0,0,0.45);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 999px;
-    font-weight: 600;
-    font-size: 13px;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-  }
-  .mftr-points-pill {
-    padding: 5px 12px;
-    background: linear-gradient(135deg, #e63946, #ff6b6b);
-    color: #fff;
-    border-radius: 999px;
-    font-weight: 800;
-    font-size: 13px;
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.15) inset;
-    font-variant-numeric: tabular-nums;
-  }
 
-  /* ============================================================
-     Mobile felt second row — table info + table actions
-     ============================================================ */
-  .mobile-felt-second-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 16px 4px;
-    position: relative;
-    z-index: 2;
-    flex: 0 0 auto;
-  }
-  .mfsr-left {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-  .mfsr-table-name {
-    font-size: 16px;
-    font-weight: 800;
-    color: #e63946;
-    letter-spacing: 0.3px;
-  }
-  .mfsr-table-info {
-    font-size: 11px;
-    color: var(--text-dim);
-    letter-spacing: 0.3px;
-  }
-  .mfsr-right {
-    display: flex;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-  .mfsr-pill-btn {
-    padding: 6px 14px;
-    background: rgba(0,0,0,0.40);
-    border: 1px solid rgba(255,255,255,0.14);
-    border-radius: 999px;
-    color: var(--text-dim);
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    min-height: 36px;
-    transition: background 120ms, color 120ms, border-color 120ms;
-  }
-  .mfsr-pill-btn:hover,
-  .mfsr-pill-btn:active {
-    background: rgba(255,255,255,0.08);
-    color: var(--text);
-    border-color: rgba(255,255,255,0.25);
-  }
-
-  /* ============================================================
-     Mobile felt center — pot, community cards, hole cards,
-     seat info — all stacked vertically
-     ============================================================ */
-  .mobile-felt-center {
-    /* PORTRAIT TABLE — ALWAYS.
-       A fixed 3:4 aspect ratio, sized from the viewport width, guarantees the
-       felt is taller than it is wide in EVERY state (waiting, mid-hand,
-       showdown) and that it never resizes or reflows when a hand starts or
-       ends. All in-table content is absolutely positioned on top of this box;
-       its size depends only on the viewport. */
-    position: relative;
-    flex: 0 0 auto;
-    width: 100%;
-    max-width: calc((100dvh - 320px) * 0.75);
-    margin: 0 auto;
-    aspect-ratio: 3 / 4;
-    overflow: hidden;
-    /* Tall portrait oval (real table rotated 90°): the top and bottom bow
-       inward far more than the long straight flanks. The felt gradient is
-       clipped to the padding box edge-to-edge while the 9px border ring
-       paints a warm wood-and-gold rail around it. */
-    background:
-      radial-gradient(ellipse 80% 70% at 50% 45%, #12352a 0%, #0d2a1f 50%, #081c15 100%) padding-box,
-      linear-gradient(165deg, #8a5a2c 0%, #d4a017 48%, #8a5a2c 100%) border-box;
-    border: 9px solid transparent;
-    border-radius: 45% / 20%;
-    box-shadow: inset 0 0 40px rgba(0,0,0,0.45);
-  }
 
   /* Reserved center zone for the pot and the 5 community-card slots.
      The board must never share this space with seats, "Sit here" pills or
