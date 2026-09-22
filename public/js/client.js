@@ -1067,7 +1067,16 @@ async function doLogin() {
       }
       markAccessPassedToday();
       state.accessPassedToday = true;
+      // FIX (gate): `errEl` was never declared in this scope — this line threw
+      // ReferenceError on every SUCCESSFUL password entry, so the catch block
+      // displayed 'סיסמה שגויה' for a correct password and returned before the
+      // register call below could run. Declare it properly.
+      const errEl = $('loginError');
       if (errEl) errEl.style.display = 'none';
+      // FIX (gate): the successful fetch above set the access cookie; open the
+      // socket now so the register emit below actually reaches the server.
+      // Mirrors submitSiteAccess, which calls socket.connect() on gate success.
+      if (!state.socket.connected) state.socket.connect();
     } catch (e) {
       const errEl = $('loginError');
       if (errEl) { errEl.textContent = 'סיסמה שגויה'; errEl.style.display = ''; }
