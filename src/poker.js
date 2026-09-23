@@ -241,6 +241,15 @@ function clampPercent(value, lo, hi, fallback) {
   return Math.max(lo, Math.min(hi, n));
 }
 
+// A seat takes part in the CURRENT hand only when it is occupied, not
+// removed, and NOT a mid-hand joiner. A player who sits down while a hand is
+// running was not dealt into it, so every turn-order, round-close, live-count
+// and showdown predicate in this file ignores them; `startHand` clears
+// `joinedMidHand` and deals them in normally from the next hand on.
+function isInHand(seat) {
+  return !!seat && !seat.removed && !seat.joinedMidHand;
+}
+
 function getSeatedPlayers(table) {
   return table.seats
     .map((s, i) => ({ seat: s, idx: i }))
@@ -278,13 +287,16 @@ function nextActivePlayer(table, from) {
   for (let i = 1; i < n; i++) {
     const idx = (from + i) % n;
     const s = table.seats[idx];
-    if (s && !s.removed && !s.folded && !s.allIn && !s.satOut) return idx;
+    // `isInHand` also filters mid-hand joiners: they hold no cards this hand,
+    // so handing them the turn would deadlock the round (they have nothing
+    // they are allowed to do, and the close predicate below waits on them).
+    if (isInHand(s) && !s.folded && !s.allIn && !s.satOut) return idx;
   }
   return -1;
 }
 
 function bettingRoundComplete(table) {
-  const acting = table.seats.filter(s => s && !s.removed && !s.folded && !s.allIn && !s.satOut);
+  const acting = table.seats.filter(s => isInHand(s) && !s.folded && !s.allIn && !s.satOut);
   if (acting.length === 0) return true;
   if (table.currentBet === 0) {
     // At least one player must have had a chance.
@@ -298,11 +310,16 @@ function bettingRoundComplete(table) {
 }
 
 function countLivePlayers(table) {
-  return table.seats.filter(s => s && !s.removed && !s.folded).length;
+  // Mid-hand joiners are not "live" for this hand — they have no cards, so
+  // counting them would make a fold-out hand look like it is still contested.
+  return table.seats.filter(s => isInHand(s) && !s.folded).length;
 }
 
 function countPlayablePlayers(table) {
-  // Can a hand start? Need >=2 not-removed seated with chips > 0.
+  // Can a hand start? Need >=2 not-removed seated with chips > 0. A mid-hand
+  // joiner is deliberately NOT excluded: `startHand` clears `joinedMidHand`
+  // before it ever calls this, so the flag is already false for everyone by
+  // the time a fresh deal is being considered.
   return table.seats.filter(s => s && !s.removed && s.stack > 0).length;
 }
 
@@ -311,7 +328,7 @@ function countPlayablePlayers(table) {
 // turn timer to prefer check over fold for disconnected/idle players.
 function canCheck(table, seatIdx) {
   const seat = table.seats[seatIdx];
-  if (!seat || seat.removed || seat.folded || seat.allIn || seat.satOut) return false;
+  if (!isInHand(seat) || seat.folded || seat.allIn || seat.satOut) return false;
   if (table.phase === PHASE.WAITING || table.phase === PHASE.HAND_OVER) return false;
   return (table.currentBet - seat.contributed) <= 0;
 }
@@ -352,6 +369,10 @@ function startHand(table) {
     s.contributed = 0;
     s.allIn = false;
     s.acted = false;
+    // A new hand includes everyone seated, so a player who joined during the
+    // previous hand stops being a mid-hand joiner here — the deal below gives
+    // them their two cards like any other seat.
+    s.joinedMidHand = false;
     if (s.stack <= 0) {
       s.removed = true;
       s.preHandStack = 0;
@@ -488,8 +509,9 @@ function postBlind(table, seatIdx, amount) {
 function advancePhase(table) {
   const live = countLivePlayers(table);
   if (live <= 1) {
-    // Only one (or zero) not-folded -> hand is over by fold-out.
-    const winnerSeat = table.seats.find(s => s && !s.removed && !s.folded);
+    // Only one (or zero) not-folded -> hand is over by fold-out. Mid-hand
+    // joiners are skipped: they were never dealt cards, so they cannot win.
+    const winnerSeat = table.seats.find(s => isInHand(s) && !s.folded);
     if (winnerSeat) {
       awardPot(table, [winnerSeat], [table.pot]);
     }
@@ -575,6 +597,10 @@ function applyAction(table, seatIdx, action, amountParam) {
   const seat = table.seats[seatIdx];
   if (!seat) return { ok: false, error: 'No seat' };
   if (seat.removed) return { ok: false, error: 'Not seated' };
+  // A mid-hand joiner has no cards for the running hand: fold/check/call/raise
+  // are all meaningless (and sit_out/sit_in would let them disturb a hand they
+  // aren't in). They act from the next deal instead.
+  if (seat.joinedMidHand) return { ok: false, error: 'Waiting for next hand' };
   if (table.phase === PHASE.WAITING || table.phase === PHASE.SHOWDOWN || table.phase === PHASE.HAND_OVER) {
     return { ok: false, error: 'No hand in progress' };
   }
@@ -714,7 +740,7 @@ function applyAction(table, seatIdx, action, amountParam) {
   //       natural Texas holdem semantics (raises re-open, calls
   //       close-as-soon-as-matched).
   const liveCount = countLivePlayers(table);
-  const acting = table.seats.filter(s => s && !s.removed && !s.folded && !s.allIn && !s.satOut);
+  const acting = table.seats.filter(s => isInHand(s) && !s.folded && !s.allIn && !s.satOut);
   const allActedAndMatched = acting.every(
     s => s.acted && s.contributed === table.currentBet
   );
@@ -843,7 +869,9 @@ function resolveShowdown(table) {
   // hand name (e.g. "Straight, Nine High", "Two Pair, Aces and Kings")
   // that we attach to each seat's `storedHandName` so the client HUD
   // and showdown modal can render it verbatim.
-  const live = table.seats.filter(s => s && !s.removed && !s.folded);
+  // Mid-hand joiners are excluded: they hold no hole cards for this hand, so
+  // they can neither win nor be evaluated.
+  const live = table.seats.filter(s => isInHand(s) && !s.folded);
   if (live.length === 0) {
     table.phase = PHASE.HAND_OVER;
     table.currentPlayerIndex = -1;
@@ -926,7 +954,9 @@ function checkBustedRefund(table) {
   if (table.phase === PHASE.WAITING || table.phase === PHASE.HAND_OVER) return false;
   const liveWithZeroStack = [];
   for (const s of table.seats) {
-    if (s && !s.removed && !s.folded && !s.satOut && s.stack === 0) {
+    // Mid-hand joiners are skipped: a joiner who happens to sit down with a
+    // 0 stack did not lose it in this hand, so they must not void the pot.
+    if (isInHand(s) && !s.folded && !s.satOut && s.stack === 0) {
       liveWithZeroStack.push(s);
     }
   }

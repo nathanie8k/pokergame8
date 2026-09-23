@@ -179,6 +179,7 @@
           + (occupied ? '' : ' mt-seat-empty')
           + (seat && seat.folded ? ' is-folded' : '')
           + (seat && seat.satOut ? ' is-out' : '')
+          + (seat && seat.joinedMidHand ? ' is-waiting' : '')
           + (seatIdx === t.currentPlayerIndex ? ' is-turn' : '')
           + (changing && !occupied ? ' is-change-target' : ''),
         'data-pos': SEAT_COLUMNS[col] || 'right',
@@ -200,6 +201,16 @@
           class: 'mt-seat-stack',
           text: formatNumber(seat.stack),
         }));
+        // A seat taken while a hand was already running: the server flags it
+        // `joinedMidHand` because that player was never dealt into the hand
+        // in progress (no cards, no turn, no showdown). Show them queued for
+        // the next deal instead of looking like an idle seat in the hand.
+        if (seat.joinedMidHand) {
+          column.appendChild(el('span', {
+            class: 'mt-seat-status mt-seat-waiting',
+            text: 'Waiting for next hand',
+          }));
+        }
         // Chips the player already put in this street, printed directly under
         // their column (absolute, so it never changes the row's height).
         if (seat.contributed > 0) {
@@ -272,9 +283,13 @@
 
     // Live hand label while the hand is running; at showdown the server's own
     // storedHandName (the same string the result banner uses) is authoritative.
-    mtSetText($('mtHeroHand'), hole
-      ? (selfSeat.storedHandName || namePokerHand(hole, t.communityCards))
-      : '');
+    // A viewer who sat down mid-hand has no cards for this hand, so the panel
+    // reports why instead of showing an empty hand name.
+    mtSetText($('mtHeroHand'), selfSeat && selfSeat.joinedMidHand
+      ? 'Waiting for next hand'
+      : (hole
+        ? (selfSeat.storedHandName || namePokerHand(hole, t.communityCards))
+        : ''));
     mtSetText($('mtHeroName'), selfSeat ? selfSeat.name : '');
     mtSetText($('mtHeroStack'), formatNumber(selfSeat ? selfSeat.stack : 0));
 
@@ -394,8 +409,10 @@
   function renderSitOutItem(selfSeat) {
     var item = $('mtMenuSitOutItem');
     if (!item) return;
+    // A mid-hand joiner is not in the running hand, so there is nothing to
+    // sit out of yet — the engine refuses the action until the next deal.
     var canSitOut = !!selfSeat && !selfSeat.folded && !selfSeat.allIn
-      && !selfSeat.satOut && selfSeat.stack > 0;
+      && !selfSeat.satOut && !selfSeat.joinedMidHand && selfSeat.stack > 0;
     var canSitIn = !!selfSeat && selfSeat.satOut && !selfSeat.folded
       && !selfSeat.allIn && selfSeat.stack > 0;
     if (canSitIn) {

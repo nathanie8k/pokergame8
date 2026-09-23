@@ -370,6 +370,15 @@ class RoomManager {
     if (t._pendingUnseat && t._pendingUnseat.includes(seatIdx)) {
       t._pendingUnseat = t._pendingUnseat.filter((i) => i !== seatIdx);
     }
+    // A seat taken while a hand is running cannot be part of THAT hand:
+    // the deal already happened, so the newcomer has no cards and must not
+    // be dealt into the turn order (the engine would otherwise rotate the
+    // action onto a seat with nothing to act with, freezing the table) nor
+    // into the showdown. `joinedMidHand` marks that state until the next
+    // `startHand` clears it and deals them in normally. Between hands
+    // (WAITING / HAND_OVER) a fresh seat is a normal seat, so the flag
+    // stays false there.
+    const midHand = t.phase !== poker.PHASE.WAITING && t.phase !== poker.PHASE.HAND_OVER;
     t.seats[seatIdx] = {
       playerId: player.id,
       name: player.name,
@@ -381,6 +390,7 @@ class RoomManager {
       removed: false,
       satOut: false,
       disconnected: false,
+      joinedMidHand: midHand,       // waiting for next hand; cleared by startHand
       contributed: 0,
       acted: false,                 // per-round flag; reset by beginBettingRound
       storedHandName: null,
@@ -522,7 +532,9 @@ class RoomManager {
       const cpi = t.currentPlayerIndex;
       if (cpi < 0 || !t.seats[cpi]) continue;
       const seat = t.seats[cpi];
-      if (!seat || seat.removed || seat.folded || seat.allIn || seat.satOut) continue;
+      // Mid-hand joiners are skipped for the same reason the engine never
+      // makes them the actor: they cannot act in the running hand at all.
+      if (!seat || seat.removed || seat.folded || seat.allIn || seat.satOut || seat.joinedMidHand) continue;
       const since = t._actionClockAt ? (now - t._actionClockAt) : 0;
       if (since < maxIdleMs) continue;
       const result = poker.applyAction(t, cpi, 'fold');
@@ -644,6 +656,11 @@ class RoomManager {
           satOut: s.satOut,
           removed: s.removed,
           disconnected: s.disconnected,
+          // True when this player sat down mid-hand: they hold no cards for
+          // the running hand and are excluded from turn order and showdown
+          // until the next deal. Clients use it to show "waiting for next
+          // hand" instead of an idle seat.
+          joinedMidHand: !!s.joinedMidHand,
           holeCards: (revealCards && s.holeCards.length > 0)
             ? s.holeCards.map(serializeCard)
             : null,
