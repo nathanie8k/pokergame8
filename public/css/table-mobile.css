@@ -1,0 +1,648 @@
+/* ============================================================
+   Poker8 — MOBILE TABLE SKIN (<= 720px)
+   ------------------------------------------------------------
+   A dedicated, self-contained mobile table skin: a black screen
+   with a back/menu header, one row of five opponent seats, the
+   community cards + pot, a Call/Raise action bar with an
+   expandable panel, and the viewer's hole cards + hand panel
+   pinned to the bottom.
+
+   Loaded AFTER style.css so its rules win on equal specificity.
+   Everything here is presentation only — the markup it styles is
+   populated from the public table_state payload by
+   populateMobileFelt() in client.js, which never touches betting,
+   turn or socket state.
+
+   Structure (mobile only, hidden >= 721px):
+     .mt-header    back arrow + table menu (…)
+     .mt-seats     #mtSeats   one .mt-seat per opponent
+     .mt-board     #mtCommunity + #mtPotAmount
+     .mt-actions   #mtCallBtn / #mtRaiseBtn / #mtRaiseArrowBtn
+     .mt-panel     #mobileFeltSizing + #mobileRaiseSlider + fold/check/all-in
+     .mt-hero      #mtHoleCards + hand panel (label, avatar, stack)
+   ============================================================ */
+
+@media (max-width: 720px) {
+
+  /* ---------- Screen shell ---------- */
+  #view-table {
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    max-width: none;
+    display: flex;
+    flex-direction: column;
+    /* Pure black, and no scrolling: the whole table is one fixed screen. */
+    background: #000;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Retire the desktop felt texture overlay for this skin. */
+  #view-table::before,
+  #view-table::after {
+    display: none;
+  }
+  /* Desktop-only table chrome stays out of the way. */
+  #view-table .table-info,
+  #view-table .table-chat-row,
+  #view-table .hand-log {
+    display: none;
+  }
+
+  /* ---------- Keep global overlays off the table screen ----------
+     This screen is the table, full stop: the floating presence badge would
+     land on the opponent row, and the accessibility button on the viewer's
+     cards. The badge is redundant here (the lobby shows it) and is hidden;
+     the accessibility control is kept but parked in the empty band under
+     the opponent row, with its panel opening downward instead of up. */
+  body.is-table-view #presenceWidget {
+    display: none;
+  }
+  body.is-table-view .accessibility-toolbar {
+    top: calc(env(safe-area-inset-top, 0px) + 204px);
+    bottom: auto;
+    left: 10px;
+  }
+  body.is-table-view .accessibility-panel {
+    top: 56px;
+    bottom: auto;
+  }
+
+  /* ---------- Header: back arrow + table menu ---------- */
+  .mt-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 8px 6px;
+    padding-top: max(10px, env(safe-area-inset-top, 10px));
+    position: relative;
+    z-index: 6;
+  }
+  .mt-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    transition: background 120ms, transform 100ms;
+  }
+  .mt-icon-btn:hover,
+  .mt-icon-btn:active {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .mt-icon-btn:active {
+    transform: scale(0.94);
+  }
+  .mt-menu-wrap {
+    position: relative;
+  }
+  .mt-menu .table-menu-btn {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #fff;
+  }
+  .mt-menu .table-menu-btn:hover,
+  .mt-menu .table-menu-btn:active,
+  .mt-menu.is-open .table-menu-btn {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  /* Menu panel opens from the right edge, dark sheet on black. */
+  .mt-menu .table-menu-panel {
+    right: 0;
+    left: auto;
+    min-width: 176px;
+    background: #1c1c1e;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75);
+    overflow: hidden;
+  }
+  .mt-menu .table-menu-item {
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 13px 16px;
+    text-align: left;
+    width: 100%;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    cursor: pointer;
+  }
+  .mt-menu .table-menu-item:last-child {
+    border-bottom: 0;
+  }
+  .mt-menu .table-menu-item:hover,
+  .mt-menu .table-menu-item:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .mt-menu .table-menu-item:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  /* Screen-reader-only text (table name / info, hero name). */
+  .mt-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* ---------- Opponent seats: one row of five ---------- */
+  .mt-seats {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 8px 10px 52px;
+    position: relative;
+    z-index: 4;
+  }
+  .mt-seat {
+    flex: 1 1 0;
+    min-width: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .mt-seat-ring {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    flex: 0 0 auto;
+  }
+  .mt-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-color: #232326;
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    font-weight: 700;
+    color: #f2f2f2;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.10) inset;
+  }
+  /* Slightly desaturated/dimmed once a player has folded or sat out. */
+  .mt-seat.is-out .mt-avatar,
+  .mt-seat.is-folded .mt-avatar {
+    opacity: 0.45;
+  }
+  .mt-seat-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: #9b9b9b;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.25;
+  }
+  .mt-seat-stack {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.25;
+  }
+  /* Dealer button: white disc with a black D, tucked onto the avatar. */
+  .mt-dealer {
+    position: absolute;
+    right: -3px;
+    bottom: 1px;
+    width: 19px;
+    height: 19px;
+    border-radius: 50%;
+    background: #fff;
+    color: #111;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 19px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  }
+  /* Current actor: a thin light ring so the turn is obvious. */
+  .mt-seat.is-turn .mt-avatar {
+    box-shadow: 0 0 0 2px #fff, 0 0 0 5px rgba(255, 255, 255, 0.16);
+  }
+  .mt-seat.is-turn .mt-seat-name {
+    color: #fff;
+  }
+  /* Per-player bet: small dark chip with a warm value, below the seat. */
+  .mt-bet {
+    position: absolute;
+    top: calc(100% + 22px);
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 26px;
+    height: 26px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: #1b1b1d;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: #cfc06a;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 24px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Empty seat: tap target for "Sit here" / "Move here". */
+  .mt-seat-empty .mt-seat-ring {
+    border-radius: 50%;
+    border: 1px dashed rgba(255, 255, 255, 0.22);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mt-seat-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #b9b9b9;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: color 120ms, background 120ms;
+  }
+  .mt-seat-status:hover,
+  .mt-seat-status:active {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .mt-seat.is-change-target .mt-seat-ring {
+    border-color: rgba(230, 57, 70, 0.75);
+  }
+  .mt-seat.is-change-target .mt-seat-status {
+    color: #ff8f8f;
+  }
+
+  /* ---------- Board: community cards + pot ---------- */
+  .mt-board {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 2px;
+    padding: 0 16px;
+    position: relative;
+    z-index: 2;
+  }
+  .mt-community {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+  }
+  .mt-card {
+    position: relative;
+    width: clamp(46px, 15.4vw, 62px);
+    height: clamp(74px, 24.8vw, 100px);
+    flex: 0 0 auto;
+    border-radius: 8px;
+    background: #fff;
+    border: 1px solid #dcdcdc;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+  }
+  /* Rank top-left, suit bottom-left — both large and bold. */
+  .mt-card-rank {
+    position: absolute;
+    top: 3px;
+    left: 8px;
+    font-size: clamp(20px, 6.6vw, 27px);
+    font-weight: 700;
+    line-height: 1.1;
+    color: #111;
+    font-variant-numeric: tabular-nums;
+  }
+  .mt-card-suit {
+    position: absolute;
+    bottom: 3px;
+    left: 8px;
+    font-size: clamp(18px, 6vw, 25px);
+    line-height: 1.1;
+    color: #111;
+  }
+  .mt-card--red .mt-card-rank,
+  .mt-card--red .mt-card-suit {
+    color: #e0212b;
+  }
+  /* Face-down: light grey with diagonal hatch stripes. */
+  .mt-card--down {
+    border-color: #d6d6d6;
+    background-color: #ededed;
+    background-image: repeating-linear-gradient(
+      45deg,
+      #c9c9c9 0,
+      #c9c9c9 2px,
+      transparent 2px,
+      transparent 6px
+    );
+  }
+  /* Pot sits under the right-hand end of the board. */
+  .mt-pot {
+    align-self: flex-end;
+    margin-top: 4px;
+    font-size: clamp(18px, 5.6vw, 23px);
+    font-weight: 700;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+    min-height: 1.1em;
+  }
+  .mt-pot:empty {
+    display: none;
+  }
+
+  /* ---------- Action bar ---------- */
+  .mt-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    position: relative;
+    z-index: 5;
+  }
+  .mt-pill {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 56px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: #232326;
+    color: #fff;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+    transition: background 120ms, transform 100ms, opacity 120ms;
+  }
+  .mt-pill:active {
+    transform: scale(0.97);
+  }
+  .mt-pill:hover {
+    background: #2c2c30;
+  }
+  .mt-pill:disabled {
+    opacity: 0.38;
+    cursor: default;
+  }
+  .mt-pill:disabled:active {
+    transform: none;
+  }
+  .mt-pill--fold {
+    color: #ffb3b3;
+  }
+  .mt-pill--allin {
+    color: #ff8f8f;
+  }
+  .mt-round {
+    flex: 0 0 auto;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: #232326;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 120ms, transform 100ms;
+  }
+  .mt-round:hover {
+    background: #2c2c30;
+  }
+  .mt-round:active {
+    transform: scale(0.94);
+  }
+  .mt-round svg {
+    transition: transform 200ms ease;
+  }
+  .mt-round[aria-expanded="true"] svg {
+    transform: rotate(180deg);
+  }
+
+  /* ---------- Expandable action panel ---------- */
+  .mt-panel {
+    display: none;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 8px;
+    padding: 4px 16px 10px;
+    position: relative;
+    z-index: 5;
+  }
+  .mt-panel.is-open {
+    display: flex;
+  }
+  .mt-sizing {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .mt-sizing .mfs-label {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 36px;
+    padding: 6px 4px;
+    border-radius: 10px;
+    background: #191919;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #d6d6d6;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+  }
+  .mt-sizing .mfs-label:active {
+    background: #232326;
+  }
+  .mt-sizing .mfs-label.mfs-disabled {
+    opacity: 0.3;
+    pointer-events: none;
+  }
+  .mt-panel-btns {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .mt-panel-btns .mt-pill {
+    height: 46px;
+    font-size: 15px;
+  }
+  /* Raise slider: dark restatement of the shared .raise-slider widget. */
+  .mt-panel .raise-slider {
+    width: 100%;
+    gap: 10px;
+    min-height: 46px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #141416;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: none;
+  }
+  .mt-panel .rs-head,
+  .mt-panel .rs-value {
+    color: #fff;
+  }
+  .mt-panel .rs-title {
+    color: #9b9b9b;
+  }
+  .mt-panel .rs-track {
+    height: 16px;
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+  .mt-panel .rs-fill {
+    background: #e0212b;
+  }
+  .mt-panel .rs-thumb {
+    width: 22px;
+    height: 22px;
+    background: #fff;
+    border-color: #e0212b;
+  }
+  .mt-panel .rs-confirm {
+    min-height: 38px;
+    border-radius: 999px;
+    background: #232326;
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #fff;
+  }
+  .mt-panel .raise-slider.rs-at-min .rs-fill {
+    background: rgba(224, 33, 43, 0.35);
+  }
+
+  /* ---------- Hero: own cards + hand panel ---------- */
+  .mt-hero {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 6px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    position: relative;
+    z-index: 3;
+  }
+  .mt-hole-cards {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+  }
+  .mt-hole-cards .mt-card {
+    width: clamp(70px, 22vw, 89px);
+    height: clamp(96px, 30.4vw, 122px);
+    border-radius: 11px;
+  }
+  .mt-hole-cards .mt-card + .mt-card {
+    margin-left: -8px;
+    box-shadow: -3px 0 10px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.45);
+  }
+  .mt-hole-cards .mt-card-rank {
+    top: 5px;
+    left: 11px;
+    font-size: clamp(28px, 9.4vw, 38px);
+  }
+  .mt-hole-cards .mt-card-suit {
+    bottom: 5px;
+    left: 11px;
+    font-size: clamp(26px, 8.6vw, 35px);
+  }
+  .mt-hero-panel {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 154px;
+    margin-left: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 10px 12px 12px;
+    border-radius: 14px;
+    background: #141416;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    min-height: 133px;
+  }
+  .mt-hero-hand {
+    font-size: 13px;
+    font-weight: 500;
+    color: #9b9b9b;
+    line-height: 1.2;
+    text-align: center;
+    min-height: 1.2em;
+  }
+  .mt-hero-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 17px;
+  }
+  .mt-hero-stack {
+    font-size: 17px;
+    font-weight: 600;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+}
+
+/* ============================================================
+   DESKTOP (>= 721px): the mobile table must never render.
+   ============================================================ */
+@media (min-width: 721px) {
+  .mt-header,
+  .mt-seats,
+  .mt-board,
+  .mt-actions,
+  .mt-panel,
+  .mt-hero {
+    display: none !important;
+  }
+}
