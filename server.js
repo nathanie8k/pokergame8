@@ -10,11 +10,59 @@ const express  = require('express');
 const http     = require('http');
 const path     = require('path');
 const { Server } = require('socket.io');
-const { isPasswordValid, hasValidSignedCookie, accessCookieHeader } = require('./src/access_gate');
+const {
+  isPasswordValid,
+  hasValidSignedCookie,
+  hasValidSignedCookieIsrael,
+  accessCookieHeader,
+  extractClientIp,
+  ipBlocked,
+  ipRecordFail,
+  // [GATE-DEBUG] temporary imports for startup/login diagnostics — remove with the debug block.
+  dayPasswords,
+  israelDay,
+  israelDayNumber,
+} = require('./src/access_gate');
 
 const poker  = require('./src/poker');
 const db     = require('./src/database');
 const { RoomManager, loadPersistedSettingsIntoCache, getCachedSettingsFor } = require('./src/rooms');
+
+// [GATE-DEBUG — TEMPORARY DIAGNOSTICS, REMOVE AFTER FIX] ====================
+// Startup visibility into DAILY_PASSWORDS without ever logging password
+// values: presence, JSON validity, which keys "0".."6" are set (lengths
+// only), and the Asia/Jerusalem day the server will enforce.
+(function logDailyGateStartup() {
+  const raw = process.env.DAILY_PASSWORDS;
+  const present = typeof raw === 'string' && raw.trim() !== '';
+  console.log('[GATE-DEBUG] startup: DAILY_PASSWORDS present=%s (type=%s, raw length=%s)',
+    present, typeof raw, typeof raw === 'string' ? raw.length : 'n/a');
+  let parsedOk = false;
+  let parsedKeys = [];
+  if (present) {
+    try {
+      const p = JSON.parse(raw);
+      if (p && typeof p === 'object' && !Array.isArray(p)) {
+        parsedOk = true;
+        parsedKeys = Object.keys(p);
+      } else {
+        console.log('[GATE-DEBUG] startup: JSON parsed but is not a plain object (isArray=%s)', Array.isArray(p));
+      }
+    } catch (e) {
+      console.log('[GATE-DEBUG] startup: JSON.parse FAILED: %s', e.message);
+    }
+  }
+  console.log('[GATE-DEBUG] startup: parsesAsValidJSON=%s parsedKeys=%s', parsedOk, JSON.stringify(parsedKeys));
+  const map = dayPasswords();
+  const dayNum = israelDayNumber();
+  console.log('[GATE-DEBUG] startup: gate configured=%s | server Israel day=%s (%s) | expected key="%s" | key present=%s',
+    !!map, dayNum, israelDay(), String(dayNum), !!(map && map[String(dayNum)]));
+  for (let i = 0; i <= 6; i++) {
+    const v = map ? map[String(i)] : undefined;
+    console.log('[GATE-DEBUG] startup: key "%s" -> %s%s', i, v ? 'set' : 'MISSING', v ? ' (length ' + v.length + ')' : '');
+  }
+})();
+// ===========================================================================
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -89,7 +137,13 @@ const server = http.createServer(app);
 // transport bounded against oversized direct socket payloads.
 const io     = new Server(server, { maxHttpBufferSize: 3e6 });
 io.use((socket, next) => {
-  if (hasValidSignedCookie(socket.handshake.headers.cookie)) return next();
+  // [GATE-DEBUG — TEMPORARY, REMOVE AFTER FIX] Cookie-gate visibility: did the
+  // handshake carry a cookie at all, and did it validate for the Israel day?
+  const dbgCookieHeader = socket.handshake.headers.cookie;
+  const dbgCookieOk = hasValidSignedCookie(dbgCookieHeader);
+  console.log('[GATE-DEBUG] socket handshake: cookieHeader=%s | cookieValid=%s',
+    dbgCookieHeader ? 'present (length ' + dbgCookieHeader.length + ')' : 'MISSING', dbgCookieOk);
+  if (dbgCookieOk) return next();
   next(new Error('Site access required'));
 });
 
@@ -102,9 +156,42 @@ app.get('/api/access/status', (req, res) => {
 });
 
 app.post('/api/access', (req, res) => {
-  if (!isPasswordValid(req.body && req.body.password)) {
-    return res.status(401).json({ ok: false, error: 'Incorrect password' });
+  const ip = extractClientIp(req);
+  // [GATE-DEBUG — TEMPORARY, REMOVE AFTER FIX] Logs the Israel-day the server
+  // computed and a FULLY REDACTED view of both the expected and sent values:
+  // lengths + whitespace/non-ASCII flags + match result only — never any raw
+  // password value (Render logs are persisted; values must never land there).
+  const sentRaw = req.body ? req.body.password : undefined;
+  const sentLen = typeof sentRaw === 'string' ? sentRaw.length : -1;
+  const dbgMap = dayPasswords();
+  const dbgDay = israelDayNumber();
+  const dbgExpected = dbgMap ? dbgMap[String(dbgDay)] : undefined;
+  const dbgMatched = dbgExpected !== undefined && typeof sentRaw === 'string' && sentRaw === dbgExpected;
+  const dbgRedact = (v) => {
+    if (typeof v !== 'string') return { present: false, length: -1, hasEdgeWhitespace: false, hasNonAscii: false };
+    return {
+      present: true,
+      length: v.length,
+      hasEdgeWhitespace: v !== v.trim(),
+      hasNonAscii: /[^\x20-\x7E]/.test(v),
+    };
+  };
+  console.log('[GATE-DEBUG] login attempt: ip=%s | israelDay=%s (%s) | expected key="%s" | expected(redacted)=%s | sent(redacted)=%s | lengthsEqual=%s | matched=%s',
+    ip || 'unknown', dbgDay, israelDay(), String(dbgDay),
+    dbgExpected === undefined ? 'NONE — DAILY_PASSWORDS unconfigured/invalid' : JSON.stringify(dbgRedact(dbgExpected)),
+    JSON.stringify(dbgRedact(sentRaw)),
+    typeof sentRaw === 'string' && typeof dbgExpected === 'string' ? (sentRaw.length === dbgExpected.length) : 'n/a',
+    dbgMatched);
+  if (ipBlocked(ip)) {
+    console.log('[GATE-DEBUG] login attempt BLOCKED by IP rate limit (ip=%s)', ip);
+    return res.status(429).json({ ok: false, error: 'סיסמה שגויה — חכו דקה' });
   }
+  if (!isPasswordValid(req.body && req.body.password)) {
+    console.log('[GATE-DEBUG] login attempt REJECTED — password mismatch (israelDay=%s, ip=%s)', dbgDay, ip);
+    ipRecordFail(ip);
+    return res.status(401).json({ ok: false, error: 'סיסמה שגויה' });
+  }
+  console.log('[GATE-DEBUG] login attempt ACCEPTED (israelDay=%s, ip=%s) — access cookie issued', dbgDay, ip);
   res.setHeader('Set-Cookie', accessCookieHeader());
   return res.json({ ok: true });
 });

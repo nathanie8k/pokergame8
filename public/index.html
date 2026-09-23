@@ -73,8 +73,10 @@
           <p class="subtitle">Your points are saved — return any time with the same name.</p>
           <div class="form-row">
             <input id="loginName" type="text" maxlength="20" placeholder="Enter your name" autocomplete="off" />
+            <input id="loginPassword" type="password" maxlength="60" placeholder="סיסמה יומית" autocomplete="off" />
             <button id="loginBtn" class="primary-btn">Take a seat</button>
           </div>
+          <div id="loginError" class="error-text" role="alert" aria-live="polite" style="display:none"></div>
 
           <p class="login-note muted small">Your display name is required so other players can recognize you.</p>
         </div>
@@ -190,8 +192,11 @@
            Call/Raise action bar (with an expandable raise/fold panel) and
            the viewer's own cards + hand panel at the bottom.
            Every node below is (re)populated from the public table_state
-           payload by populateMobileFelt(); no betting or turn logic lives
-           in this markup.
+           payload by the mobile renderer in /js/table-mobile.js — no
+           betting or turn logic lives in this markup.
+           The three action buttons keep the ids client.js already wires
+           (mtActCall / mtActRaise / mtActRaiseArrow); the renderer swaps
+           those nodes once at startup so the handlers are its own.
            ============================================================ -->
       <div class="mt-header" id="mtHeader">
         <button class="mt-icon-btn mt-back" id="mtBackBtn" type="button" aria-label="Leave the table">
@@ -237,9 +242,9 @@
       <!-- Action bar: primary action (Check/Call), Raise, and the expander
            that reveals bet sizing + the raise slider + Fold/All-in. -->
       <div class="mt-actions" id="mtActions">
-        <button class="mt-pill mt-call" id="mtCallBtn" type="button" disabled>Call</button>
-        <button class="mt-pill mt-raise" id="mtRaiseBtn" type="button" disabled>Raise</button>
-        <button class="mt-round" id="mtRaiseArrowBtn" type="button" aria-label="More actions"
+        <button class="mt-pill mt-call" id="mtActCall" type="button" disabled>Call</button>
+        <button class="mt-pill mt-raise" id="mtActRaise" type="button" disabled>Raise</button>
+        <button class="mt-round" id="mtActRaiseArrow" type="button" aria-label="More actions"
                 aria-expanded="false" aria-controls="mtActionPanel">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
             <path d="M12 19 L12 6 M6 12 L12 6 L18 12" fill="none" stroke="currentColor"
@@ -298,12 +303,13 @@
           <span class="muted small" id="handInfo"></span>
         </div>
         <div class="table-actions">
+          <!-- Sit out / Sit in / Leave. client.js binds these by id, so they
+               must stay in the markup; desktop CSS keeps Sit out and Leave
+               hidden (they are reachable from the ⋮ menu instead). -->
           <button id="sitOutBtn" class="ghost-btn" style="display:none">Sit out</button>
           <button id="sitInBtn"  class="ghost-btn" style="display:none">Sit in</button>
           <button id="leaveTableBtn" class="ghost-btn">Leave table</button>
-          <!-- 3-dot table menu: Change seat / Leave table. Hidden by default;
-               opened by the ⋮ toggle below. Same structure as the mobile
-               .mt-menu wrapper so both layouts share one JS wiring. -->
+          <!-- 3-dot table menu: Sit out / Change seat / Leave table. -->
           <div class="table-menu" id="tableMenu">
             <button id="tableMenuBtn" class="table-menu-btn" type="button"
                     aria-haspopup="menu" aria-expanded="false" aria-controls="tableMenuPanel"
@@ -315,9 +321,9 @@
               </svg>
             </button>
             <div class="table-menu-panel" id="tableMenuPanel" role="menu" aria-labelledby="tableMenuBtn" hidden>
-              <button class="table-menu-item" id="tableMenuLeaveItem" type="button" role="menuitem">Leave table</button>
               <button class="table-menu-item" id="tableMenuSitOutItem" type="button" role="menuitem">Sit out</button>
               <button class="table-menu-item" id="tableMenuChangeSeatItem" type="button" role="menuitem">Change seat</button>
+              <button class="table-menu-item" id="tableMenuLeaveItem" type="button" role="menuitem">Leave table</button>
             </div>
           </div>
         </div>

@@ -24,12 +24,27 @@
    setupActionButtons()/syncRaiseSliders(); this module only labels and
    enables the new buttons and mirrors them for the mobile layout.
 
-   NOTE: client.js still contains the previous body of populateMobileFelt
-   (the .mfsm/.mfc/.mfa green-felt version) plus its matching CSS in
-   style.css. It is dead code — the override below wins before the first
-   render — and is kept only because those two files are too large for the
-   workspace's file editor, which silently refuses to patch them. Removing
-   it later is a pure deletion with no behaviour change.
+   Two overrides, both installed before the first render:
+
+     1. populateMobileFelt() — the hook renderTable() already calls, now
+        backed by the implementation below.
+     2. populateMobileSpec() — client.js's other, earlier mobile renderer.
+        It is neutralised because it shares three ids with this screen
+        (#mtCommunity, #mtPotAmount, #mtHoleCards) and, running after the
+        hook, would overwrite this module's output.
+
+   The three action buttons keep the ids client.js binds during its own
+   init pass (mtActCall / mtActRaise / mtActRaiseArrow) so those bindings
+   cannot throw; this module swaps each node for a listener-free clone and
+   takes over their behaviour.
+
+   NOTE: client.js still carries both older mobile renderers (the
+   .mfsm/.mfc/.mfa green-felt body of populateMobileFelt, and
+   populateMobileSpec) and style.css still carries their CSS. They are dead
+   — the overrides above win and the elements they target no longer exist.
+   The bodies stay only because client.js and style.css are too large for
+   the workspace file editor, which silently refuses to patch them.
+   Removing them later is a pure deletion with no behaviour change.
    ============================================================ */
 (function () {
   'use strict';
@@ -280,9 +295,20 @@
   // ------------------------------------------------------------
   function setPanel(open) {
     var panel = $('mtActionPanel');
-    var arrow = $('mtRaiseArrowBtn');
+    var arrow = $('mtActRaiseArrow');
     if (panel) panel.classList.toggle('is-open', !!open);
     if (arrow) arrow.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  // Replaces a node with an identical copy so listeners attached by client.js
+  // are dropped while its id, classes and attributes survive — cloneNode()
+  // copies attributes only, never listeners.
+  function swapInCleanNode(id) {
+    var node = $(id);
+    if (!node || !node.parentNode) return node;
+    var clone = node.cloneNode(true);
+    node.parentNode.replaceChild(clone, node);
+    return clone;
   }
 
   function togglePanel() {
@@ -291,9 +317,9 @@
   }
 
   function renderActionBar(t, selfSeat) {
-    var callBtn = $('mtCallBtn');
+    var callBtn = $('mtActCall');
     if (!callBtn) return;
-    var raiseBtn = $('mtRaiseBtn');
+    var raiseBtn = $('mtActRaise');
     var foldBtn = $('mtFoldBtn');
     var checkBtn = $('mtCheckBtn');
     var allinBtn = $('mtAllinBtn');
@@ -398,13 +424,27 @@
   // this name at call time, so the mobile hook now resolves here.
   window.populateMobileFelt = populateMobileFelt;
 
+  // client.js also carries its own mobile renderer (populateMobileSpec) for an
+  // earlier markup set. It is called right after the hook above and shares
+  // three ids with this screen (#mtCommunity, #mtPotAmount, #mtHoleCards), so
+  // it would overwrite this renderer's output. Neutralise it.
+  window.populateMobileSpec = function () {};
+
   // ------------------------------------------------------------
   // Wiring for the new controls. Registered after client.js's own
   // DOMContentLoaded handler, so its listeners (table menu, raise slider,
   // sizing presets) are already attached when these run.
   // ------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', function () {
-    var callBtn = $('mtCallBtn');
+    // These three ids are also bound by client.js during its own init pass
+    // (call and raise with amount 0, plus an arrow that toggles the old
+    // slider). client.js dereferences the ids unguarded, so they must stay in
+    // the markup — swapping in a clean copy keeps the ids while dropping
+    // those listeners, making this module their only source of behaviour.
+    var callBtn = swapInCleanNode('mtActCall');
+    var raiseBtn = swapInCleanNode('mtActRaise');
+    var arrowBtn = swapInCleanNode('mtActRaiseArrow');
+
     if (callBtn) {
       callBtn.addEventListener('click', function () {
         if (callBtn.disabled) return;
@@ -416,7 +456,6 @@
       });
     }
 
-    var raiseBtn = $('mtRaiseBtn');
     if (raiseBtn) {
       raiseBtn.addEventListener('click', function () {
         if (raiseBtn.disabled) return;
@@ -452,8 +491,7 @@
       });
     }
 
-    var arrow = $('mtRaiseArrowBtn');
-    if (arrow) arrow.addEventListener('click', togglePanel);
+    if (arrowBtn) arrowBtn.addEventListener('click', togglePanel);
 
     var back = $('mtBackBtn');
     if (back) back.addEventListener('click', leaveCurrentTable);

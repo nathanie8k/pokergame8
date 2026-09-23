@@ -101,6 +101,59 @@ const state = {
 const socket = io({ reconnection: true, autoConnect: false });
 state.socket = socket;
 
+// ---- Daily rotating access password (client side) ----
+//
+// The server's source of truth is process.env.DAILY_PASSWORDS (JSON with
+// keys "0".."6", 0 = Sunday ... 6 = Saturday, matching JS getDay()).
+// This file NEVER contains the passwords and NEVER sends them to any
+// client. The client only ever sends a password the user typed to the
+// server for validation, and remembers (in localStorage) that today's
+// password was already passed so the user is not re-prompted the same
+// day.
+//
+// Today's date is computed in the Asia/Jerusalem timezone so the day
+// boundary matches the server's calendar day (the Render process runs in
+// UTC). The localStorage key includes the full yyyyMMdd so a guest who
+// passes the password at 23:50 Israel time is NOT re-prompted after
+// midnight.
+const LS_ACCESS_KEY_PREFIX = 'poker_access_';
+
+function israelDateString() {
+  try {
+    const iso = new Date().toLocaleString('en-CA', {
+      timeZone: 'Asia/Jerusalem',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    });
+    // en-CA produces "YYYY-MM-DD". Strip the hyphens to get yyyyMMdd.
+    return iso.replace(/[-]/g, '');
+  } catch (e) {
+    // Fallback: the server always validates against its own Israel day,
+    // so a client-side computation failure only means the guest is
+    // re-prompted — never that an invalid password is silently accepted.
+    return null;
+  }
+}
+
+function accessPassedToday() {
+  const key = israelDateString();
+  if (!key) return false;
+  try {
+    return localStorage.getItem(LS_ACCESS_KEY_PREFIX + key) === key;
+  } catch (e) {
+    return false;
+  }
+}
+
+function markAccessPassedToday() {
+  const key = israelDateString();
+  if (!key) return;
+  try { localStorage.setItem(LS_ACCESS_KEY_PREFIX + key, key); } catch (e) {}
+}
+
+// Track whether the daily gate has already been passed today so the
+// login screen can hide the password field for returning guests.
+state.accessPassedToday = accessPassedToday();
+
 async function ensureSiteAccess() {
   const gate = $('accessGate');
   try {
@@ -108,6 +161,14 @@ async function ensureSiteAccess() {
     const data = await status.json();
     if (data.ok) { socket.connect(); return; }
   } catch (e) {}
+  // If the guest already passed today's password (localStorage), do NOT
+  // show the gate overlay — the socket gate (cookie) is authoritative and
+  // will block the connection if the cookie is missing, in which case the
+  // caller will re-prompt via the login-screen password field.
+  if (state.accessPassedToday) {
+    if (gate) gate.style.display = 'none';
+    return;
+  }
   if (gate) { gate.style.display = ''; const input = $('accessPassword'); if (input) input.focus(); }
 }
 
@@ -122,13 +183,15 @@ async function submitSiteAccess(event) {
       body: JSON.stringify({ password: input ? input.value : '' }),
     });
     const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error('Incorrect password');
+    if (!response.ok || !data.ok) throw new Error(data && data.error ? data.error : 'Incorrect password');
     if (error) error.textContent = '';
     if ($('accessGate')) $('accessGate').style.display = 'none';
     if (input) input.value = '';
+    markAccessPassedToday();
+    state.accessPassedToday = true;
     socket.connect();
   } catch (e) {
-    if (error) error.textContent = 'Incorrect password';
+    if (error) error.textContent = e && e.message ? e.message : 'סיסמה שגויה';
     if (input) { input.value = ''; input.focus(); }
   }
 }
@@ -922,9 +985,20 @@ function updateTopBar() {
   if (mftrPP) mftrPP.textContent = state.player.name;
   var mftrPtP = $('mftrPointsPill');
   if (mftrPtP) mftrPtP.textContent = formatNumber(state.player.points) + ' pts';
-}
+}  // ---------- Login view ----------
 
-// ---------- Login view ----------
+// Restore the saved display name (if any) so a returning guest does not
+// have to retype it after a reload or reconnect. The name is persisted in
+// localStorage on every successful login, and re-sent to the server on the
+// next register call (including socket reconnects).
+(function restoreSavedName() {
+  try {
+    const saved = localStorage.getItem('pokerName');
+    if (saved && $('loginName')) $('loginName').value = saved;
+  } catch (e) {}
+})();
+
+updateLoginPasswordField();
 
 async function loadRandomNames() {
   try {
@@ -961,6 +1035,55 @@ function selectRandomName(name) {
 async function doLogin() {
   const name = $('loginName').value.trim();
   if (!name) { showToast('Please enter a name', 'error'); return; }
+
+  // If the socket is not yet connected, the guest must pass the daily gate
+  // first. The gate may already be marked as passed today (localStorage) but
+  // the cookie may be missing (cleared cookies / private browsing); in that
+  // case we re-prompt via the login-screen password field.
+  if (!state.socket.connected) {
+    // Show the password field if it was hidden because accessPassedToday was true.
+    const passwordField = $('loginPassword');
+    if (passwordField) {
+      passwordField.style.display = '';
+      passwordField.removeAttribute('aria-hidden');
+    }
+    const password = (passwordField ? passwordField.value : '').trim();
+    if (!password) {
+      const errEl = $('loginError');
+      if (errEl) { errEl.textContent = 'סיסמה שגויה'; errEl.style.display = ''; }
+      return;
+    }
+    try {
+      const response = await fetch('/api/access', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        const errEl = $('loginError');
+        if (errEl) { errEl.textContent = data && data.error ? data.error : 'סיסמה שגויה'; errEl.style.display = ''; }
+        return;
+      }
+      markAccessPassedToday();
+      state.accessPassedToday = true;
+      // FIX (gate): `errEl` was never declared in this scope — this line threw
+      // ReferenceError on every SUCCESSFUL password entry, so the catch block
+      // displayed 'סיסמה שגויה' for a correct password and returned before the
+      // register call below could run. Declare it properly.
+      const errEl = $('loginError');
+      if (errEl) errEl.style.display = 'none';
+      // FIX (gate): the successful fetch above set the access cookie; open the
+      // socket now so the register emit below actually reaches the server.
+      // Mirrors submitSiteAccess, which calls socket.connect() on gate success.
+      if (!state.socket.connected) state.socket.connect();
+    } catch (e) {
+      const errEl = $('loginError');
+      if (errEl) { errEl.textContent = 'סיסמה שגויה'; errEl.style.display = ''; }
+      return;
+    }
+  }
+
   // Pre-attach any stored per-name secret so a returning owner
   // doesn't re-prompt on every device wake / socket reconnect. The
   // stored value is just a string the SPA carries between sessions;
@@ -989,6 +1112,21 @@ async function doLogin() {
       showToast(res && res.error ? res.error : 'Login failed', 'error');
     }
   });
+}
+
+// Toggling the password field visibility: hide it when the gate has been
+// passed today AND the socket is (or will be) connected; otherwise keep it
+// visible so a returning guest whose cookie was cleared can re-enter.
+function updateLoginPasswordField() {
+  const passwordField = $('loginPassword');
+  if (!passwordField) return;
+  if (state.accessPassedToday && state.socket.connected) {
+    passwordField.style.display = 'none';
+    passwordField.setAttribute('aria-hidden', 'true');
+  } else {
+    passwordField.style.display = '';
+    passwordField.removeAttribute('aria-hidden');
+  }
 }
 
 // ----- Legacy shared-password admin modal -----
@@ -1578,8 +1716,12 @@ function renderTable() {
     disableAllActions();
   }
 
-  // Populate mobile full-felt elements
+  // Populate mobile full-felt elements (legacy mobile felt layer)
   populateMobileFelt(t, selfSeat);
+
+  // Populate the new mobile spec layout (#mobileScreen): top bar center /
+  // avatars row / community cards / action buttons / hand panel.
+  populateMobileSpec(t, selfSeat);
 
   // Chat panel: rendered after seats so the messages reflect whatever
   // state.currentTable.chatMessages just got (publicView now includes it
@@ -1959,11 +2101,20 @@ function populateMobileFelt(t, selfSeat) {
         markerEl.style.display = '';
 
         if (seat && seat.occupied && !seat.removed && !seat.disconnected) {
-          // Occupied: name + stack
+          // Occupied: name + stack + small face-down cards
           var nameEl = el('span', { class: 'mfsm-name', text: seat.name });
           markerEl.appendChild(nameEl);
           var stackEl = el('span', { class: 'mfsm-stack', text: formatNumber(seat.stack) });
           markerEl.appendChild(stackEl);
+          // Opponents keep small face-down cards at their own seats (visual
+          // only — the server never sends other players' hole card values).
+          if (seat.holeCards && seat.holeCards.length === 2 && t.phase !== 'waiting') {
+            var cardsWrap = el('div', { class: 'mfsm-cards' });
+            seat.holeCards.forEach(function() {
+              cardsWrap.appendChild(renderCard(null, { faceDown: true, small: true }));
+            });
+            markerEl.appendChild(cardsWrap);
+          }
 
           // Highlight if this seat is the current active player
           if (serverIdx === t.currentPlayerIndex) {
@@ -2044,18 +2195,25 @@ function populateMobileFelt(t, selfSeat) {
     }
   }
 
-  // Player hole cards
+  // Player hole cards (hero seat row next to name/stack) — hidden while the
+  // viewer is not seated so the board zone stands alone on an empty table.
   var hc = $('mfcHoleCards');
+  var heroSeat = $('mfcHeroSeat');
   if (hc) {
     hc.innerHTML = '';
-    if (selfSeat && selfSeat.holeCards && selfSeat.holeCards.length === 2) {
-      selfSeat.holeCards.forEach(function(c, i) {
-        hc.appendChild(renderCard(c, { delay: i * 80 }));
-      });
-    } else {
-      hc.appendChild(renderCard(null, { faceDown: true }));
-      hc.appendChild(renderCard(null, { faceDown: true }));
+    if (selfSeat) {
+      if (selfSeat.holeCards && selfSeat.holeCards.length === 2) {
+        selfSeat.holeCards.forEach(function(c, i) {
+          hc.appendChild(renderCard(c, { delay: i * 80 }));
+        });
+      } else {
+        hc.appendChild(renderCard(null, { faceDown: true }));
+        hc.appendChild(renderCard(null, { faceDown: true }));
+      }
     }
+  }
+  if (heroSeat) {
+    heroSeat.style.display = selfSeat ? '' : 'none';
   }
 
   // Seat info
@@ -2080,12 +2238,10 @@ function populateMobileFelt(t, selfSeat) {
   var stk = $('mfcStack');
   if (stk) stk.textContent = formatNumber(selfSeat ? selfSeat.stack : 0);
 
-  // Purple card backs
+  // Card-back icons under the name were replaced by the hero's real cards.
   var hcb = $('mfcHoleCardsBack');
   if (hcb) {
     hcb.innerHTML = '';
-    hcb.appendChild(el('div', { class: 'mfc-card-back' }));
-    hcb.appendChild(el('div', { class: 'mfc-card-back' }));
   }
 
   // Bet chip
@@ -2132,6 +2288,104 @@ function populateMobileFelt(t, selfSeat) {
     }
   }
 }
+
+// ---------- Mobile spec layout ----------
+
+function populateMobileSpec(t, selfSeat) {
+  // Top bar center: table name + subtitle.
+  var brand = $('mtbBrand');
+  if (brand) brand.textContent = t.name || '';
+  var sub = $('mtbSub');
+  if (sub) {
+    var bits = [];
+    bits.push('Hand #' + (t.handNumber || 0));
+    if (t.smallBlind !== undefined) bits.push('Blinds ' + t.smallBlind + '/' + t.bigBlind);
+    sub.textContent = bits.join(' \u00B7 ');
+  }
+
+  // Player avatars row.
+  var avatarsHost = $('mtAvatarsRow');
+  if (avatarsHost) {
+    avatarsHost.innerHTML = '';
+    t.seats.forEach(function(seat, idx) {
+      if (!seat || !seat.occupied || seat.removed || seat.disconnected) return;
+      var card = el('div', { class: 'mt-avatar-card' + (seat.isSelf ? ' is-self' : '') });
+      var avatar = el('div', { class: 'mt-avatar' + (seat.avatar ? ' has-photo' : '') });
+      avatar.textContent = seat.avatar ? '' : getInitials(seat.name);
+      if (seat.avatar) avatar.style.backgroundImage = 'url(' + seat.avatar + ')';
+      card.appendChild(avatar);
+      if (idx === t.buttonIndex) {
+        card.querySelector('.mt-avatar').appendChild(el('span', { class: 'mt-avatar-dealer-badge', text: 'D' }));
+      }
+      card.appendChild(el('div', { class: 'mt-avatar-name', text: seat.name }));
+      card.appendChild(el('div', { class: 'mt-avatar-stack', text: formatNumber(seat.stack) }));
+      if (idx === t.sbIndex) card.appendChild(el('span', { class: 'mt-blind-chip', text: String(t.smallBlind || '') }));
+      if (idx === t.bbIndex) card.appendChild(el('span', { class: 'mt-blind-chip', text: String(t.bigBlind || '') }));
+      avatarsHost.appendChild(card);
+    });
+  }
+
+  // Community cards row.
+  var communityHost = $('mtCommunity');
+  if (communityHost) {
+    communityHost.innerHTML = '';
+    (t.communityCards || []).forEach(function(c, i) {
+      communityHost.appendChild(renderCard(c, { delay: i * 80, flip: true }));
+    });
+    for (var i = (t.communityCards || []).length; i < 5; i++) {
+      communityHost.appendChild(el('div', { class: 'empty-card' }));
+    }
+  }
+
+  // Pot number under the 5th card.
+  var potEl = $('mtPotAmount');
+  if (potEl) potEl.textContent = formatNumber(t.pot);
+
+  // Action buttons: Call / Raise / up-arrow.
+  var callBtn = $('mtActCall');
+  var raiseBtn = $('mtActRaise');
+  var arrowBtn = $('mtActRaiseArrow');
+
+  if (callBtn && raiseBtn && arrowBtn) {
+    var toCall = Math.max(0, (t.currentBet || 0) - (selfSeat ? selfSeat.contributed : 0));
+    var callDisabled = !selfSeat || selfSeat.folded || selfSeat.allIn || selfSeat.satOut || toCall <= 0 || selfSeat.stack < toCall;
+    callBtn.disabled = callDisabled;
+    if (toCall > 0) {
+      callBtn.textContent = 'Call ' + formatNumber(Math.min(selfSeat ? selfSeat.stack : 0, toCall));
+    } else {
+      callBtn.textContent = 'Call';
+    }
+
+    var minRaiseTotal = 0;
+    if (t.currentBet > 0) {
+      minRaiseTotal = t.currentBet + Math.max(t.minRaise || t.bigBlind, t.bigBlind);
+    } else {
+      minRaiseTotal = t.bigBlind;
+    }
+    var maxRaise = (selfSeat ? selfSeat.stack + selfSeat.contributed : 0);
+    var raiseDisabled = !selfSeat || selfSeat.folded || selfSeat.allIn || selfSeat.satOut || selfSeat.stack <= 0 || maxRaise < minRaiseTotal;
+    raiseBtn.disabled = raiseDisabled;
+    raiseBtn.textContent = (t.currentBet || 0) === 0 ? 'Bet' : 'Raise';
+    arrowBtn.disabled = raiseDisabled;
+  }
+
+  // Hand panel: pair label / avatar / stack.
+  var handLabel = $('mtHandLabel');
+  if (handLabel) handLabel.textContent = 'Pair';
+  var handAvatar = $('mtHandAvatar');
+  if (handAvatar) {
+    handAvatar.textContent = selfSeat ? (selfSeat.avatar ? '' : getInitials(selfSeat.name)) : '?';
+    handAvatar.style.backgroundImage = selfSeat && selfSeat.avatar ? 'url(' + selfSeat.avatar + ')' : '';
+    handAvatar.classList.toggle('has-photo', !!(selfSeat && selfSeat.avatar));
+  }
+  var handStack = $('mtHandStack');
+  if (handStack) handStack.textContent = formatNumber(selfSeat ? selfSeat.stack : 0);
+
+  // Hide the hand panel when not seated.
+  var bottomRow = $('mtBottomRow');
+  if (bottomRow) bottomRow.style.display = selfSeat ? '' : 'none';
+}
+
 
 // ---------- Chat panel ----------
 
@@ -4047,8 +4301,16 @@ socket.on('chat_update', ({ tableId, messages }) => {
       });
     }
     $('accessGateForm').addEventListener('submit', submitSiteAccess);
-  $('loginBtn').addEventListener('click', doLogin);
+  $('loginBtn').addEventListener('click', () => {
+    const errEl = $('loginError');
+    if (errEl) errEl.style.display = 'none';
+    doLogin();
+  });
   $('loginName').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  $('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  // Update password-field visibility whenever the socket connection state changes.
+  socket.on('connect', () => updateLoginPasswordField());
+  socket.on('disconnect', () => updateLoginPasswordField());
 
   // Name change modal
   $('changeNameBtn').addEventListener('click', openNameChangeModal);
@@ -4221,6 +4483,20 @@ socket.on('chat_update', ({ tableId, messages }) => {
         performAction(action);
       }
     });
+  });
+
+  // ---- Mobile spec action buttons ----
+  $('mtActCall').addEventListener('click', () => performAction('call', 0));
+  $('mtActRaise').addEventListener('click', () => performAction('raise', 0));
+  $('mtActRaiseArrow').addEventListener('click', () => {
+    var slider = $('mobileRaiseSlider');
+    if (slider) {
+      slider.hidden = !slider.hidden;
+      if (!slider.hidden) {
+        var track = slider.querySelector('.rs-track');
+        if (track) track.focus();
+      }
+    }
   });
 
   // ---- Mobile felt sizing labels ----
