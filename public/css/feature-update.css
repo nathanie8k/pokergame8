@@ -11,6 +11,11 @@
 @media(prefers-reduced-motion:reduce){.access-chip,.loading-chip{animation:none}}
 .accessibility-statement{max-width:760px;margin:60px auto;padding:30px;background:#171717;border-radius:14px;line-height:1.6}.accessibility-statement a{color:#ff7882}
 
+/* Seat whose owner sat down while a hand was running: they were not dealt into
+   that hand (server flag joinedMidHand), so the seat reads as queued for the
+   next deal instead of folded/out. See /js/midhand-seat.js. */
+.seat .status.waiting{color:var(--text-mute);font-style:italic}
+
 /* Final presence cascade: keep the compact badge out of the mobile table action zones. */
 .presence-widget{position:fixed;top:calc(env(safe-area-inset-top,0px) + 76px);right:calc(env(safe-area-inset-right,0px) + 14px);z-index:240;min-width:0;width:max-content;max-width:calc(100vw - 28px);margin:0;border-radius:999px}
 .presence-toggle{width:auto;min-height:40px;padding:8px 12px;font-size:12px;text-align:center;border-radius:999px}

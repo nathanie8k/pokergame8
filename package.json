@@ -6,13 +6,14 @@
   "scripts": {
     "start": "node server.js",
     "dev:memory": "node bin/dev-memory.js",
-    "test": "node tests/test_poker.js && node tests/test_showdown.js && node --test tests/test_betting_round.js && node tests/test_admin_role.js && node tests/test_profile_photo_ui.js && node tests/test_access_gate.js && node tests/test_rooms_features.js && node tests/test_move_seat.js && node tests/test_client_id_wiring.js",
+    "test": "node tests/test_poker.js && node tests/test_showdown.js && node --test tests/test_betting_round.js && node tests/test_admin_role.js && node tests/test_profile_photo_ui.js && node tests/test_access_gate.js && node tests/test_rooms_features.js && node tests/test_move_seat.js && node tests/test_joined_mid_hand.js && node tests/test_client_id_wiring.js",
     "test:poker": "node tests/test_poker.js",
     "test:showdown": "node tests/test_showdown.js",
     "test:betting": "node --test tests/test_betting_round.js",
     "test:admin": "node tests/test_admin_role.js",
     "test:profile-photo": "node tests/test_profile_photo_ui.js",
     "test:move-seat": "node tests/test_move_seat.js",
+    "test:mid-hand-join": "node tests/test_joined_mid_hand.js",
     "test:id-wiring": "node tests/test_client_id_wiring.js"
   },
   "dependencies": {

@@ -307,6 +307,25 @@
   .mt-seat.is-change-target .mt-seat-status {
     color: #ff8f8f;
   }
+  /* Seat taken while a hand was already running. The server flags these
+     `joinedMidHand`: they hold no cards for the running hand and act from
+     the next deal, so they read as queued rather than idle. */
+  .mt-seat.is-waiting .mt-avatar {
+    opacity: 0.55;
+  }
+  .mt-seat .mt-seat-waiting {
+    width: auto;
+    height: auto;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #9b9b9b;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.35;
+    text-align: center;
+    cursor: default;
+  }
 
   /* ---------- Board: community cards + pot ---------- */
   .mt-board {
