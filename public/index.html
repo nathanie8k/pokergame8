@@ -6,6 +6,8 @@
   <title>Poker8 - Texas holdem</title>
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="stylesheet" href="/css/feature-update.css" />
+  <link rel="stylesheet" href="/css/table-mobile.css" />
+  <link rel="stylesheet" href="/css/mobile-spec.css" />
   <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>♠</text></svg>" />
   <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -185,100 +187,67 @@
     <!-- ===== Table view ===== -->
     <section id="view-table" class="view" style="display:none">
 
-      <!-- Mobile full-screen table: compact header · tall stadium felt · pinned action bar.
-           Hidden on desktop (>720px). On mobile it owns the whole #view-table column and
-           renders the desktop .poker-table beneath it (the desktop layer is retained for
-           the chat tab + chat panel, which are still inside .poker-table). -->
+      <!-- Mobile full-screen table: top bar · player avatars · community cards · action buttons · hole cards panel.
+           Hidden on desktop (>768px). This exact arrangement is the mobile table layout per spec. -->
       <div class="mobile-screen" id="mobileScreen">
-        <!-- (1) Compact header: brand · table name · hand/blinds subtitle · 3-dot menu · online pill -->
-        <header class="mobile-header" id="mobileHeader">
-          <div class="mh-left">
-            <span class="mh-suits" aria-hidden="true">♠♥♦♣</span>
-            <span class="mh-brand">Beginners Table</span>
-            <span class="mh-sub" id="mhSub">Hand #0 · Blinds 5/10 · 2/6</span>
+        <!-- (1) Top bar: back arrow + 3-dot menu, white, own row, edge spacing -->
+        <header class="mobile-top-bar" id="mobileTopBar">
+          <button class="mtb-back" id="mtbBackBtn" type="button" aria-label="Back to lobby">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="mtb-center" id="mtbCenter">
+            <span class="mtb-brand" id="mtbBrand">Table</span>
+            <span class="mtb-sub" id="mtbSub">Hand #0 · Blinds 5/10</span>
           </div>
-          <div class="mh-right">
-            <span class="mh-online" id="mhOnline">2 online</span>
-            <div class="table-menu" id="mfsrTableMenu">
-              <button id="mfsrTableMenuBtn" class="table-menu-btn" type="button"
-                      aria-haspopup="menu" aria-expanded="false" aria-controls="mfsrTableMenuPanel"
+          <div class="mtb-right">
+            <div class="table-menu" id="mtbTableMenu">
+              <button id="mtbTableMenuBtn" class="table-menu-btn" type="button"
+                      aria-haspopup="menu" aria-expanded="false" aria-controls="mtbTableMenuPanel"
                       title="Table menu" aria-label="Table menu">
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
                   <circle cx="12" cy="5"  r="2.1" fill="currentColor"/>
                   <circle cx="12" cy="12" r="2.1" fill="currentColor"/>
                   <circle cx="12" cy="19" r="2.1" fill="currentColor"/>
                 </svg>
               </button>
-              <div class="table-menu-panel" id="mfsrTableMenuPanel" role="menu" aria-labelledby="mfsrTableMenuBtn" hidden>
-                <button class="table-menu-item" id="mfsrMenuSitOutItem" type="button" role="menuitem">Sit out</button>
-                <button class="table-menu-item" id="mfsrMenuChangeSeatItem" type="button" role="menuitem">Change seat</button>
-                <button class="table-menu-item" id="mfsrMenuLeaveItem" type="button" role="menuitem">Leave table</button>
+              <div class="table-menu-panel" id="mtbTableMenuPanel" role="menu" aria-labelledby="mtbTableMenuBtn" hidden>
+                <button class="table-menu-item" id="mtbMenuSitOutItem" type="button" role="menuitem">Sit out</button>
+                <button class="table-menu-item" id="mtbMenuChangeSeatItem" type="button" role="menuitem">Change seat</button>
+                <button class="table-menu-item" id="mtbMenuLeaveItem" type="button" role="menuitem">Leave table</button>
               </div>
             </div>
           </div>
         </header>
 
-        <!-- (2) Tall stadium table, flex:1, fills all remaining vertical space. -->
-        <div class="mobile-table" id="mobileTable">
-          <div class="mt-felt" id="mtFelt">
-            <!-- Seats distributed around the tall oval via percentage positions -->
-            <div class="mt-seats" id="mtSeats" aria-hidden="true"></div>
+        <!-- (2) Player avatars row: circular illustrated avatars + name/stack + dealer badge + blind chip badges -->
+        <section class="mt-avatars-row" id="mtAvatarsRow" aria-label="Players"></section>
 
-            <!-- Center board zone: pot + 5 community-card slots -->
-            <div class="mt-board" id="mtBoard">
-              <div class="mt-pot">
-                <span class="mt-pot-label">POT</span>
-                <span class="mt-pot-amount" id="mtPotAmount">0</span>
-              </div>
-              <div class="mt-community" id="mtCommunity"></div>
-            </div>
-
-            <!-- Hero: compact hole cards + avatar + name/stack, inside table -->
-            <div class="mt-hero" id="mtHero">
-              <div class="mt-hero-cards" id="mtHoleCards"></div>
-              <div class="mt-hero-info" id="mtHeroInfo">
-                <div class="mt-avatar" id="mtAvatar">?</div>
-                <div class="mt-hero-text">
-                  <div class="mt-hero-name" id="mtHeroName"></div>
-                  <div class="mt-hero-stack" id="mtHeroStack"></div>
-                </div>
-                <div class="mt-bet-chip" id="mtBetChip"></div>
-              </div>
-            </div>
-
-            <!-- Opponent card-back strip (compact, beside their avatar via seat render) -->
-            <div class="mt-opp-cards" id="mtOppCards"></div>
+        <!-- (3) Center community cards row: 5 white rounded cards + pot number -->
+        <section class="mt-center-board" id="mtCenterBoard" aria-label="Community cards">
+          <div class="mt-community" id="mtCommunity"></div>
+          <div class="mt-community-pot">
+            <span class="mt-pot-amount" id="mtPotAmount">0</span>
           </div>
-        </div>
+        </section>
 
-        <!-- (3) Raise panel — docked on the far LEFT edge, over the lower half of the table. -->
-        <div class="raise-panel" id="raisePanel" hidden>
-          <div class="rp-head">
-            <span class="rp-title">Raise to</span>
-            <span class="rp-value" id="rpValue" aria-hidden="true">0</span>
-          </div>
-          <div class="rp-track" role="slider" tabindex="0" aria-label="Raise amount"
-               aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
-            <div class="rp-fill"></div>
-            <div class="rp-thumb"></div>
-          </div>
-          <div class="rp-presets" id="rpPresets">
-            <button type="button" data-rp="min">Min</button>
-            <button type="button" data-rp="x2">2×</button>
-            <button type="button" data-rp="x5">5×</button>
-            <button type="button" data-rp="all">All in</button>
-          </div>
-          <button type="button" class="rp-confirm" id="rpConfirm" disabled>Confirm</button>
-        </div>
+        <!-- (4) Action buttons row: Call / Raise / up-arrow -->
+        <section class="mt-action-row" id="mtActionRow" aria-label="Actions">
+          <button class="mt-action-btn mt-action-call" id="mtActCall" data-action="call">Call</button>
+          <button class="mt-action-btn mt-action-raise" id="mtActRaise" data-action="raise">Raise</button>
+          <button class="mt-action-btn mt-action-raise-arrow" id="mtActRaiseArrow" type="button" aria-label="Raise amount">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 19V5m0 0-5 5m5-5 5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </section>
 
-        <!-- (4) Pinned bottom action bar: single row, equal-height touch targets. -->
-        <div class="mobile-action-bar" id="mobileActionBar">
-          <button class="action-btn action-fold"  id="actFold"  data-action="fold">Fold</button>
-          <button class="action-btn action-check" id="actCheck" data-action="check">Check</button>
-          <button class="action-btn action-call"  id="actCall"  data-action="call">Call</button>
-          <button class="action-btn action-raise" id="actRaise" data-action="raise">Raise</button>
-          <button class="action-btn action-allin" id="actAllin" data-action="all_in">All-in</button>
-        </div>
+        <!-- (5) Bottom row: two large fanned hole cards + dark hand panel -->
+        <footer class="mt-bottom-row" id="mtBottomRow" aria-label="Your hand">
+          <div class="mt-hole-cards" id="mtHoleCards"></div>
+          <div class="mt-hand-panel" id="mtHandPanel">
+            <div class="mt-hand-panel-label" id="mtHandLabel">Pair</div>
+            <div class="mt-hand-panel-avatar" id="mtHandAvatar"></div>
+            <div class="mt-hand-panel-stack" id="mtHandStack">0</div>
+          </div>
+        </footer>
       </div>
 
       <div class="table-info">

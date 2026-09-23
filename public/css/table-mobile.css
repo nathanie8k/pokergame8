@@ -5,7 +5,7 @@
    existing desktop rules.
    ========================================================== */
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
 
   /* ---- #view-table is the 100dvh flex column ---- */
   #view-table {
@@ -17,170 +17,388 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: #0d0d0d;
+    background: #0a0a0a;
   }
 
-  /* ---- (1) COMPACT HEADER ---- */
-  .mobile-header {
+  /* ---- Mobile screen fills the flex column ---- */
+  .mobile-screen {
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #0a0a0a;
+  }
+
+  /* ---- Hide desktop table UI on mobile ---- */
+  #view-table .table-info,
+  #view-table .table-chat-row,
+  #view-table .hand-log,
+  #view-table .own-hand-zone {
+    display: none;
+  }
+
+  /* ---- Hide desktop top bar on mobile table view ---- */
+  body.is-table-view #topBar { display: none; }
+
+  /* ---- (1) MOBILE TOP BAR: back + center + menu, white icons ---- */
+  .mobile-top-bar {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: max(8px, env(safe-area-inset-top, 8px)) 12px 6px;
-    background: #0d0d0d;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    min-height: 40px;
+    padding: max(10px, env(safe-area-inset-top, 10px)) 14px 8px;
+    background: transparent;
+    border-bottom: none;
+    min-height: 44px;
   }
-  .mh-left {
-    display: flex;
+  .mtb-back,
+  .mtb-right .table-menu-btn {
+    color: #fff;
+    background: transparent;
+    border: none;
+    padding: 4px;
+    min-height: 40px;
+    min-width: 40px;
+    border-radius: 999px;
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 120ms;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mtb-back:hover,
+  .mtb-right .table-menu-btn:hover { background: rgba(255,255,255,0.06); }
+  .mtb-center {
+    display: flex;
+    flex-direction: column;
+    gap: 0px;
     min-width: 0;
     flex: 1 1 0;
+    text-align: center;
   }
-  .mh-suits {
-    color: #ffcc4d;
-    font-size: 12px;
-    letter-spacing: 2px;
-    flex: 0 0 auto;
-  }
-  .mh-brand {
-    font-size: 13px;
+  .mtb-brand {
+    font-size: 14px;
     font-weight: 800;
     color: #fff;
-    letter-spacing: 0.3px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    letter-spacing: 0.2px;
   }
-  .mh-sub {
+  .mtb-sub {
     font-size: 10px;
-    color: #7a8a82;
+    color: #8a8a8a;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     letter-spacing: 0.2px;
     font-weight: 500;
   }
-  .mh-right {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex: 0 0 auto;
-  }
-  .mh-online {
-    font-size: 10px;
-    font-weight: 700;
-    color: #7a8a82;
-    padding: 4px 8px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.10);
-    white-space: nowrap;
-  }
-  .mh-online.is-live { color: #5cd97a; }
 
-  /* hide the old desktop top-bar on mobile table view */
-  body.is-table-view #topBar { display: none; }
-
-  /* ---- (4) PINNED BOTTOM ACTION BAR ---- */
-  .mobile-action-bar {
+  /* ---- (4) MOBILE ACTION ROW: Call / Raise / up-arrow ---- */
+  .mt-action-row {
     flex: 0 0 auto;
     display: flex;
     align-items: stretch;
     justify-content: space-between;
-    gap: 6px;
-    padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 8px));
-    background: rgba(10,10,10,0.92);
-    border-top: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    gap: 8px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 8px));
+    background: #0a0a0a;
   }
-  .action-btn {
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 44px;
-    padding: 0 4px;
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 10px;
+  .mt-action-btn {
+    min-height: 56px;
+    border: none;
+    border-radius: 18px;
+    background: #1c1c1c;
+    color: #fff;
     font-weight: 800;
-    font-size: 12px;
+    font-size: 14px;
     letter-spacing: 0.3px;
-    cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    transition: background 120ms, border-color 120ms, color 120ms;
+    padding: 0 10px;
+    transition: background 120ms, transform 120ms;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
-  .action-btn:not(:disabled):hover { filter: brightness(1.12); }
-  .action-btn:active:not(:disabled) { transform: scale(0.97); }
-  .action-btn:disabled {
+  .mt-action-btn:disabled {
     opacity: 0.32;
     cursor: not-allowed;
-    filter: grayscale(0.5);
   }
-  /* Fold = red */
-  .action-btn.action-fold {
-    background: rgba(255,60,60,0.18);
-    border-color: rgba(255,80,80,0.55);
-    color: #ffc8c8;
+  .mt-action-btn:not(:disabled):hover { background: #262626; }
+  .mt-action-btn:not(:disabled):active { transform: scale(0.97); }
+  .mt-action-call,
+  .mt-action-raise {
+    flex: 0 0 40%;
   }
-  .action-btn.action-fold:not(:disabled):hover {
-    background: rgba(255,60,60,0.32);
-    border-color: rgba(255,80,80,0.85);
+  .mt-action-raise-arrow {
+    flex: 0 0 15%;
+    border-radius: 999px;
+    padding: 0;
+    color: #fff;
   }
-  /* Check = green */
-  .action-btn.action-check {
-    background: rgba(80,210,120,0.16);
-    border-color: rgba(80,210,120,0.55);
-    color: #c4f0d0;
+  .mt-action-raise-arrow svg { display: block; }
+  /* ---- (5) BOTTOM ROW: hole cards + hand panel ---- */
+  .mt-bottom-row {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 10px));
+    background: #0a0a0a;
   }
-  .action-btn.action-check:not(:disabled):hover {
-    background: rgba(80,210,120,0.30);
-    border-color: rgba(80,210,120,0.85);
+  .mt-hole-cards {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    flex: 0 0 auto;
   }
-  /* Call = blue */
-  .action-btn.action-call {
-    background: rgba(70,160,240,0.16);
-    border-color: rgba(70,160,240,0.55);
-    color: #c4e4ff;
+  .mt-hole-cards .card {
+    width: 96px;
+    height: 136px;
+    border-radius: 12px;
+    background: #fff;
+    color: #1f1a14;
+    font-family: "Trebuchet MS", "Helvetica Neue", sans-serif;
+    position: relative;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+    border: 1px solid rgba(0,0,0,0.06);
   }
-  .action-btn.action-call:not(:disabled):hover {
-    background: rgba(70,160,240,0.30);
-    border-color: rgba(70,160,240,0.85);
+  .mt-hole-cards .card .corner { font-size: 20px; }
+  .mt-hole-cards .card .corner .rank { font-size: 28px; }
+  .mt-hole-cards .card .corner .suit { font-size: 16px; }
+  .mt-hole-cards .card .center-suit { font-size: 60px; }
+  .mt-hole-cards .card + .card { transform: rotate(-8deg); margin-left: -10px; margin-bottom: 8px; }
+  .mt-hole-cards .card:last-child { transform: rotate(6deg); margin-left: 0; }
+  .mt-hand-panel {
+    flex: 0 0 auto;
+    width: clamp(120px, 38vw, 168px);
+    background: #141414;
+    border-radius: 18px;
+    padding: 12px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
   }
-  /* Raise/Bet = gold */
-  .action-btn.action-raise {
-    background: rgba(255,204,77,0.18);
-    border-color: rgba(255,204,77,0.55);
-    color: #ffd97a;
+  .mt-hand-panel-label {
+    font-size: 11px;
+    color: #fff;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
-  .action-btn.action-raise:not(:disabled):hover {
-    background: rgba(255,204,77,0.32);
-    border-color: rgba(255,204,77,0.85);
+  .mt-hand-panel-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: #222;
+    border: 2px solid #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+    color: #fff;
   }
-  /* All-in = strong accent (orange-red) */
-  .action-btn.action-allin {
-    background: rgba(255,120,60,0.20);
-    border-color: rgba(255,120,60,0.65);
-    color: #ffd0b0;
+  .mt-hand-panel-avatar.has-photo {
+    background-size: cover;
+    background-position: center;
+    color: transparent;
   }
-  .action-btn.action-allin:not(:disabled):hover {
-    background: rgba(255,120,60,0.34);
-    border-color: rgba(255,120,60,0.95);
+  .mt-hand-panel-stack {
+    font-size: 20px;
+    font-weight: 900;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
   }
-  .action-btn.is-active-turn {
-    box-shadow: 0 0 0 2px rgba(255,204,77,0.45), 0 0 18px rgba(255,204,77,0.25);
-  }
-}
 
-  /* ---- (2) TALL STADIUM TABLE (flex:1, fills remaining space) ---- */
+
+  /* ---- (2) PLAYER AVATARS ROW ---- */
+  .mt-avatars-row {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: clamp(10px, 5vw, 22px);
+    padding: 10px 14px 6px;
+    background: #0a0a0a;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .mt-avatars-row::-webkit-scrollbar { display: none; }
+  .mt-avatar-card {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 64px;
+    text-align: center;
+  }
+  .mt-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: #1c1c1c;
+    border: 2px solid #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .mt-avatar.has-photo {
+    background-size: cover;
+    background-position: center;
+    color: transparent;
+  }
+  .mt-avatar-dealer-badge {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    color: #0a0a0a;
+    font-size: 9px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  }
+  .mt-avatar-name {
+    font-size: 11px;
+    color: #fff;
+    font-weight: 700;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 72px;
+  }
+  .mt-avatar-stack {
+    font-size: 12px;
+    color: #fff;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .mt-blind-chip {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #0a0a0a;
+    border: 1.5px solid #555;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2px;
+  }
+
+
+  /* ---- (3) CENTER COMMUNITY CARDS ROW ---- */
+  .mt-center-board {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px 4px;
+    background: #0a0a0a;
+  }
+  .mt-community {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+  }
+  .mt-community .card {
+    width: 64px;
+    height: 90px;
+    border-radius: 10px;
+    background: #fff;
+    color: #1f1a14;
+    font-family: "Trebuchet MS", "Helvetica Neue", sans-serif;
+    position: relative;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    border: 1px solid rgba(0,0,0,0.05);
+  }
+  .mt-community .card .corner { font-size: 14px; }
+  .mt-community .card .corner .rank { font-size: 20px; }
+  .mt-community .card .corner .suit { font-size: 11px; }
+  .mt-community .card .center-suit { font-size: 36px; }
+  .mt-community .card.face-down {
+    background: #fff;
+    color: #0a0a0a;
+    background-image:
+      repeating-linear-gradient(45deg, #0a0a0a 0 6px, transparent 6px 12px),
+      linear-gradient(135deg, #fff, #f7efdc);
+    border-color: #d7c7a8;
+  }
+  .mt-community .card.face-down .corner,
+  .mt-community .card.face-down .center-suit {
+    visibility: visible;
+    opacity: 0;
+  }
+  .mt-community .card.face-down::before {
+    display: none;
+  }
+  .mt-community .empty-card {
+    width: 64px;
+    height: 90px;
+    border-radius: 10px;
+    background: #fff;
+    color: #0a0a0a;
+    background-image:
+      repeating-linear-gradient(45deg, #0a0a0a 0 6px, transparent 6px 12px),
+      linear-gradient(135deg, #fff, #f7efdc);
+    border: 1px solid rgba(0,0,0,0.05);
+  }
+  .mt-community .empty-card .corner { visibility: hidden; }
+  .mt-community-pot {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+    padding-right: 2px;
+    min-height: 24px;
+  }
+  .mt-pot-amount {
+    font-size: 22px;
+    font-weight: 900;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+
+  /* ==========================================================
+     LEGACY MOBILE FELT LAYER
+     Kept so the existing mobile felt UI (raise panel, slider, felt
+     action labels) still renders above the table. It lives only in
+     the #mobileScreen legacy sub-tree. The new spec layout is the
+     primary mobile screen now.
+     ========================================================== */
   .mobile-table {
     flex: 1 1 0;
     min-height: 0;
@@ -691,6 +909,16 @@
   .table-menu-item:focus-visible {
     background: rgba(255,204,77,0.12);
     color: #ffcc4d;
+  }
+
+
+  /* ---- LEGACY MOBILE ACTION BAR (old compact bar, retained for compat) ---- */
+  .mobile-action-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: none;
   }
 
   /* ---- ACCESSIBILITY WIDGET: centered icon, safe placement ---- */

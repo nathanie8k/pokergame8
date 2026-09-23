@@ -1716,8 +1716,12 @@ function renderTable() {
     disableAllActions();
   }
 
-  // Populate mobile full-felt elements
+  // Populate mobile full-felt elements (legacy mobile felt layer)
   populateMobileFelt(t, selfSeat);
+
+  // Populate the new mobile spec layout (#mobileScreen): top bar center /
+  // avatars row / community cards / action buttons / hand panel.
+  populateMobileSpec(t, selfSeat);
 
   // Chat panel: rendered after seats so the messages reflect whatever
   // state.currentTable.chatMessages just got (publicView now includes it
@@ -2284,6 +2288,104 @@ function populateMobileFelt(t, selfSeat) {
     }
   }
 }
+
+// ---------- Mobile spec layout ----------
+
+function populateMobileSpec(t, selfSeat) {
+  // Top bar center: table name + subtitle.
+  var brand = $('mtbBrand');
+  if (brand) brand.textContent = t.name || '';
+  var sub = $('mtbSub');
+  if (sub) {
+    var bits = [];
+    bits.push('Hand #' + (t.handNumber || 0));
+    if (t.smallBlind !== undefined) bits.push('Blinds ' + t.smallBlind + '/' + t.bigBlind);
+    sub.textContent = bits.join(' \u00B7 ');
+  }
+
+  // Player avatars row.
+  var avatarsHost = $('mtAvatarsRow');
+  if (avatarsHost) {
+    avatarsHost.innerHTML = '';
+    t.seats.forEach(function(seat, idx) {
+      if (!seat || !seat.occupied || seat.removed || seat.disconnected) return;
+      var card = el('div', { class: 'mt-avatar-card' + (seat.isSelf ? ' is-self' : '') });
+      var avatar = el('div', { class: 'mt-avatar' + (seat.avatar ? ' has-photo' : '') });
+      avatar.textContent = seat.avatar ? '' : getInitials(seat.name);
+      if (seat.avatar) avatar.style.backgroundImage = 'url(' + seat.avatar + ')';
+      card.appendChild(avatar);
+      if (idx === t.buttonIndex) {
+        card.querySelector('.mt-avatar').appendChild(el('span', { class: 'mt-avatar-dealer-badge', text: 'D' }));
+      }
+      card.appendChild(el('div', { class: 'mt-avatar-name', text: seat.name }));
+      card.appendChild(el('div', { class: 'mt-avatar-stack', text: formatNumber(seat.stack) }));
+      if (idx === t.sbIndex) card.appendChild(el('span', { class: 'mt-blind-chip', text: String(t.smallBlind || '') }));
+      if (idx === t.bbIndex) card.appendChild(el('span', { class: 'mt-blind-chip', text: String(t.bigBlind || '') }));
+      avatarsHost.appendChild(card);
+    });
+  }
+
+  // Community cards row.
+  var communityHost = $('mtCommunity');
+  if (communityHost) {
+    communityHost.innerHTML = '';
+    (t.communityCards || []).forEach(function(c, i) {
+      communityHost.appendChild(renderCard(c, { delay: i * 80, flip: true }));
+    });
+    for (var i = (t.communityCards || []).length; i < 5; i++) {
+      communityHost.appendChild(el('div', { class: 'empty-card' }));
+    }
+  }
+
+  // Pot number under the 5th card.
+  var potEl = $('mtPotAmount');
+  if (potEl) potEl.textContent = formatNumber(t.pot);
+
+  // Action buttons: Call / Raise / up-arrow.
+  var callBtn = $('mtActCall');
+  var raiseBtn = $('mtActRaise');
+  var arrowBtn = $('mtActRaiseArrow');
+
+  if (callBtn && raiseBtn && arrowBtn) {
+    var toCall = Math.max(0, (t.currentBet || 0) - (selfSeat ? selfSeat.contributed : 0));
+    var callDisabled = !selfSeat || selfSeat.folded || selfSeat.allIn || selfSeat.satOut || toCall <= 0 || selfSeat.stack < toCall;
+    callBtn.disabled = callDisabled;
+    if (toCall > 0) {
+      callBtn.textContent = 'Call ' + formatNumber(Math.min(selfSeat ? selfSeat.stack : 0, toCall));
+    } else {
+      callBtn.textContent = 'Call';
+    }
+
+    var minRaiseTotal = 0;
+    if (t.currentBet > 0) {
+      minRaiseTotal = t.currentBet + Math.max(t.minRaise || t.bigBlind, t.bigBlind);
+    } else {
+      minRaiseTotal = t.bigBlind;
+    }
+    var maxRaise = (selfSeat ? selfSeat.stack + selfSeat.contributed : 0);
+    var raiseDisabled = !selfSeat || selfSeat.folded || selfSeat.allIn || selfSeat.satOut || selfSeat.stack <= 0 || maxRaise < minRaiseTotal;
+    raiseBtn.disabled = raiseDisabled;
+    raiseBtn.textContent = (t.currentBet || 0) === 0 ? 'Bet' : 'Raise';
+    arrowBtn.disabled = raiseDisabled;
+  }
+
+  // Hand panel: pair label / avatar / stack.
+  var handLabel = $('mtHandLabel');
+  if (handLabel) handLabel.textContent = 'Pair';
+  var handAvatar = $('mtHandAvatar');
+  if (handAvatar) {
+    handAvatar.textContent = selfSeat ? (selfSeat.avatar ? '' : getInitials(selfSeat.name)) : '?';
+    handAvatar.style.backgroundImage = selfSeat && selfSeat.avatar ? 'url(' + selfSeat.avatar + ')' : '';
+    handAvatar.classList.toggle('has-photo', !!(selfSeat && selfSeat.avatar));
+  }
+  var handStack = $('mtHandStack');
+  if (handStack) handStack.textContent = formatNumber(selfSeat ? selfSeat.stack : 0);
+
+  // Hide the hand panel when not seated.
+  var bottomRow = $('mtBottomRow');
+  if (bottomRow) bottomRow.style.display = selfSeat ? '' : 'none';
+}
+
 
 // ---------- Chat panel ----------
 
@@ -4381,6 +4483,20 @@ socket.on('chat_update', ({ tableId, messages }) => {
         performAction(action);
       }
     });
+  });
+
+  // ---- Mobile spec action buttons ----
+  $('mtActCall').addEventListener('click', () => performAction('call', 0));
+  $('mtActRaise').addEventListener('click', () => performAction('raise', 0));
+  $('mtActRaiseArrow').addEventListener('click', () => {
+    var slider = $('mobileRaiseSlider');
+    if (slider) {
+      slider.hidden = !slider.hidden;
+      if (!slider.hidden) {
+        var track = slider.querySelector('.rs-track');
+        if (track) track.focus();
+      }
+    }
   });
 
   // ---- Mobile felt sizing labels ----

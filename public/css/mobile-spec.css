@@ -1,0 +1,387 @@
+/* ==========================================================
+   POKER8 — MOBILE SPEC LAYOUT (max-width: 768px)
+   Exact mobile poker table layout per spec:
+     - Top bar: back arrow (<) + 3-dot menu (...), white, own row,
+       ~16-20px from screen edges
+     - Player avatars row: circular illustrated avatars, name/stack,
+       dealer badge, SB/BB blind chips
+     - Community cards row: 5 white cards, hatched when not dealt,
+       pot number under the 5th card
+     - Action buttons: Call / Raise / up-arrow
+     - Bottom row: two large fanned hole cards + hand panel
+   Color palette: near-black #0a0a0a background, white on dark UI,
+   monochrome cards, red suit icons only.
+   ========================================================== */
+
+@media (max-width: 768px) {
+
+  /* ---- Mobile screen is the flex column ---- */
+  #view-table .mobile-screen {
+    background: #0a0a0a;
+  }
+
+  /* ---- Top bar ---- */
+  .mobile-top-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: max(10px, env(safe-area-inset-top, 10px)) 12px;
+    background: transparent;
+    border-bottom: none;
+    min-height: 44px;
+  }
+  .mobile-top-bar .mtb-back {
+    padding: 4px;
+    min-width: 40px;
+    border-radius: 999px;
+  }
+  .mobile-top-bar .mtb-right .table-menu-btn {
+    padding: 4px;
+    min-width: 40px;
+    border-radius: 999px;
+  }
+  .mtb-back,
+  .mtb-right .table-menu-btn {
+    color: #fff;
+    background: transparent;
+    border: none;
+    padding: 4px;
+    min-height: 40px;
+    min-width: 40px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 120ms;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mtb-back:hover,
+  .mtb-right .table-menu-btn:hover { background: rgba(255,255,255,0.06); }
+  .mtb-center {
+    display: flex;
+    flex-direction: column;
+    gap: 0px;
+    min-width: 0;
+    flex: 1 1 0;
+    text-align: center;
+  }
+  .mtb-brand {
+    font-size: 14px;
+    font-weight: 800;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.2px;
+  }
+  .mtb-sub {
+    font-size: 10px;
+    color: #8a8a8a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.2px;
+    font-weight: 500;
+  }
+
+  /* ---- Player avatars row ---- */
+  .mt-avatars-row {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: clamp(10px, 5vw, 22px);
+    padding: 10px 14px 6px;
+    background: #0a0a0a;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .mt-avatars-row::-webkit-scrollbar { display: none; }
+  .mt-avatar-card {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 64px;
+    text-align: center;
+  }
+  .mt-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: #1c1c1c;
+    border: 2px solid #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .mt-avatar.has-photo {
+    background-size: cover;
+    background-position: center;
+    color: transparent;
+  }
+  .mt-avatar-dealer-badge {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    color: #0a0a0a;
+    font-size: 9px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  }
+  .mt-avatar-name {
+    font-size: 11px;
+    color: #fff;
+    font-weight: 700;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 72px;
+  }
+  .mt-avatar-stack {
+    font-size: 12px;
+    color: #fff;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .mt-blind-chip {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #0a0a0a;
+    border: 1.5px solid #555;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2px;
+  }
+
+  /* ---- Community cards row ---- */
+  .mt-center-board {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px 4px;
+    background: #0a0a0a;
+  }
+  .mt-community {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+  }
+  .mt-community .card {
+    width: 64px;
+    height: 90px;
+    border-radius: 10px;
+    background: #fff;
+    color: #1f1a14;
+    font-family: "Trebuchet MS", "Helvetica Neue", sans-serif;
+    position: relative;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    border: 1px solid rgba(0,0,0,0.05);
+  }
+  .mt-community .card .corner { font-size: 14px; }
+  .mt-community .card .corner .rank { font-size: 20px; }
+  .mt-community .card .corner .suit { font-size: 11px; }
+  .mt-community .card .center-suit { font-size: 36px; }
+  .mt-community .card.face-down,
+  .mt-community .empty-card {
+    width: 64px;
+    height: 90px;
+    border-radius: 10px;
+    background: #fff;
+    color: #0a0a0a;
+    background-image:
+      repeating-linear-gradient(45deg, #0a0a0a 0 6px, transparent 6px 12px),
+      linear-gradient(135deg, #fff, #f7efdc);
+    border: 1px solid rgba(0,0,0,0.05);
+  }
+  .mt-community .card.face-down .corner,
+  .mt-community .card.face-down .center-suit {
+    visibility: visible;
+    opacity: 0;
+  }
+  .mt-community .card.face-down::before {
+    display: none;
+  }
+  .mt-community .empty-card .corner,
+  .mt-community .empty-card .center-suit {
+    visibility: hidden;
+  }
+  .mt-community-pot {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+    padding-right: 2px;
+    min-height: 24px;
+  }
+  .mt-pot-amount {
+    font-size: 22px;
+    font-weight: 900;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  /* ---- Action buttons row ---- */
+  .mt-action-row {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 8px));
+    background: #0a0a0a;
+  }
+  .mt-action-btn {
+    min-height: 56px;
+    border: none;
+    border-radius: 18px;
+    background: #1c1c1c;
+    color: #fff;
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 0.3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 10px;
+    transition: background 120ms, transform 120ms;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mt-action-btn:disabled {
+    opacity: 0.32;
+    cursor: not-allowed;
+  }
+  .mt-action-btn:not(:disabled):hover { background: #262626; }
+  .mt-action-btn:not(:disabled):active { transform: scale(0.97); }
+  .mt-action-call,
+  .mt-action-raise {
+    flex: 0 0 40%;
+  }
+  .mt-action-raise-arrow {
+    flex: 0 0 15%;
+    border-radius: 999px;
+    padding: 0;
+    color: #fff;
+    background: #1c1c1c;
+  }
+  .mt-action-raise-arrow svg { display: block; }
+  .mt-action-raise-arrow:not(:disabled):hover { background: #262626; }
+  .mt-action-raise-arrow:not(:disabled):active { transform: scale(0.97); }
+
+  /* ---- Bottom row: hole cards + hand panel ---- */
+  .mt-bottom-row {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 10px));
+    background: #0a0a0a;
+  }
+  .mt-hole-cards {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    flex: 0 0 auto;
+  }
+  .mt-hole-cards .card {
+    width: 96px;
+    height: 136px;
+    border-radius: 12px;
+    background: #fff;
+    color: #1f1a14;
+    font-family: "Trebuchet MS", "Helvetica Neue", sans-serif;
+    position: relative;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+  .mt-hole-cards .card .corner { font-size: 20px; }
+  .mt-hole-cards .card .corner .rank { font-size: 28px; }
+  .mt-hole-cards .card .corner .suit { font-size: 16px; }
+  .mt-hole-cards .card .center-suit { font-size: 60px; }
+  .mt-hole-cards .card + .card {
+    transform: rotate(-8deg);
+    margin-left: -10px;
+    margin-bottom: 8px;
+  }
+  .mt-hole-cards .card:last-child {
+    transform: rotate(6deg);
+    margin-left: 0;
+  }
+  .mt-hand-panel {
+    flex: 0 0 auto;
+    width: clamp(120px, 38vw, 168px);
+    background: #141414;
+    border-radius: 18px;
+    padding: 12px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  }
+  .mt-hand-panel-label {
+    font-size: 11px;
+    color: #fff;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .mt-hand-panel-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: #222;
+    border: 2px solid #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+    color: #fff;
+  }
+  .mt-hand-panel-avatar.has-photo {
+    background-size: cover;
+    background-position: center;
+    color: transparent;
+  }
+  .mt-hand-panel-stack {
+    font-size: 20px;
+    font-weight: 900;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+}
