@@ -4807,6 +4807,49 @@ input, button, select, textarea { color: inherit; }
   to   { transform: translateY(20px) scale(0.94); opacity: 0; }
 }
 
+/* 14. RESULT HUD — LEAVE PROMPT (winners & losers) ---------- */
+.result-hud-leave-prompt {
+  margin: 18px 0 0;
+  text-align: center;
+}
+.result-hud-leave-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  letter-spacing: 0.4px;
+  margin-bottom: 10px;
+}
+.result-hud-leave-row {
+  display: inline-flex;
+  gap: 10px;
+}
+.result-hud-leave-yes,
+.result-hud-leave-no {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 800;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-dim);
+}
+.result-hud-leave-yes {
+  background: rgba(255,204,77,0.18);
+  color: var(--accent);
+  border-color: rgba(255,204,77,0.35);
+}
+.result-hud-leave-yes:hover,
+.result-hud-leave-yes:focus-visible {
+  background: rgba(255,204,77,0.28);
+  color: #fff;
+}
+.result-hud-leave-no:hover,
+.result-hud-leave-no:focus-visible {
+  background: rgba(255,255,255,0.10);
+  color: var(--text);
+}
+
 /* ============================================================
    TABLE MENU (⋮) — dark glass dropdown, black/gold accents.
    One markup shape, two placements: desktop inside
