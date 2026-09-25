@@ -1641,6 +1641,15 @@ function renderTable() {
   const t = state.currentTable;
   if (!t) return;
 
+  // Clear any leftover mobile hand-result prompt from the previous hand
+  // (e.g. when the phase moves off hand_over or a new hand starts), so
+  // a stale Leave/Stay block can't outlive the current results screen.
+  const mr = $('mtHandResultBody');
+  if (mr) {
+    const prev = mr.querySelector('.result-hud-leave-prompt');
+    if (prev) prev.remove();
+  }
+
   $('tableName').textContent = t.name;
   const infoBits = [];
   infoBits.push(`Hand #${t.handNumber || 0}`);

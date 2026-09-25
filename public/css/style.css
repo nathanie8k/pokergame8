@@ -4367,6 +4367,36 @@ input, button, select, textarea { color: inherit; }
     display: none;
   }
 
+  /* Mobile hand-result: sits right under the viewer's own hand panel
+     (mtHeroPanel), so it inherits the mobile bottom-of-screen layout.
+     Positioned at the bottom of the table view so it never overlaps
+     the seats / board / action bar. -->
+  .mt-hand-result {
+    position: absolute;
+    bottom: 22px;
+    left: 0;
+    right: 0;
+    z-index: 6;
+    pointer-events: none;
+  }
+  .mt-hand-result-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.85), rgba(18,30,26,0.90));
+    border: 1px solid rgba(255,204,77,0.35);
+    border-radius: var(--radius-xl);
+    text-align: center;
+    max-width: 100%;
+    width: 100%;
+    box-shadow: var(--shadow-lg), 0 0 80px rgba(255,204,77,0.15);
+  }
+  .mt-hand-result-body:empty {
+    display: none;
+  }
+
 }
 
 

@@ -435,17 +435,69 @@
     renderHero(t, selfSeat);
     renderActionBar(t, selfSeat);
     renderSitOutItem(selfSeat);
+    populateMobileHandResult(t);
+  }
+
+  // Mobile hand-results banner. The server already renders the outer
+  // .hand-result / #handResult element (populated by a socket event on
+  // every hand_over + lastHandResults), so this reuses that DOM and just
+  // appends the "Want to leave table?" prompt to it. The Leave/Stay
+  // buttons reuse the same .result-hud-leave-* classes as the desktop
+  // result HUD (see showResultHUD in client.js) so no new styling is
+  // needed there — only mobile-specific tweaks (this block).
+  //
+  // Leave → leaveCurrentTable() (frees the seat, returns to lobby);
+  // Stay → no-op (player stays seated, auto-joins the next hand).
+  function populateMobileHandResult(t) {
+    if (!t || !t.lastHandResults) return;
+    var resultHost = $('mtHandResult');
+    if (!resultHost) resultHost = $('mtHandResultBody');
+    if (!resultHost) return;
+    // Clear any previous prompt so a re-render does not stack buttons.
+    var previous = resultHost.querySelector('.result-hud-leave-prompt');
+    if (previous) previous.remove();
+    var winners = t.lastHandResults.winners || [];
+    if (!winners.length) return;
+    var prompt = document.createElement('div');
+    prompt.className = 'result-hud-leave-prompt';
+    prompt.setAttribute('role', 'dialog');
+    prompt.setAttribute('aria-label', 'Want to leave table?');
+    prompt.appendChild(el('div', {
+      className: 'result-hud-leave-label',
+      text: 'Want to leave table?',
+    }));
+    var row = document.createElement('div');
+    row.className = 'result-hud-leave-row';
+    var yes = document.createElement('button');
+    yes.className = 'result-hud-leave-yes';
+    yes.textContent = 'Leave';
+    yes.type = 'button';
+    yes.addEventListener('click', function () {
+      leaveCurrentTable();
+    });
+    var no = document.createElement('button');
+    no.className = 'result-hud-leave-no';
+    no.textContent = 'Stay';
+    no.type = 'button';
+    no.addEventListener('click', function () {
+      // No-op: player stays seated and auto-joins the next hand as usual.
+    });
+    row.appendChild(yes);
+    row.appendChild(no);
+    prompt.appendChild(row);
+    resultHost.appendChild(prompt);
   }
 
   // Install the override before the first render. renderTable() references
-  // this name at call time, so the mobile hook now resolves here.
+  // these names at call time, so the mobile hooks resolve here.
   window.populateMobileFelt = populateMobileFelt;
+  window.populateMobileHandResult = populateMobileHandResult;
 
   // client.js also carries its own mobile renderer (populateMobileSpec) for an
   // earlier markup set. It is called right after the hook above and shares
   // three ids with this screen (#mtCommunity, #mtPotAmount, #mtHoleCards), so
   // it would overwrite this renderer's output. Neutralise it.
-  window.populateMobileSpec = function () {};
+  window.populateMobileSpec = function () {}
 
   // ------------------------------------------------------------
   // Wiring for the new controls. Registered after client.js's own

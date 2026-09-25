@@ -302,6 +302,14 @@
           <div class="mt-hero-stack" id="mtHeroStack">0</div>
           <div class="mt-sr" id="mtHeroName"></div>
         </div>
+
+      <!-- Mobile hand-result banner: shows the result right under the
+           viewer's own hand panel. Server populates the container (via a
+           socket event); the mobile renderer appends the leave-prompt so
+           every player -- not just the winner -- can bail out of the
+           seated hand with one tap. -->
+      <div class="mt-hand-result" id="mtHandResult">
+        <div class="mt-hand-result-body" id="mtHandResultBody"></div>
       </div>
 
       <div class="table-info">
