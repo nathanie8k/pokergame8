@@ -3815,16 +3815,21 @@ input, button, select, textarea { color: inherit; }
         rgba(0,0,0,0.03) 4px
       ),
       radial-gradient(ellipse 60% 50% at 50% 40%, rgba(255,255,255,0.04) 0%, transparent 70%);
-  }
-
-  /* Hide desktop table elements */
-  #view-table .table-info,
-  #view-table .table-chat-row,
-  #view-table .hand-log {
-    display: none;
-  }
-
-
+  }  /* Note: .table-info, .table-chat-row, .hand-log are shared elements between
+     the mobile and desktop layouts — they are NOT the desktop chrome.
+     The desktop table elements (poker-table, seatsContainer, selfPanel,
+     actionBar, handResult) live INSIDE .table-chat-row and must NOT be
+     hidden, or the desktop table renders blank on desktop (>=721px).
+     The actual desktop chrome (top-bar, action-bar, etc.) is styled by
+     the desktop-specific media queries and is separate from these.
+     ============================================================ */
+  /* Mobile table on desktop (>=721px): show the mobile table (the .mt-*
+     elements inside #view-table) filling the viewport, with the felt-green
+     backdrop. The .mt-* elements are hidden by table-mobile.css on this
+     breakoint, but the desktop table markup (which lives inside the
+     shared .table-chat-row) remains visible and is styled by the desktop
+     rules in style.css.
+     ============================================================ */
 
   /* Reserved center zone for the pot and the 5 community-card slots.
      The board must never share this space with seats, "Sit here" pills or
