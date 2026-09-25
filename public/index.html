@@ -35,6 +35,13 @@
       <button class="ghost-btn" id="profileBtn" title="Account settings" aria-label="Account settings">⚙ Profile</button>
       <button class="ghost-btn" id="changeNameBtn" title="Change your display name (once every 30 days)">✎ Name</button>
       <button class="ghost-btn" id="leaderboardBtn" title="View top players">★ Leaderboard</button>
+      <!-- Desktop-only super-admin entry point. Ships hidden and stays
+           hidden unless the logged-in display name matches the super-admin
+           account (see isSuperAdminUser in public/js/client.js); the server
+           re-validates the role on every admin_* event, so this control is
+           an affordance, never the authorization boundary. Mobile uses the
+           #mobileAdminLink row at the bottom of the lobby instead. -->
+      <button class="ghost-btn desktop-admin-btn" id="desktopAdminBtn" type="button" title="Open the Admin Room" aria-label="Open the Admin Room" hidden>♛ Admin</button>
       <a class="ghost-btn telegram-link" href="https://t.me/+PaawJay6PdFhNjhk" target="_blank" rel="noopener noreferrer" aria-label="Open Poker8 Telegram group">✈ Telegram</a>
     </div>
   </header>

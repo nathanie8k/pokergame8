@@ -4955,3 +4955,50 @@ input, button, select, textarea { color: inherit; }
   .mfsm-seat.mfsm-perf-fold .mfsm-name { animation: none; }
   .change-seat-hint { animation: none; }
 }
+
+/* ============================================================
+   Desktop super-admin button (#desktopAdminBtn)
+   ------------------------------------------------------------
+   The Admin Room is reachable from the bottom of the lobby on
+   mobile (#mobileAdminLink) but had no desktop entry point at
+   all. This is the desktop counterpart, shown in the top bar
+   only for the super-admin account.
+
+   Visibility is doubly gated, and both gates live here/JS
+   rather than in markup: the button ships with the `hidden`
+   attribute in index.html and client.js removes it only for
+   the super-admin. The CSS below never reveals a hidden
+   button (the `[hidden]` rule), so a non-admin who pokes at
+   the DOM still gets nothing. Below 721px the control is
+   removed entirely — mobile keeps the lobby link — and the
+   glyph collapses to the crown alone so the top bar does not
+   overflow on narrow desktop windows.
+   ============================================================ */
+.top-info .desktop-admin-btn[hidden] { display: none; }
+@media (min-width: 721px) {
+  .top-info .desktop-admin-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-color: rgba(230, 57, 80, 0.45);
+    color: #ff9aa4;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .top-info .desktop-admin-btn:hover,
+  .top-info .desktop-admin-btn:focus-visible {
+    border-color: var(--accent-primary);
+    color: #fff;
+    background: rgba(230, 57, 80, 0.18);
+  }
+  .top-info .desktop-admin-btn:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+}
+@media (max-width: 720px) {
+  .top-info .desktop-admin-btn { display: none !important; }
+}
+@media (max-width: 1100px) and (min-width: 721px) {
+  /* Narrow desktops keep the control, but the label collapses to the
+     crown glyph so Profile/Name/Leaderboard/Telegram all still fit. */
+  .top-info .desktop-admin-btn { font-size: 0; gap: 0; padding: 6px 8px; }
+  .top-info .desktop-admin-btn::first-letter { font-size: 15px; }
+}

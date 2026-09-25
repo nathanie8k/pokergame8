@@ -298,7 +298,70 @@ const expiredSessions = new Set(); // playerIds whose 45s reconnect window elaps
 const lastHandTaken = { player: null, at: 0 };
 const GRACE_PERIOD_MS = 45 * 1000;
 const PRESENCE_INTERVAL_MS = 1500;
+const LEAVE_GRACE_MS = 60 * 1000; // stale-seat window used before a new seating
 const lobbyBroadcastInterval = setInterval(broadcastLobby, 1500);
+
+// ----- Seat hygiene helpers -----
+
+// Find the (single) live seat for a player id, if any.
+function findSeatForPlayer(tableId, playerId) {
+  const t = rooms.get(tableId);
+  if (!t) return null;
+  for (let i = 0; i < t.seats.length; i++) {
+    const s = t.seats[i];
+    if (s && s.playerId === playerId) return { tableId: t.id, seatIdx: i, table: t, seat: s };
+  }
+  return null;
+}
+
+// Free a seat that is orphaned/stale before the player is seated again.
+// A seat is stale when its grace window has elapsed (reconnectDeadline
+// expired) OR no table activity (action, sit, leave, effective heartbeat)
+// has occurred for at least LEAVE_GRACE_MS.
+function freeStaleSeatForPlayer(playerId) {
+  let freed = false;
+  let freedTableId = null;
+  let freedSeatIdx = null;
+  for (const table of rooms.tables.values()) {
+    for (let i = 0; i < table.seats.length; i++) {
+      const seat = table.seats[i];
+      if (!seat || seat.playerId !== playerId || seat.removed) continue;
+      const now = Date.now();
+      const lastActivity = seat.lastActivityAt || 0;
+      const graceExpired =
+        (seat.disconnected && seat.reconnectDeadline && seat.reconnectDeadline <= now) ||
+        (!seat.disconnected && !seat.satOut && seat.reconnectDeadline > 0 && seat.reconnectDeadline <= now);
+      const staleDueToIdleness = lastActivity > 0 && now - lastActivity >= LEAVE_GRACE_MS;
+      if (graceExpired || staleDueToIdleness) {
+        rooms.unseat(table.id, i);
+        rooms.clearChatIfEmpty(table.id);
+        freed = true;
+        freedTableId = table.id;
+        freedSeatIdx = i;
+      }
+    }
+  }
+  if (freed) broadcastLobby();
+  return freed;
+}
+
+// Mark a socket as a deliberate exit. The server-side disconnect handler
+// treats this as an intentional leave: the seat is freed immediately
+// (no grace period) and no reconnect window is opened.
+function markLeaving(socket) {
+  if (socket && socket.data) socket.data.isLeaving = true;
+}
+
+function cancelAllDisconnectTimersForPlayer(playerId) {
+  const entry = disconnectTimers.get(playerId);
+  if (entry && entry.timer) {
+    clearTimeout(entry.timer);
+    disconnectTimers.delete(playerId);
+  }
+  if (expiredSessions.has(playerId)) {
+    expiredSessions.delete(playerId);
+  }
+}
 
 // AFK kick — every 5s scan every table for seats whose currentActor
 // `_actionClockAt` (set in src/poker.js on every applyAction + postBlind
@@ -555,7 +618,7 @@ async function buildAdminSnapshot() {
   const allPlayers = await db.getAllPlayers();
   const players = allPlayers.map(p => {
     const live = connected.find(row => row.name === p.name);
-    const role = p.name === SUPER_ADMIN_NAME
+    const role = db.isSuperAdminName(p.name)
       ? db.ROLE_SUPER_ADMIN
       : (p.role || (p.isAdmin ? db.ROLE_ADMIN : db.ROLE_NONE));
     return {
@@ -977,6 +1040,8 @@ io.on('connection', (socket) => {
       const reconnectExpired = expiredSessions.delete(player.id);
       socket.data.playerName = player.name;
       socket.data.player = player;
+      // Deliberate exits communicate intent to the server so the grace-period reconnect window is never opened for a tab or browser the player chose to close.
+      socket.data.isLeaving = false;
       // Admin flag is now derived from the persisted Player doc — no
       // separate `admin_login` round-trip required. The flag is
       // captured at socket-connect time so admin_* handlers can
@@ -1013,7 +1078,7 @@ io.on('connection', (socket) => {
         socket.data.player = Object.assign({}, socket.data.player || {}, { isAdmin: true, role: db.ROLE_ADMIN });
         socket.data.role = db.ROLE_ADMIN;
       } else {
-          socket.data.role = player.name === SUPER_ADMIN_NAME
+          socket.data.role = db.isSuperAdminName(player.name)
           ? db.ROLE_SUPER_ADMIN
           : (player.role || (player.isAdmin ? db.ROLE_ADMIN : db.ROLE_NONE));
         socket.data.isAdmin = socket.data.role === db.ROLE_ADMIN || socket.data.role === db.ROLE_SUPER_ADMIN;
@@ -1238,6 +1303,7 @@ io.on('connection', (socket) => {
       }
     }
     rooms.unseat(tid, sidx);
+    markLeaving(socket);
     // Clear chat when the leaving player was the last seated one. Chat
     // history belongs to the current session of players; when the session
     // ends, the history is wiped so the next joiner sees an empty panel.
@@ -1591,7 +1657,16 @@ io.on('connection', (socket) => {
   }
 
   function requireSuperAdmin(targetName, cb) {
-    if (socket.data.player && socket.data.player.name === SUPER_ADMIN_NAME
+    // Identity is compared case-insensitively (db.isSuperAdminName) for
+    // the same reason the role is DERIVED that way at register time:
+    // the display name is typed by the user and is never casing-
+    // normalised. An exact === SUPER_ADMIN_NAME here would let a
+    // lower-cased super-admin open the Admin Room yet be refused
+    // the one action only they may perform (granting/revoking admin).
+    // This is the authoritative check: it reads the role resolved from
+    // the persisted Player doc at register time, never anything the
+    // client sent, so revealing the desktop button grants nothing.
+    if (socket.data.player && db.isSuperAdminName(socket.data.player.name)
         && socket.data.role === db.ROLE_SUPER_ADMIN) return true;
     db.logAdminAction(
       socket.data.player && socket.data.player.name || 'unknown',
@@ -1666,7 +1741,7 @@ io.on('connection', (socket) => {
 
   socket.on('admin_set_role', async ({ name, role }, cb) => {
     if (!requireSuperAdmin(name, cb)) return;
-    if (name === SUPER_ADMIN_NAME) {
+    if (db.isSuperAdminName(name)) {
       return cb && cb({ ok: false, error: 'Super-admin role is fixed' });
     }
     if (role !== db.ROLE_ADMIN && role !== db.ROLE_NONE) {
@@ -1698,7 +1773,7 @@ io.on('connection', (socket) => {
 
   socket.on('admin_remove', async ({ name }, cb) => {
     if (!requireAdmin(cb)) return;
-    if (name === SUPER_ADMIN_NAME) {
+    if (db.isSuperAdminName(name)) {
       return cb && cb({ ok: false, error: 'Super-admin cannot be removed' });
     }
     if (db.isReservedHouseAccountName(name)) {
