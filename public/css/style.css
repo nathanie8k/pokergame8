@@ -126,6 +126,21 @@ body.is-table-view {
   }
 }
 
+/* ============================================================
+   #view-table root: desktop full-width circular table.
+   #view-table is NOT a flex container in the mobile break,
+   so give it the same column flex on desktop so its only
+   flex child .table-chat-row can expand to the full width
+   and .poker-table (flex:1 1 0) gets real stretch space
+   instead of collapsing to 0px.
+   ============================================================ */
+@media (min-width: 721px) {
+  #view-table {
+    display: flex;
+    flex-direction: column;
+  }
+}
+
 /* Suit-decoration watermark — faint card glyphs in the corners of the
    page (behind everything). Purely decorative; lives at z-index -1
    so it never intercepts clicks or attention. Honors reduced-motion. */
@@ -177,6 +192,19 @@ input, button, select, textarea { color: inherit; }
    Layout primitives
    ============================================================ */
 .view { padding: 28px 24px; max-width: 1400px; margin: 0 auto; }
+
+/* The poker table view is a flex column: the header (table-info), the
+   table row (poker-table + chat edge panel), the hand log and the
+   viewer's own-hand zone all stack as flex children. The poker-table
+   inside .table-chat-row resolves against a flex container (it is a
+   flex item with flex:1 1 0 and min-height:0), so supplying this here
+   fixes the collapsed tabletop on desktop without touching the
+   mobile-only media queries. */
+#view-table {
+  display: flex;
+  flex-direction: column;
+}
+
 .muted { color: var(--text-dim); }
 .small { font-size: 12px; }
 .error-text { color: var(--danger); }
@@ -1354,9 +1382,11 @@ input, button, select, textarea { color: inherit; }
 /* ============================================================
    Mobile-only "Your hand" panel
    ============================================================ */
-.self-panel { display: none; } /* shown on mobile only */
-.player-status-bar { display: none; } /* shown on mobile table-view only; hides desktop row that was split from .self-panel */
-.raise-price-label { display: none; } /* shown on mobile table-view only; desktop bet controls live in .bet-controls */
+@media (max-width: 720px) {
+  .self-panel { display: none; } /* shown on mobile only */
+  .player-status-bar { display: none; } /* shown on mobile table-view only; hides desktop row that was split from .self-panel */
+  .raise-price-label { display: none; } /* shown on mobile table-view only; desktop bet controls live in .bet-controls */
+}
 
 /* ============================================================
    Leaderboard modal + podium + list
@@ -3599,9 +3629,9 @@ input, button, select, textarea { color: inherit; }
    ============================================================ */
 @media (min-width: 721px) {
 
-  /* ---- Player status: hidden on desktop ---- */
+  /* ---- Player status: shown on desktop ---- */
   .player-status-bar {
-    display: none;
+    display: flex;
   }
   .player-status-bar .self-panel-info {
     display: flex;
