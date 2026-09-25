@@ -175,6 +175,38 @@ function isReservedHouseAccountName(name) {
   return typeof name === 'string' && name.trim().toLowerCase() === HOUSERAKE_NAME.toLowerCase();
 }
 
+// Case-insensitive, trim- and unicode-tolerant super-admin identity check.
+//
+// `name` is the display name a player typed at login, and nothing
+// canonicalises its casing before it reaches the role-derivation code
+// paths (getOrCreatePlayer / getAllPlayers) or the socket gates in
+// server.js. An exact `=== SUPER_ADMIN_NAME` comparison therefore locked
+// the owner out of their own account the moment they typed "nathanielk8"
+// instead of "Nathanielk8" — a second doc, no super-admin role, and no
+// admin button. Every super-admin comparison now routes through this
+// predicate so the identity is the NAME, not one spelling of it.
+//
+// This is not a weakening of the privilege: it grants the super-admin role
+// to casing/unicode variants of the same name, which is exactly the
+// identity the exact-match rule already trusted. The separate owner-secret
+// gate in server.js (OWNER_NAME, "nathanielk7") is untouched and still
+// requires process.env.OWNER_TOKEN.
+function isSuperAdminName(name) {
+  if (typeof name !== 'string') return false;
+  return name.trim().normalize('NFKC').toLowerCase()
+       === SUPER_ADMIN_NAME.trim().normalize('NFKC').toLowerCase();
+}
+
+// Mongo-side companion to isSuperAdminName: an anchored, case-insensitive
+// regex filter for the super-admin account. Used by ensureSuperAdmin's
+// "everyone who is NOT the super-admin" repair queries — a plain
+// { name: { $ne: SUPER_ADMIN_NAME } } would treat a lower-cased copy of
+// the owner's doc as a foreign account and demote it.
+function superAdminNameRegex() {
+  const escaped = SUPER_ADMIN_NAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('^' + escaped + '$', 'i');
+}
+
 const Meta = mongoose.model('Meta', metaSchema);
 
 // ----- Connection -----
@@ -293,7 +325,7 @@ async function getOrCreatePlayer(name, opts) {
   if (existing) {
     // The canonical super-admin identity is repaired on every login/read
     // path so a stale legacy boolean or manual edit cannot demote it.
-    if (name === SUPER_ADMIN_NAME && (existing.role !== ROLE_SUPER_ADMIN || existing.isAdmin !== true)) {
+    if (isSuperAdminName(name) && (existing.role !== ROLE_SUPER_ADMIN || existing.isAdmin !== true)) {
       await Player.updateOne({ _id: existing._id }, { $set: { role: ROLE_SUPER_ADMIN, isAdmin: true, updated: Date.now() } });
       return Player.findById(existing._id).lean();
     }
@@ -301,7 +333,7 @@ async function getOrCreatePlayer(name, opts) {
     // retaining the boolean for backwards-compatible callers. Also
     // repair any impossible role combinations and ensure no second
     // account can keep a stale super-admin role.
-    const canonicalRole = existing.role === ROLE_SUPER_ADMIN && name !== SUPER_ADMIN_NAME
+    const canonicalRole = existing.role === ROLE_SUPER_ADMIN && !isSuperAdminName(name)
       ? ROLE_ADMIN
       : (existing.role === ROLE_NONE && existing.isAdmin === true
         ? ROLE_ADMIN
@@ -330,7 +362,7 @@ async function getOrCreatePlayer(name, opts) {
   const requestedRole = PLAYER_ROLES.includes(opts2.role)
     ? opts2.role
     : (opts2.isAdmin === true ? ROLE_ADMIN : ROLE_NONE);
-  const role = name === SUPER_ADMIN_NAME
+  const role = isSuperAdminName(name)
     ? ROLE_SUPER_ADMIN
     : (requestedRole === ROLE_SUPER_ADMIN ? ROLE_ADMIN : requestedRole);
   // Race-safe first-time create: two concurrent `getOrCreatePlayer('Alice')`
@@ -456,7 +488,7 @@ async function getAllPlayers() {
   await connect();
   const players = await Player.find({}).lean();
   return players.map((p) => {
-    const role = p.name === SUPER_ADMIN_NAME
+    const role = isSuperAdminName(p.name)
       ? ROLE_SUPER_ADMIN
       : (p.role === ROLE_SUPER_ADMIN
         ? ROLE_ADMIN
@@ -472,18 +504,19 @@ async function getAllPlayers() {
 async function ensureSuperAdmin() {
   await connect();
   const meta = await getMeta();
-  // Repair all legacy admin records first. Only the exact canonical
-  // username may retain the super-admin role; an accidental/manual role
-  // assignment to another account is downgraded to ordinary admin.
+  // Repair all legacy admin records first. Only the canonical
+  // super-admin username (any casing) may retain the super-admin role; an
+  // accidental/manual role assignment to another account is downgraded to
+  // ordinary admin.
   await Player.updateMany(
-    { isAdmin: true, role: { $in: [ROLE_NONE, null] }, name: { $ne: SUPER_ADMIN_NAME } },
+    { isAdmin: true, role: { $in: [ROLE_NONE, null] }, name: { $not: superAdminNameRegex() } },
     { $set: { role: ROLE_ADMIN, updated: Date.now() } }
   );
   await Player.updateMany(
-    { role: ROLE_SUPER_ADMIN, name: { $ne: SUPER_ADMIN_NAME } },
+    { role: ROLE_SUPER_ADMIN, name: { $not: superAdminNameRegex() } },
     { $set: { role: ROLE_ADMIN, isAdmin: true, updated: Date.now() } }
   );
-  const existing = await Player.findOne({ name: SUPER_ADMIN_NAME });
+  const existing = await Player.findOne({ name: superAdminNameRegex() });
   if (existing) {
     await Player.updateOne(
       { _id: existing._id },
@@ -502,7 +535,7 @@ async function ensureSuperAdmin() {
 }
 
 async function deletePlayer(name) {
-  if (name === SUPER_ADMIN_NAME) {
+  if (isSuperAdminName(name)) {
     throw new Error('Super-admin cannot be deleted');
   }
   await connect();
@@ -621,15 +654,15 @@ async function setUserAdmin(name, isAdmin) {
   if (typeof isAdmin !== 'boolean') {
     throw new Error('setUserAdmin: isAdmin (boolean) required');
   }
-  if (name === SUPER_ADMIN_NAME && !isAdmin) {
+  if (isSuperAdminName(name) && !isAdmin) {
     throw new Error('Super-admin cannot be revoked');
   }
   await connect();
   const updated = await Player.findOneAndUpdate(
     { name },
     [{ $set: {
-      isAdmin: name === SUPER_ADMIN_NAME ? true : isAdmin,
-      role: name === SUPER_ADMIN_NAME ? ROLE_SUPER_ADMIN : (isAdmin ? ROLE_ADMIN : ROLE_NONE),
+      isAdmin: isSuperAdminName(name) ? true : isAdmin,
+      role: isSuperAdminName(name) ? ROLE_SUPER_ADMIN : (isAdmin ? ROLE_ADMIN : ROLE_NONE),
       updated: Date.now(),
     } }],
     { new: true, updatePipeline: true }
@@ -641,7 +674,7 @@ async function setPlayerRole(name, role) {
   if (!name || typeof name !== 'string') return { ok: false, error: 'Player name required' };
   if (name !== name.trim()) return { ok: false, error: 'Invalid player name' };
   if (!PLAYER_ROLES.includes(role)) return { ok: false, error: 'Invalid role' };
-  if (name === SUPER_ADMIN_NAME) return { ok: false, error: 'Super-admin role is fixed' };
+  if (isSuperAdminName(name)) return { ok: false, error: 'Super-admin role is fixed' };
   if (role === ROLE_SUPER_ADMIN) return { ok: false, error: 'Only the fixed super-admin may hold that role' };
   await connect();
   const updated = await Player.findOneAndUpdate(
@@ -1037,6 +1070,7 @@ module.exports = {
   getAdminActionLog,
   // Role and point-management helpers
   SUPER_ADMIN_NAME,
+  isSuperAdminName,
   ROLE_NONE,
   ROLE_ADMIN,
   ROLE_SUPER_ADMIN,

@@ -12,6 +12,45 @@ const RANK_NAMES = { 2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'10',11:
 const SUIT_GLYPH = { s: '♠', h: '♥', d: '♦', c: '♣' };
 const SUIT_COLOR = { s: 'black', h: 'red', d: 'red', c: 'black' };
 
+// The single super-admin account. This is a UI affordance gate ONLY — it
+// decides whether the desktop #desktopAdminBtn is offered at all. It is
+// deliberately not the authorization boundary: every admin_* socket event
+// is re-validated server-side (requireAdmin / requireSuperAdmin in
+// server.js, which resolve the role from the persisted Player doc), so
+// hiding the button here grants no access, and revealing it via a
+// hand-edited DOM gains none either. Mirrors db.SUPER_ADMIN_NAME in
+// src/database.js and is compared case-insensitively for the same reason
+// the server is: the display name is typed by the user and is never
+// casing-normalised anywhere in the pipeline.
+const SUPER_ADMIN_USERNAME = 'nathanielk8';
+
+// True when `name` is the super-admin account, ignoring surrounding
+// whitespace, unicode-normalisation form, and letter case. Single source of
+// truth for the button gate: tests/test_admin_desktop_button.js lifts this
+// exact source out of the file and runs it, so the tested predicate is the
+// shipped one rather than a re-derived copy of the rule.
+function isSuperAdminUser(name) {
+  if (typeof name !== 'string') return false;
+  const norm = (s) => s.trim().normalize('NFKC').toLowerCase();
+  return norm(name) === norm(SUPER_ADMIN_USERNAME);
+}
+
+// Click wiring for #desktopAdminBtn.
+//
+// Registered here, at the top of the file, by DELEGATION off `document`
+// rather than by a direct addEventListener in the DOMContentLoaded block at
+// the bottom of this file. Both are equivalent for a button that exists in
+// the static markup, but delegation survives being registered before the
+// element is parsed and cannot be attached twice by a second call — and it
+// keeps this concern adjacent to the predicate that gates the button rather
+// than 4,400 lines away in the startup block. The per-user control chain
+// (#leaderboardBtn, #profileBtn, …) still uses direct listeners; this one
+// is the super-admin-only entry point and is kept self-contained on purpose.
+document.addEventListener('click', (e) => {
+  const btn = e.target && e.target.closest && e.target.closest('#desktopAdminBtn');
+  if (btn) openAdminRoom();
+});
+
 const state = {
   socket:        null,
   player:        null,       // { id, name, points, isAdmin }
@@ -966,7 +1005,9 @@ function setView(v) {
   // Toggle is-table-view body class so mobile CSS can scope compact
   // top-bar rules to ONLY the table view (not login/lobby).
   if (document.body) document.body.classList.toggle('is-table-view', v === 'table');
-  // Admin Room entry comes from the bottom lobby link; no top-screen admin control is rendered.
+  // Admin Room entry: the super-admin's desktop top-bar button
+  // (#desktopAdminBtn) or the mobile lobby link at the bottom of
+  // #view-lobby. No other admin control is rendered.
   ['view-login', 'view-lobby', 'view-table', 'view-admin'].forEach(id => {
     const node = $(id);
     if (node) node.style.display = (id === 'view-' + v) ? '' : 'none';
@@ -980,11 +1021,47 @@ function updateTopBar() {
   if (!state.player) return;
   $('playerChip').textContent = state.player.name;
   $('pointsChip').textContent = formatNumber(state.player.points) + ' pts';
+  updateDesktopAdminButton();
   // Mobile felt pills
   var mftrPP = $('mftrPlayerPill');
   if (mftrPP) mftrPP.textContent = state.player.name;
   var mftrPtP = $('mftrPointsPill');
   if (mftrPtP) mftrPtP.textContent = formatNumber(state.player.points) + ' pts';
+}
+
+// Desktop Admin Room entry point (#desktopAdminBtn).
+//
+// Rendered into the top bar next to Profile / Name / Leaderboard, but only
+// for the super-admin account. The button ships with the `hidden` attribute
+// in index.html and this function is the only thing that ever removes it,
+// so the default state for every other account — logged out, logged in, or
+// mid-reconnect — is "not offered".
+//
+// Why the name check is not the whole story: it decides what is *offered*,
+// not what is *allowed*. The server independently re-derives the role from
+// the persisted Player doc on every admin_* event, so a user who forces
+// this button visible (or calls the socket events directly) still gets
+// `{ ok: false, error: 'Not admin' }` unless the server agrees. The
+// `state.isAdmin` check in openAdminRoom() is belt-and-braces for the UI
+// path: it keeps the click from landing on an Admin Room that would render
+// empty panels.
+//
+// Called from updateTopBar(), which runs on register, on every `hello`
+// (including the role-flip `hello` sent by admin_set_role), and on the
+// points sync, so the button follows the live session rather than a
+// one-time read at load.
+function updateDesktopAdminButton() {
+  const btn = $('desktopAdminBtn');
+  if (!btn) return;
+  const show = !!state.player && isSuperAdminUser(state.player.name);
+  btn.hidden = !show;
+  btn.setAttribute('aria-hidden', show ? 'false' : 'true');
+  btn.tabIndex = show ? 0 : -1;
+}
+
+function openAdminRoom() {
+  if (!state.isAdmin) { showToast('Admin access required', 'error'); return; }
+  setView('admin');
 }  // ---------- Login view ----------
 
 // Restore the saved display name (if any) so a returning guest does not
