@@ -798,24 +798,8 @@ function applyAccessibility() {
   try { localStorage.setItem('pokerA11y', JSON.stringify(a)); } catch (e) {}
 }
 function setupAccessibility() {
-  try { Object.assign(state.a11y, JSON.parse(localStorage.getItem('pokerA11y') || '{}')); } catch (e) {}
-  const toggle = $('accessibilityToggle'); const panel = $('accessibilityPanel');
-  if (!toggle || !panel) return;
-  toggle.addEventListener('click', () => { panel.hidden = !panel.hidden; toggle.setAttribute('aria-expanded', String(!panel.hidden)); });
-  panel.addEventListener('click', e => {
-    const button = e.target.closest('[data-a11y]'); if (!button) return;
-    const key = button.dataset.a11y;
-    if (key === 'fontUp') state.a11y.fontScale = Math.min(1.5, state.a11y.fontScale + 0.1);
-    else if (key === 'fontDown') state.a11y.fontScale = Math.max(0.8, state.a11y.fontScale - 0.1);
-    else if (key === 'reset') state.a11y = { fontScale: 1, contrast: false, grayscale: false, readable: false, highlight: false, animations: false };
-    else if (key === 'animations') state.a11y.animations = !state.a11y.animations;
-    else if (key === 'contrast') state.a11y.contrast = !state.a11y.contrast;
-    else if (key === 'grayscale') state.a11y.grayscale = !state.a11y.grayscale;
-    else if (key === 'readable') state.a11y.readable = !state.a11y.readable;
-    else if (key === 'highlight') state.a11y.highlight = !state.a11y.highlight;
-    applyAccessibility();
-  });
-  applyAccessibility();
+  // Accessibility toolbar removed from the mobile layout; keep this no-op so
+  // existing call sites do not need a parallel edit.
 }
 
 function renderAdminRoom(snapshot) {

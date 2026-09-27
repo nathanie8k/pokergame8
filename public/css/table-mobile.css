@@ -63,21 +63,10 @@
 
   /* ---------- Keep global overlays off the table screen ----------
      This screen is the table, full stop: the floating presence badge would
-     land on the opponent row, and the accessibility button on the viewer's
-     cards. The badge is redundant here (the lobby shows it) and is hidden;
-     the accessibility control is kept but parked in the empty band under
-     the opponent row, with its panel opening downward instead of up. */
+     land on the opponent row, so it is hidden here (the lobby shows it).
+     The accessibility toolbar is removed entirely from the mobile layout. */
   body.is-table-view #presenceWidget {
     display: none;
-  }
-  body.is-table-view .accessibility-toolbar {
-    top: calc(env(safe-area-inset-top, 0px) + 204px);
-    bottom: auto;
-    left: 10px;
-  }
-  body.is-table-view .accessibility-panel {
-    top: 56px;
-    bottom: auto;
   }
 
   /* ---------- Header: back arrow + table menu ---------- */
