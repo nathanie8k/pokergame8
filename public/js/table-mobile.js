@@ -131,8 +131,20 @@
 
   // One card: face-up (rank top-left, suit bottom-left) or the face-down
   // hatched back when there is no card to show yet.
-  function mtCard(c) {
-    if (!c) return el('div', { class: 'mt-card mt-card--down' });
+  //
+  // On mobile, once a hand reaches hand_over with lastHandResults, every
+  // non-folded opponent keeps its hole cards face-up for 5 seconds so the
+  // table reads as an open showdown, then falls back to the face-down back.
+  // The viewer's own cards stay face-up the whole time while their hand is
+  // still known; the 5-second reveal is only for opponents.
+  function mtCard(c, opts) {
+    opts = opts || {};
+    if (!c) {
+      if (opts.reveal) {
+        return el('div', { class: 'mt-card mt-card--up mt-card--red' });
+      }
+      return el('div', { class: 'mt-card mt-card--down' });
+    }
     var red = SUIT_COLOR[c.suit] === 'red';
     return el('div', {
       class: 'mt-card mt-card--up' + (red ? ' mt-card--red' : ''),
@@ -220,6 +232,27 @@
             title: 'Bet this street',
           }));
         }
+        // Each seat row keeps a small results strip that can show the
+        // player's folded/removed status, then the winner/loser badge once
+        // the hand is over and the HUD has resolved.
+        var resultRow = el('div', { class: 'mt-seat-result' });
+        if (seat.folded) {
+          resultRow.appendChild(el('span', { class: 'mt-seat-result-tag', text: 'Folded' }));
+        } else if (seat.removed) {
+          resultRow.appendChild(el('span', { class: 'mt-seat-result-tag mt-seat-result-tag--mute', text: 'Removed' }));
+        } else if (seat.satOut) {
+          resultRow.appendChild(el('span', { class: 'mt-seat-result-tag mt-seat-result-tag--mute', text: 'Sat out' }));
+        }
+        column.appendChild(resultRow);
+        // The hole cards live under the seat info (name + stack), so the
+        // showdown reveal only animates those cards, not the whole seat.
+        var holeHost = el('div', { class: 'mt-seat-hole-cards' });
+        if (seat.holeCards && seat.holeCards.length === 2) {
+          seat.holeCards.forEach(function (c) { holeHost.appendChild(mtCard(c)); });
+        } else {
+          holeHost.appendChild(el('div', { class: 'mt-seat-hole-cards-empty' }));
+        }
+        column.appendChild(holeHost);
       } else {
         // Empty seat. On mobile this is the only way to take a seat, so it
         // doubles as the "Move here" target while change-seat mode is on.
@@ -302,6 +335,68 @@
         avatar.style.backgroundImage = '';
         avatar.textContent = selfSeat ? getInitials(selfSeat.name) : '?';
       }
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Showdown reveal timing
+  // ------------------------------------------------------------
+  // Once the hand reaches hand_over with lastHandResults, every non-folded,
+  // non-removed opponent whose holeCards are known gets its cards shown
+  // face-up for SHOWDOWN_REVEAL_MS, then flips back to the face-down back so
+  // the table is not permanently cluttered. The viewer's own cards stay face-
+  // up the whole time the viewer still knows them; only opponents are timed.
+  var SHOWDOWN_REVEAL_MS = 5000;
+  var _revealTimers = {};
+  var _lastRevealHand = null;
+
+  function clearRevealTimers() {
+    Object.keys(_revealTimers).forEach(function (k) {
+      var tmr = _revealTimers[k];
+      if (tmr) window.clearTimeout(tmr);
+    });
+    _revealTimers = {};
+    _lastRevealHand = null;
+  }
+
+  function applyShowdownReveal(t) {
+    if (!t || !t.lastHandResults) {
+      clearRevealTimers();
+      return;
+    }
+    var key = String(t.handNumber);
+    if (key !== _lastRevealHand) {
+      // New hand result arrived: kill any pending reveal from the previous
+      // hand so timers from a now-stale state never fire out of order.
+      clearRevealTimers();
+      _lastRevealHand = key;
+
+      // Schedule the reveal flip-back once, keyed by seat index so each
+      // opponent's timer is independent and a seat that changes status
+      // (folded/removed/sat out) stops being treated as an active reveal.
+      t.seats.forEach(function (seat, idx) {
+        if (!seat ||
+            !seat.occupied ||
+            seat.removed ||
+            seat.folded ||
+            seat.satOut ||
+            !seat.holeCards ||
+            seat.holeCards.length < 2 ||
+            seat.isSelf) {
+          return;
+        }
+        var seatEl = document.querySelector('.mt-seat[data-seat-idx="' + idx + '"]');
+        if (!seatEl) return;
+        seatEl.classList.add('is-revealing');
+        seatEl.classList.remove('has-revealed');
+        var tmr = window.setTimeout(function () {
+          _revealTimers[String(idx)] = null;
+          seatEl.classList.remove('is-revealing');
+          seatEl.classList.add('has-revealed');
+          populateMobileFelt(t, selfSeatOf(t));
+        }, SHOWDOWN_REVEAL_MS);
+        _revealTimers[String(idx)] = tmr;
+      });
     }
   }
 
@@ -436,6 +531,7 @@
     renderActionBar(t, selfSeat);
     renderSitOutItem(selfSeat);
     populateMobileHandResult(t);
+    applyShowdownReveal(t);
   }
 
   // Mobile hand-results banner. The server already renders the outer
@@ -492,12 +588,16 @@
   // these names at call time, so the mobile hooks resolve here.
   window.populateMobileFelt = populateMobileFelt;
   window.populateMobileHandResult = populateMobileHandResult;
+  window.populateMobileReveal = applyShowdownReveal;
+  window.clearMobileShowdownRevealTimers = clearRevealTimers;
 
   // client.js also carries its own mobile renderer (populateMobileSpec) for an
   // earlier markup set. It is called right after the hook above and shares
   // three ids with this screen (#mtCommunity, #mtPotAmount, #mtHoleCards), so
   // it would overwrite this renderer's output. Neutralise it.
   window.populateMobileSpec = function () {}
+
+  window.clearShowdownRevealTimers = clearRevealTimers;
 
   // ------------------------------------------------------------
   // Wiring for the new controls. Registered after client.js's own

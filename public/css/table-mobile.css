@@ -364,6 +364,22 @@
   .mt-card--down {
     background: #e0212b;
   }
+
+  /* Opponent showdown reveal: after a hand is over, each non-folded
+     opponent keeps its cards face-up for 5 seconds so the table reads as an
+     open showdown, then flips back to the face-down back once the reveal
+     window expires. The viewer's own cards are unaffected. */
+  .mt-seat .mt-seat-hole-cards .mt-card {
+    transition: transform 280ms var(--ease), opacity 280ms var(--ease);
+  }
+  .mt-seat.is-revealing .mt-seat-hole-cards .mt-card {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  .mt-seat.has-revealed .mt-seat-hole-cards .mt-card {
+    transform: scale(0.96);
+    opacity: 0;
+  }
   /* Rank top-left, suit bottom-left — both large and bold. */
   .mt-card-rank {
     position: absolute;
@@ -398,6 +414,59 @@
       transparent 2px,
       transparent 6px
     );
+  }
+
+  /* Folded/removed/sat-out tags under each seat row. */
+  .mt-seat-result {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-height: 14px;
+  }
+  .mt-seat-result-tag {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #d8d8d8;
+    line-height: 1;
+  }
+  .mt-seat-result-tag--mute {
+    color: #7a7a7a;
+  }
+  .mt-seat-hole-cards {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    margin-top: 6px;
+  }
+  .mt-seat-hole-cards .mt-card {
+    width: 34px;
+    height: 48px;
+    border-radius: 6px;
+  }
+  .mt-seat-hole-cards .mt-card-rank {
+    font-size: 13px;
+    top: 2px;
+    left: 5px;
+  }
+  .mt-seat-hole-cards .mt-card-suit {
+    font-size: 11px;
+    bottom: 2px;
+    left: 5px;
+  }
+  .mt-seat-hole-cards-empty {
+    width: 34px;
+    height: 48px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px dashed rgba(255, 255, 255, 0.14);
+    border-radius: 6px;
+  }
+  .mt-seat.is-revealing .mt-seat-hole-cards .mt-card,
+  .mt-seat.has-revealed .mt-seat-hole-cards .mt-card {
+    width: 34px;
+    height: 48px;
   }
   /* Pot sits under the right-hand end of the board. */
   .mt-pot {
