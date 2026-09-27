@@ -33,8 +33,11 @@
     max-width: none;
     display: flex;
     flex-direction: column;
-    /* Pure black, and no scrolling: the whole table is one fixed screen. */
-    background: #000;
+    /* Pure green, and no scrolling: the whole table is one fixed screen.
+     Presentation-only: every other rule stays exactly the same, so cards,
+     buttons, avatars, chips, menu panel and slider keep their existing
+     colors / borders / shadows. */
+    background: #073b2c;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
   }
