@@ -41,6 +41,14 @@
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
   }
+  /* Mobile felt polish: keep the screen green but let the table read as a
+     felt oval inside it. Presentation-only; every card/button/chip/avatar
+     rule is untouched. */
+  .poker-table {
+    background:
+      radial-gradient(ellipse 80% 70% at center, #165237 0%, #0d3723 40%, #081c15 90%);
+    border-color: var(--table-rail, #2a1d10);
+  }
   /* Retire the desktop felt texture overlay for this skin. */
   #view-table::before,
   #view-table::after {
@@ -355,10 +363,17 @@
     height: clamp(74px, 24.8vw, 100px);
     flex: 0 0 auto;
     border-radius: 8px;
-    background: #fff;
-    border: 1px solid #dcdcdc;
+    background: #e0212b;
+    border: 1px solid #c41825;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
     overflow: hidden;
+  }
+  .mt-card .mt-card-rank,
+  .mt-card .mt-card-suit {
+    color: #fff;
+  }
+  .mt-card--down {
+    background: #e0212b;
   }
   /* Rank top-left, suit bottom-left — both large and bold. */
   .mt-card-rank {
@@ -385,12 +400,12 @@
   }
   /* Face-down: light grey with diagonal hatch stripes. */
   .mt-card--down {
-    border-color: #d6d6d6;
-    background-color: #ededed;
+    border-color: #c41825;
+    background-color: #c41825;
     background-image: repeating-linear-gradient(
       45deg,
-      #c9c9c9 0,
-      #c9c9c9 2px,
+      #a8141d 0,
+      #a8141d 2px,
       transparent 2px,
       transparent 6px
     );
