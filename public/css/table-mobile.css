@@ -34,7 +34,7 @@
     display: flex;
     flex-direction: column;
     /* Pure black, and no scrolling: the whole table is one fixed screen. */
-    background: #0A0A0A;
+    background: #000;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
   }
@@ -79,7 +79,6 @@
     padding-top: max(10px, env(safe-area-inset-top, 10px));
     position: relative;
     z-index: 6;
-    background: #0A0A0A;
   }
   .mt-icon-btn {
     display: inline-flex;
@@ -192,13 +191,12 @@
     width: 48px;
     height: 48px;
     flex: 0 0 auto;
-    background: #0A0A0A;
   }
   .mt-avatar {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background-color: #0A0A0A;
+    background-color: #232326;
     background-size: cover;
     background-position: center;
     display: flex;
@@ -218,7 +216,7 @@
   .mt-seat-name {
     font-size: 11px;
     font-weight: 500;
-    color: #FFFFFF;
+    color: #9b9b9b;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -291,8 +289,8 @@
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: #0A0A0A;
-    color: #FFFFFF;
+    background: transparent;
+    color: #b9b9b9;
     font-size: 11px;
     font-weight: 700;
     cursor: pointer;
@@ -331,7 +329,6 @@
 
   /* ---------- Board: community cards + pot ---------- */
   .mt-board {
-    background: #0B4D2C;
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -427,8 +424,8 @@
     padding: 0 14px;
     border: 0;
     border-radius: 999px;
-    background: #E24B4A;
-    color: #FFFFFF;
+    background: #232326;
+    color: #fff;
     font-size: 17px;
     font-weight: 600;
     letter-spacing: 0.1px;
@@ -453,10 +450,10 @@
     transform: none;
   }
   .mt-pill--fold {
-    color: #FFFFFF;
+    color: #ffb3b3;
   }
   .mt-pill--allin {
-    color: #FFFFFF;
+    color: #ff8f8f;
   }
   .mt-round {
     flex: 0 0 auto;
