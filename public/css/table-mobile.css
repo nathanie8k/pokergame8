@@ -381,9 +381,11 @@
     height: clamp(74px, 24.8vw, 100px);
     flex: 0 0 auto;
     border-radius: 8px;
-    background: #e0212b;
-    border: 1px solid #c41825;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    background: linear-gradient(160deg, #ffffff 0%, #f7efdc 92%);
+    border: 1px solid #d7c7a8;
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255,255,255,0.7);
     overflow: hidden;
   }
   .mt-card .mt-card-rank,
@@ -391,7 +393,43 @@
     color: #fff;
   }
   .mt-card--down {
-    background: #e0212b;
+    background-color: #1a1a1f;
+    background-image:
+      /* Deep dark base with subtle vignette */
+      radial-gradient(ellipse at center, #2a2a32 0%, #141417 100%),
+      /* Fine gold geometric lattice */
+      repeating-linear-gradient(45deg, transparent 0px, transparent 4px, rgba(255, 215, 0, 0.07) 4px, rgba(255, 215, 0, 0.07) 5px, transparent 5px, transparent 9px),
+      repeating-linear-gradient(-45deg, transparent 0px, transparent 4px, rgba(255, 215, 0, 0.05) 4px, rgba(255, 215, 0, 0.05) 5px, transparent 5px, transparent 9px),
+      repeating-linear-gradient(90deg, transparent 0px, transparent 6px, rgba(255, 215, 0, 0.03) 6px, rgba(255, 215, 0, 0.03) 7px, transparent 7px, transparent 12px);
+    border: 1px solid rgba(255, 215, 0, 0.15);
+    border-radius: 8px;
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.45),
+      inset 0 0 10px rgba(0, 0, 0, 0.5),
+      inset 0 0 3px rgba(255, 215, 0, 0.08);
+  }
+  .mt-card--down::before {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border-radius: 6px;
+    background:
+      /* Fine geometric border frame */
+      linear-gradient(rgba(255, 215, 0, 0.12) 0%, rgba(255, 215, 0, 0.12) 1.5px, transparent 1.5px, transparent 98%, rgba(255, 215, 0, 0.12) 98%, rgba(255, 215, 0, 0.12) 100%),
+      /* Corner diamond motifs */
+      radial-gradient(circle at 12% 12%, rgba(255, 215, 0, 0.14) 0%, transparent 4px),
+      radial-gradient(circle at 88% 12%, rgba(255, 215, 0, 0.14) 0%, transparent 4px),
+      radial-gradient(circle at 12% 88%, rgba(255, 215, 0, 0.14) 0%, transparent 4px),
+      radial-gradient(circle at 88% 88%, rgba(255, 215, 0, 0.14) 0%, transparent 4px);
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.4);
+  }
+  .mt-card--down::after {
+    content: "";
+    position: absolute;
+    inset: 10px;
+    border: 1px solid rgba(255, 215, 0, 0.18);
+    border-radius: 4px;
+    box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.3), 0 0 6px rgba(255, 215, 0, 0.05);
   }
 
   /* Opponent showdown reveal: after a hand is over, each non-folded
@@ -432,13 +470,46 @@
   .mt-card--red .mt-card-suit {
     color: #fff;
   }
-  /* Face-down: suit-tile pattern — deep red with darker red suits, offset rows. */
+  /* Face-down: dark pattern with fine gold geometric lattice + soft inner shadow */
   .mt-card--down {
-    border-color: #f5f0e6;
-    background-color: #B01225;
+    background-color: #1a1a1f;
+    border: 1px solid rgba(255, 215, 0, 0.15);
     border-radius: 8px;
     background-image:
-      /* Ivory outer margin */
+      /* Deep dark base with subtle vignette */
+      radial-gradient(ellipse at center, #2a2a32 0%, #141417 100%),
+      /* Fine gold geometric lattice */
+      repeating-linear-gradient(45deg, transparent 0px, transparent 4px, rgba(255, 215, 0, 0.07) 4px, rgba(255, 215, 0, 0.07) 5px, transparent 5px, transparent 9px),
+      repeating-linear-gradient(-45deg, transparent 0px, transparent 4px, rgba(255, 215, 0, 0.05) 4px, rgba(255, 215, 0, 0.05) 5px, transparent 5px, transparent 9px),
+      repeating-linear-gradient(90deg, transparent 0px, transparent 6px, rgba(255, 215, 0, 0.03) 6px, rgba(255, 215, 0, 0.03) 7px, transparent 7px, transparent 12px);
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.45),
+      inset 0 0 10px rgba(0, 0, 0, 0.5),
+      inset 0 0 3px rgba(255, 215, 0, 0.08);
+  }
+  .mt-card--down::before {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border-radius: 6px;
+    background:
+      /* Fine geometric border frame */
+      linear-gradient(rgba(255, 215, 0, 0.12) 0%, rgba(255, 215, 0, 0.12) 1.5px, transparent 1.5px, transparent 98%, rgba(255, 215, 0, 0.12) 98%, rgba(255, 215, 0, 0.12) 100%),
+      /* Corner diamond motifs */
+      radial-gradient(circle at 12% 12%, rgba(255, 215, 0, 0.14) 0%, transparent 4px),
+      radial-gradient(circle at 88% 12%, rgba(255, 215, 0, 0.14) 0%, transparent 4px),
+      radial-gradient(circle at 12% 88%, rgba(255, 215, 0, 0.14) 0%, transparent 4px),
+      radial-gradient(circle at 88% 88%, rgba(255, 215, 0, 0.14) 0%, transparent 4px);
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.4);
+  }
+  .mt-card--down::after {
+    content: "";
+    position: absolute;
+    inset: 10px;
+    border: 1px solid rgba(255, 215, 0, 0.18);
+    border-radius: 4px;
+    box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.3), 0 0 6px rgba(255, 215, 0, 0.05);
+  }
       linear-gradient(
         rgba(255, 248, 240, 0.92) 0%,
         rgba(255, 248, 240, 0.92) 7%,

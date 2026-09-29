@@ -952,23 +952,88 @@ input, button, select, textarea { color: inherit; }
   opacity: 0.92;
   pointer-events: none;
 }
+
+/* Card back — dark pattern with fine gold geometric lattice + soft inner shadow */
 .card.face-down {
-  background: linear-gradient(135deg, #4a2f99, #6b3fb5);
-  color: #fff;
+  background-color: #1a1a1f;
   background-image:
-    repeating-linear-gradient(45deg, rgba(255,255,255,0.08) 0 8px, transparent 8px 16px),
-    linear-gradient(135deg, #4a2f99, #6b3fb5);
-  border-color: #2a1a55;
+    /* Deep dark base with subtle vignette */
+    radial-gradient(ellipse at center, #2a2a32 0%, #141417 100%),
+    /* Fine gold geometric lattice — intersecting diagonal lines */
+    repeating-linear-gradient(
+      45deg,
+      transparent 0px,
+      transparent 5px,
+      rgba(255, 215, 0, 0.07) 5px,
+      rgba(255, 215, 0, 0.07) 6px,
+      transparent 6px,
+      transparent 11px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0px,
+      transparent 5px,
+      rgba(255, 215, 0, 0.05) 5px,
+      rgba(255, 215, 0, 0.05) 6px,
+      transparent 6px,
+      transparent 11px
+    ),
+    /* Subtle secondary lattice at different angle for depth */
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 8px,
+      rgba(255, 215, 0, 0.03) 8px,
+      rgba(255, 215, 0, 0.03) 9px,
+      transparent 9px,
+      transparent 16px
+    );
+  border: 1px solid rgba(255, 215, 0, 0.15);
+  color: #fff;
 }
-.card.face-down .corner,
-.card.face-down .center-suit { visibility: hidden; }
+
+/* Geometric lattice pattern overlay - diamond/lozenge motifs at corners */
 .card.face-down::before {
   content: "";
-  position: absolute; inset: 6px;
-  border: 2px solid rgba(255,255,255,0.4);
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
+  position: absolute;
+  inset: 4px;
+  border-radius: 6px;
+  /* Outer gold lattice border */
+  background:
+    /* Fine geometric border frame */
+    linear-gradient(
+      rgba(255, 215, 0, 0.12) 0%, rgba(255, 215, 0, 0.12) 2px,
+      transparent 2px, transparent 98%,
+      rgba(255, 215, 0, 0.12) 98%, rgba(255, 215, 0, 0.12) 100%
+    ),
+    /* Corner diamond motifs */
+    radial-gradient(circle at 12% 12%, rgba(255, 215, 0, 0.15) 0%, transparent 8px),
+    radial-gradient(circle at 88% 12%, rgba(255, 215, 0, 0.15) 0%, transparent 8px),
+    radial-gradient(circle at 12% 88%, rgba(255, 215, 0, 0.15) 0%, transparent 8px),
+    radial-gradient(circle at 88% 88%, rgba(255, 215, 0, 0.15) 0%, transparent 8px),
+    /* Center diamond motif */
+    radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.10) 0%, transparent 12px);
+  /* Soft inner shadow for depth */
+  box-shadow:
+    inset 0 0 12px rgba(0, 0, 0, 0.6),
+    inset 0 0 4px rgba(255, 215, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.5);
 }
+
+/* Inner diamond frame - elegant geometric accent */
+.card.face-down::after {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border: 1px solid rgba(255, 215, 0, 0.20);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 0 6px rgba(0, 0, 0, 0.4),
+    0 0 8px rgba(255, 215, 0, 0.05);
+}
+
+.card.face-down .corner,
+.card.face-down .center-suit { visibility: hidden; }
 .card-small { width: var(--card-w-sm); height: var(--card-h-sm); padding: 0; }
 .card-small .corner.top    { top: 3px;    left: 4px; }
 .card-small .corner.bottom { bottom: 3px; right: 4px; }

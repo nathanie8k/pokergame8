@@ -235,25 +235,46 @@
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.45);
   }
   #view-table .desktop-hole-cards .mt-card--down {
-    background-color: #e3001d;
-    border-color: #8b0010;
+    background-color: #1a1a1f;
+    border: 1px solid rgba(255, 215, 0, 0.18);
+    border-radius: 12px;
     background-image:
-      /* Ivory margin */
-      linear-gradient(
-        rgba(255,250,240,0.92) 0%, rgba(255,250,240,0.92) 6%,
-        transparent 6%, transparent 94%,
-        rgba(255,250,240,0.92) 94%, rgba(255,250,240,0.92) 100%
-      ),
-      /* Outer rosette ring */
-      radial-gradient(
-        circle at 50% 50%,
-        transparent 18%,
-        transparent 22%,
-        rgba(255,255,255,0.85) 22.5%,
-        rgba(255,255,255,0.5) 25%,
-        transparent 28%
-      ),
-      /* Central medallion */
+      /* Deep dark base with subtle vignette */
+      radial-gradient(ellipse at center, #2a2a32 0%, #141417 100%),
+      /* Fine gold geometric lattice — intersecting diagonal lines */
+      repeating-linear-gradient(45deg, transparent 0px, transparent 5px, rgba(255, 215, 0, 0.08) 5px, rgba(255, 215, 0, 0.08) 6px, transparent 6px, transparent 11px),
+      repeating-linear-gradient(-45deg, transparent 0px, transparent 5px, rgba(255, 215, 0, 0.06) 5px, rgba(255, 215, 0, 0.06) 6px, transparent 6px, transparent 11px),
+      /* Subtle secondary lattice */
+      repeating-linear-gradient(90deg, transparent 0px, transparent 8px, rgba(255, 215, 0, 0.04) 8px, rgba(255, 215, 0, 0.04) 9px, transparent 9px, transparent 16px);
+    box-shadow:
+      0 10px 28px rgba(0, 0, 0, 0.55),
+      0 2px 8px rgba(0, 0, 0, 0.45),
+      inset 0 0 15px rgba(0, 0, 0, 0.6),
+      inset 0 0 5px rgba(255, 215, 0, 0.10);
+  }
+  #view-table .desktop-hole-cards .mt-card--down::before {
+    content: "";
+    position: absolute;
+    inset: 5px;
+    border-radius: 8px;
+    background:
+      /* Fine geometric border frame */
+      linear-gradient(rgba(255, 215, 0, 0.15) 0%, rgba(255, 215, 0, 0.15) 2px, transparent 2px, transparent 98%, rgba(255, 215, 0, 0.15) 98%, rgba(255, 215, 0, 0.15) 100%),
+      /* Corner diamond motifs */
+      radial-gradient(circle at 12% 12%, rgba(255, 215, 0, 0.18) 0%, transparent 6px),
+      radial-gradient(circle at 88% 12%, rgba(255, 215, 0, 0.18) 0%, transparent 6px),
+      radial-gradient(circle at 12% 88%, rgba(255, 215, 0, 0.18) 0%, transparent 6px),
+      radial-gradient(circle at 88% 88%, rgba(255, 215, 0, 0.18) 0%, transparent 6px);
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
+  }
+  #view-table .desktop-hole-cards .mt-card--down::after {
+    content: "";
+    position: absolute;
+    inset: 16px;
+    border: 1px solid rgba(255, 215, 0, 0.22);
+    border-radius: 6px;
+    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.4), 0 0 10px rgba(255, 215, 0, 0.06);
+  }
       radial-gradient(
         circle at 50% 50%,
         rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 2.5%,
