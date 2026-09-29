@@ -339,6 +339,7 @@
     padding: 0 16px;
     position: relative;
     z-index: 2;
+    background: #0a0a0b;
   }
   .mt-community {
     display: flex;
@@ -401,12 +402,12 @@
   }
   .mt-card--red .mt-card-rank,
   .mt-card--red .mt-card-suit {
-    color: #e0212b;
+    color: #fff;
   }
-  /* Face-down: light grey with diagonal hatch stripes. */
+  /* Face-down: red with diagonal hatch stripes. */
   .mt-card--down {
     border-color: #c41825;
-    background-color: #c41825;
+    background-color: #e0212b;
     background-image: repeating-linear-gradient(
       45deg,
       #a8141d 0,
