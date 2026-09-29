@@ -234,6 +234,200 @@
     background: rgba(255, 255, 255, 0.055);
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.45);
   }
+  #view-table .desktop-hole-cards .mt-card--down {
+    background-color: #e3001d;
+    border-color: #8b0010;
+    background-image:
+      /* Ivory margin */
+      linear-gradient(
+        rgba(255,250,240,0.92) 0%, rgba(255,250,240,0.92) 6%,
+        transparent 6%, transparent 94%,
+        rgba(255,250,240,0.92) 94%, rgba(255,250,240,0.92) 100%
+      ),
+      /* Outer rosette ring */
+      radial-gradient(
+        circle at 50% 50%,
+        transparent 18%,
+        transparent 22%,
+        rgba(255,255,255,0.85) 22.5%,
+        rgba(255,255,255,0.5) 25%,
+        transparent 28%
+      ),
+      /* Central medallion */
+      radial-gradient(
+        circle at 50% 50%,
+        rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 2.5%,
+        transparent 3.5%
+      ),
+      radial-gradient(
+        circle at 50% 50%,
+        transparent 4%,
+        rgba(255,255,255,0.5) 4.5%,
+        rgba(255,255,255,0.25) 9%,
+        rgba(255,255,255,0.1) 13%,
+        transparent 16%
+      ),
+      /* Baroque acanthus scrolls — left & right mirror */
+      radial-gradient(
+        ellipse at 20% 50%,
+        transparent 0%, transparent 5%,
+        rgba(255,255,255,0.45) 5.5%,
+        rgba(255,255,255,0.2) 9%,
+        transparent 12%
+      ),
+      radial-gradient(
+        ellipse at 80% 50%,
+        transparent 0%, transparent 5%,
+        rgba(255,255,255,0.45) 5.5%,
+        rgba(255,255,255,0.2) 9%,
+        transparent 12%
+      ),
+      /* Top & bottom tendrils */
+      radial-gradient(
+        ellipse at 50% 22%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.4) 4.5%,
+        rgba(255,255,255,0.15) 8%,
+        transparent 11%
+      ),
+      radial-gradient(
+        ellipse at 50% 78%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.4) 4.5%,
+        rgba(255,255,255,0.15) 8%,
+        transparent 11%
+      ),
+      /* Tulip flowers — 4 corners */
+      radial-gradient(
+        ellipse at 33% 33%,
+        transparent 0%, transparent 8%,
+        rgba(255,255,255,0.35) 8.5%,
+        rgba(255,255,255,0.12) 12%,
+        transparent 15%
+      ),
+      radial-gradient(
+        ellipse at 67% 33%,
+        transparent 0%, transparent 8%,
+        rgba(255,255,255,0.35) 8.5%,
+        rgba(255,255,255,0.12) 12%,
+        transparent 15%
+      ),
+      radial-gradient(
+        ellipse at 33% 67%,
+        transparent 0%, transparent 8%,
+        rgba(255,255,255,0.35) 8.5%,
+        rgba(255,255,255,0.12) 12%,
+        transparent 15%
+      ),
+      radial-gradient(
+        ellipse at 67% 67%,
+        transparent 0%, transparent 8%,
+        rgba(255,255,255,0.35) 8.5%,
+        rgba(255,255,255,0.12) 12%,
+        transparent 15%
+      ),
+      /* Vine connections */
+      radial-gradient(
+        ellipse at 12% 50%,
+        transparent 0%, transparent 9%,
+        rgba(255,255,255,0.18) 9.5%,
+        rgba(255,255,255,0.06) 12%,
+        transparent 15%
+      ),
+      radial-gradient(
+        ellipse at 88% 50%,
+        transparent 0%, transparent 9%,
+        rgba(255,255,255,0.18) 9.5%,
+        rgba(255,255,255,0.06) 12%,
+        transparent 15%
+      ),
+      radial-gradient(
+        ellipse at 50% 12%,
+        transparent 0%, transparent 9%,
+        rgba(255,255,255,0.18) 9.5%,
+        rgba(255,255,255,0.06) 12%,
+        transparent 15%
+      ),
+      radial-gradient(
+        ellipse at 50% 88%,
+        transparent 0%, transparent 9%,
+        rgba(255,255,255,0.18) 9.5%,
+        rgba(255,255,255,0.06) 12%,
+        transparent 15%
+      ),
+      /* Leaf clusters at scroll junctions */
+      radial-gradient(
+        ellipse at 26% 38%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.25) 4.5%,
+        rgba(255,255,255,0.08) 7%,
+        transparent 9%
+      ),
+      radial-gradient(
+        ellipse at 74% 38%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.25) 4.5%,
+        rgba(255,255,255,0.08) 7%,
+        transparent 9%
+      ),
+      radial-gradient(
+        ellipse at 26% 62%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.25) 4.5%,
+        rgba(255,255,255,0.08) 7%,
+        transparent 9%
+      ),
+      radial-gradient(
+        ellipse at 74% 62%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.25) 4.5%,
+        rgba(255,255,255,0.08) 7%,
+        transparent 9%
+      ),
+      /* Corner rosettes (rosette border) */
+      radial-gradient(
+        circle at 6% 6%,
+        rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 3%,
+        transparent 4%
+      ),
+      radial-gradient(
+        circle at 94% 6%,
+        rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 3%,
+        transparent 4%
+      ),
+      radial-gradient(
+        circle at 6% 94%,
+        rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 3%,
+        transparent 4%
+      ),
+      radial-gradient(
+        circle at 94% 94%,
+        rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 3%,
+        transparent 4%
+      ),
+      /* Edge rosettes between corners */
+      radial-gradient(
+        circle at 50% 5%,
+        rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.7) 2.5%,
+        transparent 3.5%
+      ),
+      radial-gradient(
+        circle at 50% 95%,
+        rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.7) 2.5%,
+        transparent 3.5%
+      ),
+      radial-gradient(
+        circle at 5% 50%,
+        rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.7) 2.5%,
+        transparent 3.5%
+      ),
+      radial-gradient(
+        circle at 95% 50%,
+        rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.7) 2.5%,
+        transparent 3.5%
+      );
+    box-shadow: 0 10px 28px rgba(0, 30, 0, 0.6), 0 2px 8px rgba(0, 20, 0, 0.4);
+  }
   #view-table .desktop-hole-cards .mt-card-rank {
     top: 6px;
     left: 13px;

@@ -432,17 +432,213 @@
   .mt-card--red .mt-card-suit {
     color: #fff;
   }
-  /* Face-down: red with diagonal hatch stripes. */
+  /* Face-down: baroque damask pattern — white line-art on deep red. */
   .mt-card--down {
-    border-color: #c41825;
-    background-color: #e0212b;
-    background-image: repeating-linear-gradient(
-      45deg,
-      #a8141d 0,
-      #a8141d 2px,
-      transparent 2px,
-      transparent 6px
-    );
+    border-color: #8b0010;
+    background-color: #e3001d;
+    border-radius: 8px;
+    background-image:
+      /* Ivory margin border */
+      linear-gradient(
+        rgba(255, 250, 240, 0.92) 0%,
+        rgba(255, 250, 240, 0.92) 8%,
+        transparent 8%, transparent 92%,
+        rgba(255, 250, 240, 0.92) 92%,
+        rgba(255, 250, 240, 0.92) 100%
+      ),
+      /* Outer rosette ring (corners + midpoints) */
+      radial-gradient(
+        circle at 50% 50%,
+        transparent 22%,
+        transparent 26%,
+        rgba(255,255,255,0.9) 26.5%,
+        rgba(255,255,255,0.6) 29%,
+        transparent 31%
+      ),
+      /* Corner rosettes */
+      radial-gradient(
+        circle at 10% 10%,
+        rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.95) 5%,
+        transparent 6%
+      ),
+      radial-gradient(
+        circle at 90% 10%,
+        rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.95) 5%,
+        transparent 6%
+      ),
+      radial-gradient(
+        circle at 10% 90%,
+        rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.95) 5%,
+        transparent 6%
+      ),
+      radial-gradient(
+        circle at 90% 90%,
+        rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.95) 5%,
+        transparent 6%
+      ),
+      /* Mid-edge rosettes (between corners) */
+      radial-gradient(
+        circle at 50% 8%,
+        rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 3.5%,
+        transparent 4.5%
+      ),
+      radial-gradient(
+        circle at 50% 92%,
+        rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 3.5%,
+        transparent 4.5%
+      ),
+      radial-gradient(
+        circle at 8% 50%,
+        rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 3.5%,
+        transparent 4.5%
+      ),
+      radial-gradient(
+        circle at 92% 50%,
+        rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 3.5%,
+        transparent 4.5%
+      ),
+      /* Central medallion */
+      radial-gradient(
+        circle at 50% 50%,
+        rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 3%,
+        transparent 4%
+      ),
+      radial-gradient(
+        circle at 50% 50%,
+        transparent 3.5%,
+        transparent 8%,
+        rgba(255,255,255,0.55) 8.5%,
+        rgba(255,255,255,0.35) 11%,
+        transparent 13%
+      ),
+      /* Baroque acanthus scrolls — mirrored left/right */
+      /* Left scroll vine */
+      radial-gradient(
+        ellipse at 22% 50%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.5) 4.5%,
+        rgba(255,255,255,0.25) 7%,
+        transparent 9%
+      ),
+      /* Right mirror scroll vine */
+      radial-gradient(
+        ellipse at 78% 50%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.5) 4.5%,
+        rgba(255,255,255,0.25) 7%,
+        transparent 9%
+      ),
+      /* Top scroll tendril */
+      radial-gradient(
+        ellipse at 50% 28%,
+        transparent 0%, transparent 3.5%,
+        rgba(255,255,255,0.45) 4%,
+        rgba(255,255,255,0.2) 6%,
+        transparent 8%
+      ),
+      /* Bottom scroll tendril */
+      radial-gradient(
+        ellipse at 50% 72%,
+        transparent 0%, transparent 3.5%,
+        rgba(255,255,255,0.45) 4%,
+        rgba(255,255,255,0.2) 6%,
+        transparent 8%
+      ),
+      /* Tulip-like flowers (4 petals, mirrored quadrants) */
+      /* Upper-left flower */
+      radial-gradient(
+        ellipse at 35% 35%,
+        transparent 0%, transparent 7%,
+        rgba(255,255,255,0.4) 7.5%,
+        rgba(255,255,255,0.15) 10%,
+        transparent 12%
+      ),
+      /* Upper-right flower */
+      radial-gradient(
+        ellipse at 65% 35%,
+        transparent 0%, transparent 7%,
+        rgba(255,255,255,0.4) 7.5%,
+        rgba(255,255,255,0.15) 10%,
+        transparent 12%
+      ),
+      /* Lower-left flower */
+      radial-gradient(
+        ellipse at 35% 65%,
+        transparent 0%, transparent 7%,
+        rgba(255,255,255,0.4) 7.5%,
+        rgba(255,255,255,0.15) 10%,
+        transparent 12%
+      ),
+      /* Lower-right flower */
+      radial-gradient(
+        ellipse at 65% 65%,
+        transparent 0%, transparent 7%,
+        rgba(255,255,255,0.4) 7.5%,
+        rgba(255,255,255,0.15) 10%,
+        transparent 12%
+      ),
+      /* Interconnecting vine curves (thin white arcs) */
+      /* Horizontal vine band — left to center */
+      radial-gradient(
+        ellipse at 15% 50%,
+        transparent 0%, transparent 8%,
+        rgba(255,255,255,0.2) 8.5%,
+        rgba(255,255,255,0.08) 11%,
+        transparent 13%
+      ),
+      /* Horizontal vine band — right to center */
+      radial-gradient(
+        ellipse at 85% 50%,
+        transparent 0%, transparent 8%,
+        rgba(255,255,255,0.2) 8.5%,
+        rgba(255,255,255,0.08) 11%,
+        transparent 13%
+      ),
+      /* Vertical vine — top to center */
+      radial-gradient(
+        ellipse at 50% 15%,
+        transparent 0%, transparent 8%,
+        rgba(255,255,255,0.2) 8.5%,
+        rgba(255,255,255,0.08) 11%,
+        transparent 13%
+      ),
+      /* Vertical vine — bottom to center */
+      radial-gradient(
+        ellipse at 50% 85%,
+        transparent 0%, transparent 8%,
+        rgba(255,255,255,0.2) 8.5%,
+        rgba(255,255,255,0.08) 11%,
+        transparent 13%
+      ),
+      /* Leaf clusters at scroll junctions */
+      radial-gradient(
+        ellipse at 28% 40%,
+        transparent 0%, transparent 5%,
+        rgba(255,255,255,0.3) 5.5%,
+        rgba(255,255,255,0.1) 8%,
+        transparent 10%
+      ),
+      radial-gradient(
+        ellipse at 72% 40%,
+        transparent 0%, transparent 5%,
+        rgba(255,255,255,0.3) 5.5%,
+        rgba(255,255,255,0.1) 8%,
+        transparent 10%
+      ),
+      radial-gradient(
+        ellipse at 28% 60%,
+        transparent 0%, transparent 5%,
+        rgba(255,255,255,0.3) 5.5%,
+        rgba(255,255,255,0.1) 8%,
+        transparent 10%
+      ),
+      radial-gradient(
+        ellipse at 72% 60%,
+        transparent 0%, transparent 5%,
+        rgba(255,255,255,0.3) 5.5%,
+        rgba(255,255,255,0.1) 8%,
+        transparent 10%
+      );
   }
 
   /* Folded/removed/sat-out tags under each seat row. */
@@ -473,7 +669,131 @@
   .mt-seat-hole-cards .mt-card {
     width: 34px;
     height: 48px;
-    border-radius: 6px;
+    border-radius: 5px;
+    border-color: #8b0010;
+    background-color: #e3001d;
+    background-image:
+      /* Ivory margin */
+      linear-gradient(
+        rgba(255,250,240,0.9) 0%, rgba(255,250,240,0.9) 10%,
+        transparent 10%, transparent 90%,
+        rgba(255,250,240,0.9) 90%, rgba(255,250,240,0.9) 100%
+      ),
+      /* Central medallion */
+      radial-gradient(
+        circle at 50% 50%,
+        rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 4%,
+        transparent 5%
+      ),
+      radial-gradient(
+        circle at 50% 50%,
+        transparent 5.5%,
+        rgba(255,255,255,0.5) 6%, rgba(255,255,255,0.25) 9%,
+        transparent 11%
+      ),
+      /* Acanthus scroll — left */
+      radial-gradient(
+        ellipse at 28% 50%,
+        transparent 0%, transparent 5%,
+        rgba(255,255,255,0.45) 5.5%,
+        rgba(255,255,255,0.2) 8%,
+        transparent 10%
+      ),
+      /* Acanthus scroll — right */
+      radial-gradient(
+        ellipse at 72% 50%,
+        transparent 0%, transparent 5%,
+        rgba(255,255,255,0.45) 5.5%,
+        rgba(255,255,255,0.2) 8%,
+        transparent 10%
+      ),
+      /* Tulip flowers */
+      radial-gradient(
+        ellipse at 35% 35%,
+        transparent 0%, transparent 6%,
+        rgba(255,255,255,0.35) 6.5%,
+        rgba(255,255,255,0.12) 9%,
+        transparent 11%
+      ),
+      radial-gradient(
+        ellipse at 65% 35%,
+        transparent 0%, transparent 6%,
+        rgba(255,255,255,0.35) 6.5%,
+        rgba(255,255,255,0.12) 9%,
+        transparent 11%
+      ),
+      radial-gradient(
+        ellipse at 35% 65%,
+        transparent 0%, transparent 6%,
+        rgba(255,255,255,0.35) 6.5%,
+        rgba(255,255,255,0.12) 9%,
+        transparent 11%
+      ),
+      radial-gradient(
+        ellipse at 65% 65%,
+        transparent 0%, transparent 6%,
+        rgba(255,255,255,0.35) 6.5%,
+        rgba(255,255,255,0.12) 9%,
+        transparent 11%
+      ),
+      /* Vine connections */
+      radial-gradient(
+        ellipse at 15% 50%,
+        transparent 0%, transparent 7%,
+        rgba(255,255,255,0.18) 7.5%,
+        rgba(255,255,255,0.06) 10%,
+        transparent 12%
+      ),
+      radial-gradient(
+        ellipse at 85% 50%,
+        transparent 0%, transparent 7%,
+        rgba(255,255,255,0.18) 7.5%,
+        rgba(255,255,255,0.06) 10%,
+        transparent 12%
+      ),
+      radial-gradient(
+        ellipse at 50% 15%,
+        transparent 0%, transparent 7%,
+        rgba(255,255,255,0.18) 7.5%,
+        rgba(255,255,255,0.06) 10%,
+        transparent 12%
+      ),
+      radial-gradient(
+        ellipse at 50% 85%,
+        transparent 0%, transparent 7%,
+        rgba(255,255,255,0.18) 7.5%,
+        rgba(255,255,255,0.06) 10%,
+        transparent 12%
+      ),
+      /* Leaf clusters */
+      radial-gradient(
+        ellipse at 28% 40%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.25) 4.5%,
+        rgba(255,255,255,0.08) 7%,
+        transparent 9%
+      ),
+      radial-gradient(
+        ellipse at 72% 40%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.25) 4.5%,
+        rgba(255,255,255,0.08) 7%,
+        transparent 9%
+      ),
+      radial-gradient(
+        ellipse at 28% 60%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.25) 4.5%,
+        rgba(255,255,255,0.08) 7%,
+        transparent 9%
+      ),
+      radial-gradient(
+        ellipse at 72% 60%,
+        transparent 0%, transparent 4%,
+        rgba(255,255,255,0.25) 4.5%,
+        rgba(255,255,255,0.08) 7%,
+        transparent 9%
+      );
   }
   .mt-seat-hole-cards .mt-card-rank {
     font-size: 13px;
