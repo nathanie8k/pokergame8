@@ -339,7 +339,15 @@
     padding: 10px 16px 14px;
     position: relative;
     z-index: 2;
-    background: #006400;
+    background:
+      radial-gradient(ellipse at center, #008800 0%, #006600 50%, #004400 100%),
+      repeating-linear-gradient(
+        45deg,
+        rgba(212, 175, 55, 0.03) 0px,
+        rgba(212, 175, 55, 0.03) 2px,
+        transparent 2px,
+        transparent 8px
+      );
     border: 2px solid #D4AF37;
     box-shadow:
       0 0 20px rgba(212, 175, 55, 0.25),
@@ -354,6 +362,11 @@
     pointer-events: none;
     z-index: -1;
     box-shadow: 0 0 15px rgba(212, 175, 55, 0.15);
+    background: radial-gradient(
+      ellipse at center,
+      transparent 40%,
+      rgba(0, 40, 0, 0.4) 100%
+    );
   }
   .mt-community {
     display: flex;
