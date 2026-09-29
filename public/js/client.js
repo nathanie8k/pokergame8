@@ -129,7 +129,6 @@ const state = {
   prevHandLog: [],
   prevFolded: {},
   prevMobileHandNumber: -1,  // tracks last hand shown for mobile perf animations
-  prevYourTurn: false,
   turnTimerRaf: null,
   turnTimerStart: 0,
   presence: { count: 0, players: [] },
@@ -1868,19 +1867,6 @@ function renderTable() {
   state.prevButtonIndex = t.buttonIndex;
   // 8. Notifications: detect new handLog entries and show action bubbles.
   detectAndNotifyActions(t);
-
-  // 9. Your turn notice (upper-layer fallback for the seat badge): a
-  //    compact toast + float above the active player's seat when the
-  //    viewer's turn just changed. Purely cosmetic; no game logic touched.
-  if (state.prevYourTurn !== isActive &&
-      isActive &&
-      table.phase !== 'waiting' &&
-      table.phase !== 'hand_over') {
-    var activeSeat = document.querySelector('.seat.your-turn');
-    if (activeSeat) {
-      showActionNotification(activeSeat, 'YOUR TURN');
-    }
-  }
 }
 
 function renderSeat(seat, idx, table, total) {
@@ -2030,18 +2016,6 @@ function renderSeat(seat, idx, table, total) {
   if (isActive && table.phase !== 'waiting' && table.phase !== 'hand_over') {
     startTurnTimer(wrap, table);
   }
-  // 5. Your turn pulse: light on the active seat + red your-turn badge
-  //    above it, so a viewer who is the current actor notices {"  "}instantly{"}  "} with a full animation but minimal footprint. Purely cosmetic; no game logic touched.
-  if (isActive &&
-      table.phase !== 'waiting' &&
-      table.phase !== 'hand_over' &&
-      seat.playerId &&
-      typeof state.prevYourTurn === 'boolean' &&
-      state.prevYourTurn !== isActive) {
-    wrap.classList.add('your-turn');
-    setTimeout(function () { wrap.classList.remove('your-turn'); }, 1300);
-  }
-  state.prevYourTurn = isActive;
   return wrap;
 }
 

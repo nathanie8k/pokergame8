@@ -33,7 +33,10 @@
     max-width: none;
     display: flex;
     flex-direction: column;
-    /* Pure green, and no scrolling: the whole table is one fixed screen. */
+    /* Pure green, and no scrolling: the whole table is one fixed screen.
+     Presentation-only: every other rule stays exactly the same, so cards,
+     buttons, avatars, chips, menu panel and slider keep their existing
+     colors / borders / shadows. */
     background: #073b2c;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
@@ -240,48 +243,15 @@
     font-size: 11px;
     font-weight: 800;
     line-height: 19px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
   }
-  /* Per-seat active-turn marker: thin light ring around the avatar. */
+  /* Current actor: a thin light ring so the turn is obvious. */
   .mt-seat.is-turn .mt-avatar {
     box-shadow: 0 0 0 2px #fff, 0 0 0 5px rgba(255, 255, 255, 0.16);
   }
   .mt-seat.is-turn .mt-seat-name {
     color: #fff;
-  }
-  /* Your turn: the current actor gets an instant, full "your turn" animation.
-     The pulse hits immediately so the player notices the turn right away. */
-  .mt-seat.your-turn .mt-seat-ring {
-    animation: yourTurnPulse 1.3s ease-out infinite;
-  }
-  @keyframes yourTurnPulse {
-    0%   { transform: scale(1); box-shadow: 0 0 0 2px #fff, 0 0 0 5px rgba(255, 255, 255, 0.16); }
-    15%  { transform: scale(1.10); box-shadow: 0 0 0 3px #fff, 0 0 0 10px rgba(255, 255, 255, 0.25); }
-    30%  { transform: scale(1.07); box-shadow: 0 0 0 3px #fff, 0 0 0 9px rgba(255, 255, 255, 0.22); }
-    50%  { transform: scale(1.05); box-shadow: 0 0 0 2px #fff, 0 0 0 7px rgba(255, 255, 255, 0.18); }
-    75%  { transform: scale(1.02); box-shadow: 0 0 0 2px #fff, 0 0 0 5px rgba(255, 255, 255, 0.15); }
-    100% { transform: scale(1); box-shadow: 0 0 0 2px #fff, 0 0 0 5px rgba(255, 255, 255, 0.16); }
-  }
-  /* Your turn: the seat name briefly brightens to draw the eye. */
-  .mt-seat.your-turn .mt-seat-name {
-    animation: yourTurnNameFlip 1.3s ease-out infinite;
-  }
-  @keyframes yourTurnNameFlip {
-    0%   { color: #fff; transform: scale(1); }
-    15%  { color: #fff; transform: scale(1.06); }
-    30%  { color: #fff; transform: scale(1.04); }
-    100% { color: #fff; transform: scale(1); }
-  }
-  /* Your turn: a red badge snaps above the current actor's seat with a pop. */
-  .mt-seat.your-turn .mt-seat-badge {
-    display: block;
-    animation: yourTurnBadge 1.3s ease-out infinite;
-  }
-  @keyframes yourTurnBadge {
-    0%   { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.85); }
-    10%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.10); }
-    20%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-    50%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-    100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
   }
   /* Per-player bet: small dark chip with a warm value, below the seat. */
   .mt-bet {
@@ -314,74 +284,672 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
-    color: #fff;
-    font-size: 20px;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #b9b9b9;
+    font-size: 11px;
     font-weight: 700;
+    cursor: pointer;
+    transition: color 120ms, background 120ms;
+  }
+  .mt-seat-status:hover,
+  .mt-seat-status:active {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .mt-seat.is-change-target .mt-seat-ring {
+    border-color: rgba(230, 57, 70, 0.75);
+  }
+  .mt-seat.is-change-target .mt-seat-status {
+    color: #ff8f8f;
+  }
+  /* Seat taken while a hand was already running. The server flags these
+     `joinedMidHand`: they hold no cards for the running hand and act from
+     the next deal, so they read as queued rather than idle. */
+  .mt-seat.is-waiting .mt-avatar {
+    opacity: 0.55;
+  }
+  .mt-seat .mt-seat-waiting {
+    width: auto;
+    height: auto;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #9b9b9b;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.35;
+    text-align: center;
+    cursor: default;
+  }
+
+  /* ---------- Board: community cards + pot ---------- */
+  .mt-board {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 2px;
+    padding: 10px 16px 14px;
+    position: relative;
+    z-index: 2;
+    background:
+      radial-gradient(ellipse at center, #008800 0%, #006600 50%, #004400 100%),
+      repeating-linear-gradient(
+        45deg,
+        rgba(212, 175, 55, 0.03) 0px,
+        rgba(212, 175, 55, 0.03) 2px,
+        transparent 2px,
+        transparent 8px
+      );
+    border: 2px solid #D4AF37;
+    border-radius: 24px;
+    box-shadow:
+      0 0 20px rgba(212, 175, 55, 0.25),
+      inset 0 0 20px rgba(212, 175, 55, 0.08);
+  }
+  .mt-board::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border: 1px solid rgba(212, 175, 55, 0.35);
+    border-radius: 26px;
+    pointer-events: none;
+    z-index: -1;
+    box-shadow: 0 0 25px rgba(212, 175, 55, 0.2);
+    background: radial-gradient(
+      ellipse at center,
+      transparent 40%,
+      rgba(0, 40, 0, 0.4) 100%
+    );
+  }
+  .mt-community {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+  }
+  .mt-card {
+    position: relative;
+    width: clamp(46px, 15.4vw, 62px);
+    height: clamp(74px, 24.8vw, 100px);
+    flex: 0 0 auto;
+    border-radius: 8px;
+    background: #e0212b;
+    border: 1px solid #c41825;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+  }
+  .mt-card .mt-card-rank,
+  .mt-card .mt-card-suit {
+    color: #fff;
+  }
+  .mt-card--down {
+    background: #e0212b;
+  }
+
+  /* Opponent showdown reveal: after a hand is over, each non-folded
+     opponent keeps its cards face-up for 5 seconds so the table reads as an
+     open showdown, then flips back to the face-down back once the reveal
+     window expires. The viewer's own cards are unaffected. */
+  .mt-seat .mt-seat-hole-cards .mt-card {
+    transition: transform 280ms var(--ease), opacity 280ms var(--ease);
+  }
+  .mt-seat.is-revealing .mt-seat-hole-cards .mt-card {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  .mt-seat.has-revealed .mt-seat-hole-cards .mt-card {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  /* Rank top-left, suit bottom-left — both large and bold. */
+  .mt-card-rank {
+    position: absolute;
+    top: 3px;
+    left: 8px;
+    font-size: clamp(20px, 6.6vw, 27px);
+    font-weight: 700;
+    line-height: 1.1;
+    color: #111;
+    font-variant-numeric: tabular-nums;
+  }
+  .mt-card-suit {
+    position: absolute;
+    bottom: 3px;
+    left: 8px;
+    font-size: clamp(18px, 6vw, 25px);
+    line-height: 1.1;
+    color: #111;
+  }
+  .mt-card--red .mt-card-rank,
+  .mt-card--red .mt-card-suit {
+    color: #fff;
+  }
+  /* Face-down: suit-tile pattern — deep red with darker red suits, offset rows. */
+  .mt-card--down {
+    border-color: #f5f0e6;
+    background-color: #B01225;
+    border-radius: 8px;
+    background-image:
+      /* Ivory outer margin */
+      linear-gradient(
+        rgba(255, 248, 240, 0.92) 0%,
+        rgba(255, 248, 240, 0.92) 7%,
+        transparent 7%, transparent 93%,
+        rgba(255, 248, 240, 0.92) 93%,
+        rgba(255, 248, 240, 0.92) 100%
+      ),
+      /* Thin white inner border */
+      linear-gradient(
+        rgba(255,255,255,0.85) 0%,
+        rgba(255,255,255,0.85) 4%,
+        transparent 4%, transparent 96%,
+        rgba(255,255,255,0.85) 96%,
+        rgba(255,255,255,0.85) 100%
+      ),
+      /* Subtle vignette — darker edges */
+      radial-gradient(
+        ellipse at center,
+        transparent 55%,
+        rgba(60, 5, 10, 0.35) 85%,
+        rgba(40, 2, 8, 0.55) 100%
+      ),
+      /* Suit tile — spade (top-left of first tile) */
+      radial-gradient(
+        circle at 18% 18%,
+        transparent 0%, transparent 6%,
+        #8A0E1D 6.5%,
+        rgba(138, 14, 29, 0.6) 9%,
+        transparent 12%
+      ),
+      /* Suit tile — heart (top-right of first tile) */
+      radial-gradient(
+        circle at 82% 18%,
+        transparent 0%, transparent 6%,
+        #8A0E1D 6.5%,
+        rgba(138, 14, 29, 0.6) 9%,
+        transparent 12%
+      ),
+      /* Suit tile — club (bottom-left) */
+      radial-gradient(
+        circle at 18% 82%,
+        transparent 0%, transparent 6%,
+        #8A0E1D 6.5%,
+        rgba(138, 14, 29, 0.6) 9%,
+        transparent 12%
+      ),
+      /* Suit tile — diamond (bottom-right) */
+      radial-gradient(
+        circle at 82% 82%,
+        transparent 0%, transparent 6%,
+        #8A0E1D 6.5%,
+        rgba(138, 14, 29, 0.6) 9%,
+        transparent 12%
+      ),
+      /* Row 2 — offset suits (shifted right) */
+      /* Spade */
+      radial-gradient(
+        circle at 50% 10%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%,
+        rgba(138, 14, 29, 0.55) 8%,
+        transparent 11%
+      ),
+      /* Heart */
+      radial-gradient(
+        circle at 80% 40%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%,
+        rgba(138, 14, 29, 0.55) 8%,
+        transparent 11%
+      ),
+      /* Club */
+      radial-gradient(
+        circle at 20% 50%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%,
+        rgba(138, 14, 29, 0.55) 8%,
+        transparent 11%
+      ),
+      /* Diamond */
+      radial-gradient(
+        circle at 75% 90%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%,
+        rgba(138, 14, 29, 0.55) 8%,
+        transparent 11%
+      ),
+      /* Row 3 — mirror offset */
+      radial-gradient(
+        circle at 10% 40%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%,
+        rgba(138, 14, 29, 0.5) 8%,
+        transparent 10%
+      ),
+      radial-gradient(
+        circle at 45% 65%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%,
+        rgba(138, 14, 29, 0.55) 8%,
+        transparent 11%
+      ),
+      radial-gradient(
+        circle at 60% 20%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%,
+        rgba(138, 14, 29, 0.55) 8%,
+        transparent 11%
+      ),
+      radial-gradient(
+        circle at 30% 90%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%,
+        rgba(138, 14, 29, 0.5) 8%,
+        transparent 10%
+      ),
+      /* Extra small filler suits for density */
+      radial-gradient(
+        circle at 48% 48%,
+        transparent 0%, transparent 2.5%,
+        #8A0E1D 3%,
+        rgba(138, 14, 29, 0.4) 4.5%,
+        transparent 6%
+      ),
+      radial-gradient(
+        circle at 48% 48%,
+        transparent 0%, transparent 1.5%,
+        rgba(255,255,255,0.15) 2%,
+        transparent 3%
+      );
+  }
+
+  /* Folded/removed/sat-out tags under each seat row. */
+  .mt-seat-result {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-height: 14px;
+  }
+  .mt-seat-result-tag {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #d8d8d8;
+    line-height: 1;
+  }
+  .mt-seat-result-tag--mute {
+    color: #7a7a7a;
+  }
+  .mt-seat-hole-cards {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    margin-top: 6px;
+  }
+  .mt-seat-hole-cards .mt-card {
+    width: 34px;
+    height: 48px;
+    border-radius: 4px;
+    border-color: #f5f0e6;
+    background-color: #B01225;
+    background-image:
+      /* Ivory outer margin */
+      linear-gradient(
+        rgba(255,248,240,0.9) 0%, rgba(255,248,240,0.9) 8%,
+        transparent 8%, transparent 92%,
+        rgba(255,248,240,0.9) 92%, rgba(255,248,240,0.9) 100%
+      ),
+      /* Thin white inner border */
+      linear-gradient(
+        rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.8) 5%,
+        transparent 5%, transparent 95%,
+        rgba(255,255,255,0.8) 95%, rgba(255,255,255,0.8) 100%
+      ),
+      /* Subtle vignette */
+      radial-gradient(
+        ellipse at center,
+        transparent 50%,
+        rgba(60,5,10,0.4) 80%,
+        rgba(40,2,8,0.6) 100%
+      ),
+      /* Suit tiles — 4 corners */
+      radial-gradient(
+        circle at 20% 20%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%, rgba(138,14,29,0.55) 7.5%, transparent 9%
+      ),
+      radial-gradient(
+        circle at 80% 20%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%, rgba(138,14,29,0.55) 7.5%, transparent 9%
+      ),
+      radial-gradient(
+        circle at 20% 80%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%, rgba(138,14,29,0.55) 7.5%, transparent 9%
+      ),
+      radial-gradient(
+        circle at 80% 80%,
+        transparent 0%, transparent 5%,
+        #8A0E1D 5.5%, rgba(138,14,29,0.55) 7.5%, transparent 9%
+      ),
+      /* Midpoint suits */
+      radial-gradient(
+        circle at 50% 10%,
+        transparent 0%, transparent 4%,
+        #8A0E1D 4.5%, rgba(138,14,29,0.5) 6.5%, transparent 8%
+      ),
+      radial-gradient(
+        circle at 50% 90%,
+        transparent 0%, transparent 4%,
+        #8A0E1D 4.5%, rgba(138,14,29,0.5) 6.5%, transparent 8%
+      ),
+      radial-gradient(
+        circle at 10% 50%,
+        transparent 0%, transparent 4%,
+        #8A0E1D 4.5%, rgba(138,14,29,0.5) 6.5%, transparent 8%
+      ),
+      radial-gradient(
+        circle at 90% 50%,
+        transparent 0%, transparent 4%,
+        #8A0E1D 4.5%, rgba(138,14,29,0.5) 6.5%, transparent 8%
+      ),
+      /* Center small suit */
+      radial-gradient(
+        circle at 50% 50%,
+        transparent 0%, transparent 2%,
+        #8A0E1D 2.5%, rgba(138,14,29,0.4) 4%, transparent 5%
+      );
+  }
+  .mt-seat-hole-cards .mt-card-rank {
+    font-size: 13px;
+    top: 2px;
+    left: 5px;
+  }
+  .mt-seat-hole-cards .mt-card-suit {
+    font-size: 11px;
+    bottom: 2px;
+    left: 5px;
+  }
+  .mt-seat-hole-cards-empty {
+    width: 34px;
+    height: 48px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px dashed rgba(255, 255, 255, 0.14);
+    border-radius: 6px;
+  }
+  .mt-seat.is-revealing .mt-seat-hole-cards .mt-card,
+  .mt-seat.has-revealed .mt-seat-hole-cards .mt-card {
+    width: 34px;
+    height: 48px;
+  }
+  /* Pot sits under the right-hand end of the board. */
+  .mt-pot {
+    align-self: flex-end;
+    margin-top: 4px;
+    font-size: clamp(18px, 5.6vw, 23px);
+    font-weight: 700;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+    min-height: 1.1em;
+  }
+  .mt-pot:empty {
+    display: none;
+  }
+
+  /* ---------- Action bar ---------- */
+  .mt-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    position: relative;
+    z-index: 5;
+  }
+  .mt-pill {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 56px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: #232326;
+    color: #fff;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+    transition: background 120ms, transform 100ms, opacity 120ms;
+  }
+  .mt-pill:active {
+    transform: scale(0.97);
+  }
+  .mt-pill:hover {
+    background: #2c2c30;
+  }
+  .mt-pill:disabled {
+    opacity: 0.38;
+    cursor: default;
+  }
+  .mt-pill:disabled:active {
+    transform: none;
+  }
+  .mt-pill--fold {
+    color: #ffb3b3;
+  }
+  .mt-pill--allin {
+    color: #ff8f8f;
+  }
+  .mt-round {
+    flex: 0 0 auto;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: #232326;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     transition: background 120ms, transform 100ms;
   }
-  .mt-seat-empty .mt-seat-status:hover,
-  .mt-seat-empty .mt-seat-status:focus-visible {
-    background: rgba(255, 255, 255, 0.10);
-    transform: scale(1.05);
+  .mt-round:hover {
+    background: #2c2c30;
   }
-  .mt-seat-empty .mt-seat-status:active {
+  .mt-round:active {
     transform: scale(0.94);
   }
-  /* Waiting for next hand marker. */
-  .mt-seat-waiting .mt-seat-name {
-    color: #cfc06a;
+  .mt-round svg {
+    transition: transform 200ms ease;
+  }
+  .mt-round[aria-expanded="true"] svg {
+    transform: rotate(180deg);
+  }
+
+  /* ---------- Expandable action panel ---------- */
+  .mt-panel {
+    display: none;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 8px;
+    padding: 4px 16px 10px;
+    position: relative;
+    z-index: 5;
+  }
+  .mt-panel.is-open {
+    display: flex;
+  }
+  .mt-sizing {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .mt-sizing .mfs-label {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 36px;
+    padding: 6px 4px;
+    border-radius: 10px;
+    background: #191919;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #d6d6d6;
+    font-size: 12px;
     font-weight: 700;
-  }
-  .mt-seat-waiting .mt-seat-ring {
-    box-shadow: 0 0 0 2px rgba(255, 204, 77, 0.35);
-  }
-  /* Change-seat mode: gold ring around the "Move here" target. */
-  .mt-seat.is-change-target .mt-seat-ring {
-    box-shadow: 0 0 0 2px rgba(255, 204, 77, 0.60);
-  }
-  /* Blind chips. */
-  .mt-blind-chip {
-    font-size: 10px;
-    font-weight: 800;
-    color: #cfc06a;
-    letter-spacing: 0.5px;
-  }
-  /* Hand-result banner: gray text when no winner is declared. */
-  .mt-hand-result .mt-hand-result-body {
-    color: #9b9b9b;
-  }
-  /* Seat badge (your turn): red pill above the current actor. */
-  .mt-seat-badge {
-    position: absolute;
-    top: -14px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: linear-gradient(135deg, #e03131, #c91f1f);
-    color: #fff;
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.5px;
-    padding: 2px 6px;
-    border-radius: 999px;
+    text-align: center;
     white-space: nowrap;
-    box-shadow: 0 2px 6px rgba(224, 49, 49, 0.45);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+  }
+  .mt-sizing .mfs-label:active {
+    background: #232326;
+  }
+  .mt-sizing .mfs-label.mfs-disabled {
+    opacity: 0.3;
     pointer-events: none;
   }
-  /* Reduced motion: turn pulse stays silent. */
-  @media (prefers-reduced-motion: reduce) {
-    .mt-seat.your-turn .mt-seat-ring,
-    .mt-seat.your-turn .mt-seat-name,
-    .mt-seat.your-turn .mt-seat-badge {
-      animation: none;
-      opacity: 1;
-    }
-    .mt-seat.your-turn .mt-seat-badge {
-      opacity: 1;
-      transform: translateX(-50%);
-    }
+  .mt-panel-btns {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .mt-panel-btns .mt-pill {
+    height: 46px;
+    font-size: 15px;
+  }
+  /* Raise slider: dark restatement of the shared .raise-slider widget. */
+  .mt-panel .raise-slider {
+    width: 100%;
+    gap: 10px;
+    min-height: 46px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #141416;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: none;
+  }
+  .mt-panel .rs-head,
+  .mt-panel .rs-value {
+    color: #fff;
+  }
+  .mt-panel .rs-title {
+    color: #9b9b9b;
+  }
+  .mt-panel .rs-track {
+    height: 16px;
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+  .mt-panel .rs-fill {
+    background: #e0212b;
+  }
+  .mt-panel .rs-thumb {
+    width: 22px;
+    height: 22px;
+    background: #fff;
+    border-color: #e0212b;
+  }
+  .mt-panel .rs-confirm {
+    min-height: 38px;
+    border-radius: 999px;
+    background: #232326;
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #fff;
+  }
+  .mt-panel .raise-slider.rs-at-min .rs-fill {
+    background: rgba(224, 33, 43, 0.35);
+  }
+
+  /* ---------- Hero: own cards + hand panel ---------- */
+  .mt-hero {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 6px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    position: relative;
+    z-index: 3;
+  }
+  .mt-hole-cards {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+  }
+  .mt-hole-cards .mt-card {
+    width: clamp(70px, 22vw, 89px);
+    height: clamp(96px, 30.4vw, 122px);
+    border-radius: 11px;
+  }
+  .mt-hole-cards .mt-card + .mt-card {
+    margin-left: -8px;
+    box-shadow: -3px 0 10px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.45);
+  }
+  .mt-hole-cards .mt-card-rank {
+    top: 5px;
+    left: 11px;
+    font-size: clamp(28px, 9.4vw, 38px);
+  }
+  .mt-hole-cards .mt-card-suit {
+    bottom: 5px;
+    left: 11px;
+    font-size: clamp(26px, 8.6vw, 35px);
+  }
+  .mt-hero-panel {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 154px;
+    margin-left: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 10px 12px 12px;
+    border-radius: 14px;
+    background: #141416;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    min-height: 133px;
+  }
+  .mt-hero-hand {
+    font-size: 13px;
+    font-weight: 500;
+    color: #9b9b9b;
+    line-height: 1.2;
+    text-align: center;
+    min-height: 1.2em;
+  }
+  .mt-hero-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 17px;
+  }
+  .mt-hero-stack {
+    font-size: 17px;
+    font-weight: 600;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
   }
 }
 

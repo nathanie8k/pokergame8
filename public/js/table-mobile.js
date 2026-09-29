@@ -192,27 +192,12 @@
           + (seat && seat.folded ? ' is-folded' : '')
           + (seat && seat.satOut ? ' is-out' : '')
           + (seat && seat.joinedMidHand ? ' is-waiting' : '')
-          + (seatIdx === t.currentPlayerIndex ? ' is-turn your-turn' : '')
+          + (seatIdx === t.currentPlayerIndex ? ' is-turn' : '')
           + (changing && !occupied ? ' is-change-target' : ''),
         'data-pos': SEAT_COLUMNS[col] || 'right',
         'data-seat-idx': String(seatIdx),
       });
       var ring = el('div', { class: 'mt-seat-ring' });
-      // Your turn badge: red pill above the current actor's seat
-      // (desktop gets one from the tabletop in index.html; mobile gets
-      // one from a child of .mt-seat-ring, so it stays anchored).
-      if (seatIdx === t.currentPlayerIndex &&
-          t.phase !== 'waiting' &&
-          t.phase !== 'hand_over') {
-        ring.appendChild(el('div', {
-          class: 'mt-seat-badge',
-          text: 'YOUR TURN',
-          'aria-label': 'It is your turn to act',
-        }));
-      } else {
-        // If the turn has passed this seat, clear any lingering your-turn animation.
-        column.classList.remove('your-turn');
-      }
 
       if (occupied) {
         var avatar = el('div', { class: 'mt-avatar' });
