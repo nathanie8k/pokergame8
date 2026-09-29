@@ -362,6 +362,13 @@
             <div class="community-cards" id="communityCards"></div>
             <div class="phase-display" id="phaseDisplay">Waiting...</div>
             <div class="hand-result" id="handResult" style="display:none"></div>
+            <!-- Your turn badge: shows when the viewer is the current
+                 actor. Set from renderTable/renderSeat; only appears
+                 mid-hand (phase is pre-flop/flop/turn/river), never
+                 pre-deal or after. Purely cosmetic — no game logic.
+            -->
+            <div class="your-turn-badge" id="yourTurnBadge" style="display:none">
+              YOUR TURN</div>
 
             <!-- Player status + hand cards + action buttons — inside felt lower band -->
             <div class="player-status-bar" id="playerStatusBar">
