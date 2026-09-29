@@ -33,8 +33,11 @@
     max-width: none;
     display: flex;
     flex-direction: column;
-    /* Pure green, and no scrolling: the whole table is one fixed screen. */
-    background: #0a4a2a;
+    /* Pure green, and no scrolling: the whole table is one fixed screen.
+     Presentation-only: every other rule stays exactly the same, so cards,
+     buttons, avatars, chips, menu panel and slider keep their existing
+     colors / borders / shadows. */
+    background: #073b2c;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
   }
@@ -43,8 +46,8 @@
      rule is untouched. */
   .poker-table {
     background:
-      radial-gradient(ellipse 80% 70% at center, #22a85e 0%, #1a8a3a 40%, #0d5a28 90%);
-    border-color: var(--table-rail, #1a5c2a);
+      radial-gradient(ellipse 80% 70% at center, #165237 0%, #0d3723 40%, #081c15 90%);
+    border-color: var(--table-rail, #2a1d10);
   }
   /* Retire the desktop felt texture overlay for this skin. */
   #view-table::before,
@@ -93,7 +96,7 @@
   }
   .mt-icon-btn:hover,
   .mt-icon-btn:active {
-    background: rgba(34, 216, 94, 0.10);
+    background: rgba(255, 255, 255, 0.08);
   }
   .mt-icon-btn:active {
     transform: scale(0.94);
@@ -113,17 +116,17 @@
   .mt-menu .table-menu-btn:hover,
   .mt-menu .table-menu-btn:active,
   .mt-menu.is-open .table-menu-btn {
-    background: rgba(34, 216, 94, 0.10);
+    background: rgba(255, 255, 255, 0.08);
   }
   /* Menu panel opens from the right edge, dark sheet on black. */
   .mt-menu .table-menu-panel {
     right: 0;
     left: auto;
     min-width: 176px;
-    background: #0d4a2a;
+    background: #1c1c1e;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 14px;
-    box-shadow: 0 16px 40px rgba(0, 30, 0, 0.75);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75);
     overflow: hidden;
   }
   .mt-menu .table-menu-item {
@@ -143,7 +146,7 @@
   }
   .mt-menu .table-menu-item:hover,
   .mt-menu .table-menu-item:focus-visible {
-    background: rgba(34, 216, 94, 0.10);
+    background: rgba(255, 255, 255, 0.08);
   }
   .mt-menu .table-menu-item:disabled {
     opacity: 0.4;
@@ -260,9 +263,9 @@
     height: 26px;
     padding: 0 7px;
     border-radius: 999px;
-    background: #0d4a2a;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    color: #a8e888;
+    background: #1b1b1d;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: #cfc06a;
     font-size: 12px;
     font-weight: 700;
     line-height: 24px;
@@ -299,10 +302,10 @@
     background: rgba(255, 255, 255, 0.08);
   }
   .mt-seat.is-change-target .mt-seat-ring {
-    border-color: rgba(34, 216, 94, 0.75);
+    border-color: rgba(230, 57, 70, 0.75);
   }
   .mt-seat.is-change-target .mt-seat-status {
-    color: #44f07a;
+    color: #ff8f8f;
   }
   /* Seat taken while a hand was already running. The server flags these
      `joinedMidHand`: they hold no cards for the running hand and act from
@@ -349,17 +352,17 @@
     height: clamp(74px, 24.8vw, 100px);
     flex: 0 0 auto;
     border-radius: 8px;
-    background: #1a8a3a;
-    border: 1px solid #22a85e;
-    box-shadow: 0 2px 8px rgba(0, 30, 0, 0.45);
+    background: #e0212b;
+    border: 1px solid #c41825;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
     overflow: hidden;
   }
   .mt-card .mt-card-rank,
   .mt-card .mt-card-suit {
-    color: #0d5a28;
+    color: #fff;
   }
   .mt-card--down {
-    background: #1a8a3a;
+    background: #e0212b;
   }
 
   /* Opponent showdown reveal: after a hand is over, each non-folded
@@ -398,16 +401,16 @@
   }
   .mt-card--red .mt-card-rank,
   .mt-card--red .mt-card-suit {
-    color: #22a85e;
+    color: #e0212b;
   }
   /* Face-down: light grey with diagonal hatch stripes. */
   .mt-card--down {
-    border-color: #22a85e;
-    background-color: #22a85e;
+    border-color: #c41825;
+    background-color: #c41825;
     background-image: repeating-linear-gradient(
       45deg,
-      #1a8a3a 0,
-      #1a8a3a 2px,
+      #a8141d 0,
+      #a8141d 2px,
       transparent 2px,
       transparent 6px
     );
@@ -442,8 +445,6 @@
     width: 34px;
     height: 48px;
     border-radius: 6px;
-    background: #1a8a3a;
-    border: 1px solid #22a85e;
   }
   .mt-seat-hole-cards .mt-card-rank {
     font-size: 13px;
@@ -458,8 +459,8 @@
   .mt-seat-hole-cards-empty {
     width: 34px;
     height: 48px;
-    background: rgba(10, 58, 34, 0.25);
-    border: 1px dashed rgba(34, 216, 94, 0.14);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px dashed rgba(255, 255, 255, 0.14);
     border-radius: 6px;
   }
   .mt-seat.is-revealing .mt-seat-hole-cards .mt-card,
@@ -499,7 +500,7 @@
     padding: 0 14px;
     border: 0;
     border-radius: 999px;
-    background: #1a6a3a;
+    background: #232326;
     color: #fff;
     font-size: 17px;
     font-weight: 600;
@@ -515,7 +516,7 @@
     transform: scale(0.97);
   }
   .mt-pill:hover {
-    background: #208a48;
+    background: #2c2c30;
   }
   .mt-pill:disabled {
     opacity: 0.38;
@@ -525,10 +526,10 @@
     transform: none;
   }
   .mt-pill--fold {
-    color: #a8e888;
+    color: #ffb3b3;
   }
   .mt-pill--allin {
-    color: #88e8a0;
+    color: #ff8f8f;
   }
   .mt-round {
     flex: 0 0 auto;
@@ -537,7 +538,7 @@
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: #1a6a3a;
+    background: #232326;
     color: #fff;
     display: inline-flex;
     align-items: center;
@@ -546,7 +547,7 @@
     transition: background 120ms, transform 100ms;
   }
   .mt-round:hover {
-    background: #208a48;
+    background: #2c2c30;
   }
   .mt-round:active {
     transform: scale(0.94);
@@ -583,7 +584,7 @@
     min-height: 36px;
     padding: 6px 4px;
     border-radius: 10px;
-    background: #0d4a2a;
+    background: #191919;
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: #d6d6d6;
     font-size: 12px;
@@ -597,7 +598,7 @@
     user-select: none;
   }
   .mt-sizing .mfs-label:active {
-    background: #1a6a3a;
+    background: #232326;
   }
   .mt-sizing .mfs-label.mfs-disabled {
     opacity: 0.3;
@@ -619,7 +620,7 @@
     min-height: 46px;
     padding: 4px 10px;
     border-radius: 999px;
-    background: #0d4a2a;
+    background: #141416;
     border: 1px solid rgba(255, 255, 255, 0.10);
     box-shadow: none;
   }
@@ -636,23 +637,23 @@
     border-color: rgba(255, 255, 255, 0.14);
   }
   .mt-panel .rs-fill {
-    background: #1a8a3a;
+    background: #e0212b;
   }
   .mt-panel .rs-thumb {
     width: 22px;
     height: 22px;
     background: #fff;
-    border-color: #1a8a3a;
+    border-color: #e0212b;
   }
   .mt-panel .rs-confirm {
     min-height: 38px;
     border-radius: 999px;
-    background: #1a6a3a;
+    background: #232326;
     border-color: rgba(255, 255, 255, 0.14);
     color: #fff;
   }
   .mt-panel .raise-slider.rs-at-min .rs-fill {
-    background: rgba(26, 138, 58, 0.35);
+    background: rgba(224, 33, 43, 0.35);
   }
 
   /* ---------- Hero: own cards + hand panel ---------- */
@@ -701,7 +702,7 @@
     gap: 6px;
     padding: 10px 12px 12px;
     border-radius: 14px;
-    background: #0d4a2a;
+    background: #141416;
     border: 1px solid rgba(255, 255, 255, 0.07);
     min-height: 133px;
   }
