@@ -374,6 +374,31 @@
     align-items: center;
     justify-content: center;
     gap: 7px;
+    perspective: 900px;
+  }
+
+  /* Revealed community cards: 3D flip from back to face, ~500ms ease-in-out.
+     Presentation-only: this animates only the board cards when they become
+     face-up, and never changes game mechanics, seat state, or action state. */
+  .mt-community .mt-card--up {
+    transform-style: preserve-3d;
+    animation: mtCommunityFlip 500ms ease-in-out both;
+    animation-delay: var(--mt-community-flip-delay, 0ms);
+  }
+
+  @keyframes mtCommunityFlip {
+    from {
+      transform: rotateY(180deg);
+    }
+    to {
+      transform: rotateY(0deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mt-community .mt-card--up {
+      animation: none;
+    }
   }
   .mt-card {
     position: relative;
