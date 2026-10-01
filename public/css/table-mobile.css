@@ -518,7 +518,7 @@
   }
   .mt-card--red .mt-card-rank,
   .mt-card--red .mt-card-suit {
-    color: #D32F2F;
+    color: #fff;
   }
   /* Face-down: dark pattern with fine gold geometric lattice + soft inner shadow */
   .mt-card--down {
