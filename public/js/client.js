@@ -4663,6 +4663,34 @@ socket.on('chat_update', ({ tableId, messages }) => {
   setupAccessibility();
   ensureSiteAccess();
   loadMobileLeaderboard();
+
+  // Mobile table orientation/layout re-fit.
+  // The viewport meta tag locks the page scale to 1.0 (no pinch-zoom, no
+  // format re-flow), so the only thing that changes when the user rotates the
+  // phone is the CSS-pixel viewport size. On a fixed-position full-bleed shell
+  // like #view-table that does not by itself reflow its inner flex column back
+  // to the new dimensions, a rotation from portrait -> landscape -> portrait can
+  // leave the layout scaled/stretched. Debounced re-render of the current table
+  // after the resize settles re-pins every seat, card, chip and action button to
+  // the new viewport so the table returns to its original proportions.
+  let _mobileTableResizeTimer = null;
+  const _mobileTableResize = () => {
+    if (!state.currentTable) return;
+    if ($('view-table').style.display === 'none') return;
+    renderTable();
+  };
+  window.addEventListener('resize', () => {
+    if (_mobileTableResizeTimer) clearTimeout(_mobileTableResizeTimer);
+    _mobileTableResizeTimer = setTimeout(_mobileTableResize, 120);
+  });
+  window.addEventListener('orientationchange', () => {
+    // orientationchange fires before the visual rotation completes on some
+    // browsers; wait for the next animation frame r a short timeout so the new
+    // viewport size is already in effect.
+    requestAnimationFrame(() => {
+      setTimeout(_mobileTableResize, 60);
+    });
+  });
 });
 
 renderPresence();

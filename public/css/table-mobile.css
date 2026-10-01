@@ -40,6 +40,15 @@
     background: #073b2c;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
+    /* Keep the mobile table exactly filling the current viewport on every
+     orientation change. Because the viewport meta tag locks scale to 1.0,
+     the only thing that changes on rotation is the CSS pixel viewport size,
+     and this rule re-fits the full-felt shell to the new dimensions without
+     re-zooming or re-flowing the document. */
+    width: 100dvw;
+    height: 100dvh;
+    max-width: 100vw;
+    max-height: 100vh;
   }
   /* Mobile felt polish: keep the screen green but let the table read as a
      felt oval inside it. Presentation-only; every card/button/chip/avatar
@@ -167,6 +176,10 @@
     border: 0;
   }
 
+  /* When the device rotates, the flex column inside #view-table reflows to
+     the new dvh height automatically; the seats row, board, actions and hero
+     keep their fixed/flex relationships and the layout returns to its original
+     proportions with no scaling r bounce. */
   /* ---------- Opponent seats: one row of five ---------- */
   .mt-seats {
     flex: 0 0 auto;
