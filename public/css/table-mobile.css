@@ -26,8 +26,7 @@
 
   /* ---------- Screen shell ---------- */
   #view-table {
-    position: fixed;
-    inset: 0;
+    position: relative;
     margin: 0;
     padding: 0;
     max-width: none;
@@ -40,17 +39,10 @@
     background: #073b2c;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
-    /* Keep the mobile table exactly filling the current viewport on every
-     orientation change. Use dynamic viewport units (dvw/dvh) so the shell
-     re-fits to the new dimensions after rotation without bouncing or scaling.
-     Do NOT use 100vw / max-width: 100vw here: on many mobile browsers the
-     vw unit includes the scrollbar width, which produces a right-edge overflow
-     and a horizontal scrollbar. 100% would be relative to the layout viewport
-     and exclude the scrollbar, but the shell is position:fixed so 100% resolves
-     to the initial containing block; dvw is the safe choice for a full-bleed
-     fixed shell across rotations. */
-    width: 100dvw;
-    height: 100dvh;
+    /* Fills the 393x852 body exactly. The body is the fixed portrait
+     design canvas; this shell is its full-bleed content layer. */
+    width: 100%;
+    height: 100%;
   }
   /* Mobile felt polish: keep the screen green but let the table read as a
      felt oval inside it. Presentation-only; every card/button/chip/avatar
@@ -417,8 +409,8 @@
   }
   .mt-card {
     position: relative;
-    width: clamp(46px, 15.4vw, 62px);
-    height: clamp(74px, 24.8vw, 100px);
+    width: 60px;
+    height: 97px;
     flex: 0 0 auto;
     border-radius: 8px;
     background: linear-gradient(160deg, #ffffff 0%, #f7efdc 92%);
@@ -504,7 +496,7 @@
     position: absolute;
     top: 3px;
     left: 8px;
-    font-size: clamp(20px, 6.6vw, 27px);
+    font-size: 26px;
     font-weight: 700;
     line-height: 1.1;
     font-variant-numeric: tabular-nums;
@@ -513,7 +505,7 @@
     position: absolute;
     bottom: 3px;
     left: 8px;
-    font-size: clamp(18px, 6vw, 25px);
+    font-size: 24px;
     line-height: 1.1;
   }
   .mt-card--red .mt-card-rank,
@@ -820,7 +812,7 @@
   .mt-pot {
     align-self: flex-end;
     margin-top: 4px;
-    font-size: clamp(18px, 5.6vw, 23px);
+    font-size: 22px;
     font-weight: 700;
     color: #fff;
     font-variant-numeric: tabular-nums;
@@ -1020,8 +1012,8 @@
     align-items: flex-end;
   }
   .mt-hole-cards .mt-card {
-    width: clamp(70px, 22vw, 89px);
-    height: clamp(96px, 30.4vw, 122px);
+    width: 86px;
+    height: 119px;
     border-radius: 11px;
   }
   .mt-hole-cards .mt-card + .mt-card {
@@ -1031,13 +1023,13 @@
   .mt-hole-cards .mt-card-rank {
     top: 5px;
     left: 11px;
-    font-size: clamp(28px, 9.4vw, 38px);
+    font-size: 37px;
     color: inherit;
   }
   .mt-hole-cards .mt-card-suit {
     bottom: 5px;
     left: 11px;
-    font-size: clamp(26px, 8.6vw, 35px);
+    font-size: 34px;
     color: inherit;
   }
   .mt-hero-panel {

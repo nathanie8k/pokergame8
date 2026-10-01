@@ -73,7 +73,6 @@ html, body {
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Trebuchet MS", sans-serif;
   font-size: 15px;
-  min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   /* Black poker-theme backdrop for non-table views (login, lobby, admin).
@@ -82,9 +81,7 @@ html, body {
   background-attachment: fixed;
   animation: backdropShift 22s ease-in-out infinite alternate;
 }
-/* On the table/game screen, restore the green felt body background
-   and poker-gold accent so the table view keeps its own theme
-   independent of the black/red rest-of-site theme. */
+/* Table/game screen: fixed full-canvas layout, no scrolling. */
 body.is-table-view {
   background: #0d0d0d;
   background-attachment: fixed;
@@ -97,6 +94,30 @@ body.is-table-view {
   --bg-3:        #243a30;
   --bg-4:        #2e4639;
   --btn-text:    #2a1d00;
+}
+
+/* ============================================================
+   MOBILE FIXED CANVAS (max-width: 720px)
+   Fixed portrait design canvas: 393 x 852 CSS px.
+   The viewport meta tag locks zoom (user-scalable=no) so this canvas
+   is the same physical size on every mobile device. The body is pinned
+   to 393x852; on a landscape screen the portrait canvas is centered
+   with empty side margins and the page scrolls vertically if needed.
+   ============================================================ */
+@media (max-width: 720px) {
+  html, body {
+    width: 393px;
+    height: 852px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    margin: 0 auto;
+  }
+  /* Table screen: no scrolling — the fixed full-bleed layout must stay
+     exactly one screen tall. */
+  body.is-table-view {
+    overflow: hidden;
+    height: 852px;
+  }
 }
 /* Desktop table view: black body behind the poker table (black/red/white theme) */
 @media (min-width: 721px) {
@@ -589,7 +610,7 @@ input, button, select, textarea { color: inherit; }
 }
 #view-lobby h2, #view-lobby h3, #view-lobby .stakes-card__title { font-family: "Space Grotesk", Inter, sans-serif; }
 .lobby-header { display:flex; justify-content:space-between; align-items:end; margin-bottom:28px; }
-.lobby-header h2 { margin:4px 0 8px; font-size:clamp(28px,4vw,42px); letter-spacing:-.04em; }
+.lobby-header h2 { margin:4px 0 8px; font-size:28px; letter-spacing:-.04em; }
 .lobby-header p { margin:0; color:var(--text-muted); }
 .lobby-eyebrow, .micro-label { color:var(--text-label) !important; font-size:11px !important; font-weight:500; letter-spacing:.08em; text-transform:uppercase; }
 .lobby-live-indicator { color:var(--text-muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
