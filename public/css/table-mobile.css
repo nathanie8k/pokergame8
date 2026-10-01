@@ -417,6 +417,18 @@
   .mt-card .mt-card-suit {
     color: #111111;
   }
+  .mt-card--red {
+    background: linear-gradient(160deg, #ff6b6b 0%, #D32F2F 92%);
+    border-color: #b71c1c;
+  }
+  .mt-card--red .mt-card-rank,
+  .mt-card--red .mt-card-suit {
+    color: #fff;
+  }
+  .mt-card--black {
+    background: linear-gradient(160deg, #2a2a2a 0%, #111111 92%);
+    border-color: #000000;
+  }
   .mt-card--down {
     background-color: #1a1a1f;
     background-image:
