@@ -2562,8 +2562,8 @@ input, button, select, textarea { color: inherit; }
   /* Slide-in chat panel takes nearly full width on phones — better
      thumb-typing surface. */
   .chat-panel {
-    width: calc(100vw - 24px);
-    max-width: none;
+    width: 100%;
+    max-width: calc(100% - 24px);
     right: 12px;
   }
   /* Trim seat-ring for the dense phone layout. Cards still draw at
@@ -3069,7 +3069,7 @@ input, button, select, textarea { color: inherit; }
 
   #view-table .poker-table {
     position: relative;
-    width: 92vw;
+    width: 100%;
     max-width: 380px;
     aspect-ratio: 4 / 5;
     max-height: none;
@@ -3681,7 +3681,7 @@ input, button, select, textarea { color: inherit; }
 
   /* ---- Narrowest device tweaks ---- */
   @media (max-width: 360px) {
-    #view-table .poker-table { width: 96vw; }
+    #view-table .poker-table { width: 100%; padding-right: 12px; box-sizing: border-box; }
     #view-table .action-bar { gap: 3px; }
     #view-table .hand-action-row { padding-bottom: env(safe-area-inset-bottom, 6px); }
   }

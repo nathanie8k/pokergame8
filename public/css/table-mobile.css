@@ -41,14 +41,16 @@
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
     /* Keep the mobile table exactly filling the current viewport on every
-     orientation change. Because the viewport meta tag locks scale to 1.0,
-     the only thing that changes on rotation is the CSS pixel viewport size,
-     and this rule re-fits the full-felt shell to the new dimensions without
-     re-zooming or re-flowing the document. */
+     orientation change. Use dynamic viewport units (dvw/dvh) so the shell
+     re-fits to the new dimensions after rotation without bouncing or scaling.
+     Do NOT use 100vw / max-width: 100vw here: on many mobile browsers the
+     vw unit includes the scrollbar width, which produces a right-edge overflow
+     and a horizontal scrollbar. 100% would be relative to the layout viewport
+     and exclude the scrollbar, but the shell is position:fixed so 100% resolves
+     to the initial containing block; dvw is the safe choice for a full-bleed
+     fixed shell across rotations. */
     width: 100dvw;
     height: 100dvh;
-    max-width: 100vw;
-    max-height: 100vh;
   }
   /* Mobile felt polish: keep the screen green but let the table read as a
      felt oval inside it. Presentation-only; every card/button/chip/avatar
