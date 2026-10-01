@@ -42,8 +42,8 @@
   --text-mute:   #6c7c75;
 
   /* Card slot colors */
-  --card-red:    #c40d1a;
-  --card-black:  #1f1a14;
+  --card-red:    #D32F2F;
+  --card-black:  #111111;
 
   /* Shadows */
   --shadow-lg:   0 22px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset;
@@ -923,7 +923,7 @@ input, button, select, textarea { color: inherit; }
   box-shadow:
     var(--shadow-sm),
     inset 0 1px 0 rgba(255,255,255,0.7);
-  color: #1f1a14;
+  color: var(--card-black);
   font-weight: 700;
   font-family: "Trebuchet MS", "Helvetica Neue", sans-serif;
   position: relative;
@@ -931,6 +931,7 @@ input, button, select, textarea { color: inherit; }
   overflow: hidden;
 }
 .card.red { color: var(--card-red); }
+.card.black { color: var(--card-black); }
 .card .corner {
   position: absolute;
   display: flex; flex-direction: column;
@@ -949,7 +950,6 @@ input, button, select, textarea { color: inherit; }
   transform: translate(-50%, -50%);
   font-size: 40px;
   line-height: 1;
-  opacity: 0.92;
   pointer-events: none;
 }
 
@@ -959,13 +959,13 @@ input, button, select, textarea { color: inherit; }
   background-image:
     /* Deep dark base with subtle vignette */
     radial-gradient(ellipse at center, #2a2a32 0%, #141417 100%),
-    /* Fine gold geometric lattice — intersecting diagonal lines */
+    /* Muted dark geometric lattice — intersecting diagonal lines */
     repeating-linear-gradient(
       45deg,
       transparent 0px,
       transparent 5px,
-      rgba(255, 215, 0, 0.07) 5px,
-      rgba(255, 215, 0, 0.07) 6px,
+      rgba(140, 140, 160, 0.04) 5px,
+      rgba(140, 140, 160, 0.04) 6px,
       transparent 6px,
       transparent 11px
     ),
@@ -973,8 +973,8 @@ input, button, select, textarea { color: inherit; }
       -45deg,
       transparent 0px,
       transparent 5px,
-      rgba(255, 215, 0, 0.05) 5px,
-      rgba(255, 215, 0, 0.05) 6px,
+      rgba(140, 140, 160, 0.03) 5px,
+      rgba(140, 140, 160, 0.03) 6px,
       transparent 6px,
       transparent 11px
     ),
@@ -983,12 +983,12 @@ input, button, select, textarea { color: inherit; }
       90deg,
       transparent 0px,
       transparent 8px,
-      rgba(255, 215, 0, 0.03) 8px,
-      rgba(255, 215, 0, 0.03) 9px,
+      rgba(140, 140, 160, 0.02) 8px,
+      rgba(140, 140, 160, 0.02) 9px,
       transparent 9px,
       transparent 16px
     );
-  border: 1px solid rgba(255, 215, 0, 0.15);
+  border: 1px solid rgba(140, 140, 160, 0.10);
   color: #fff;
 }
 
@@ -998,25 +998,25 @@ input, button, select, textarea { color: inherit; }
   position: absolute;
   inset: 4px;
   border-radius: 6px;
-  /* Outer gold lattice border */
+  /* Outer dark lattice border */
   background:
     /* Fine geometric border frame */
     linear-gradient(
-      rgba(255, 215, 0, 0.12) 0%, rgba(255, 215, 0, 0.12) 2px,
+      rgba(140, 140, 160, 0.08) 0%, rgba(140, 140, 160, 0.08) 2px,
       transparent 2px, transparent 98%,
-      rgba(255, 215, 0, 0.12) 98%, rgba(255, 215, 0, 0.12) 100%
+      rgba(140, 140, 160, 0.08) 98%, rgba(140, 140, 160, 0.08) 100%
     ),
     /* Corner diamond motifs */
-    radial-gradient(circle at 12% 12%, rgba(255, 215, 0, 0.15) 0%, transparent 8px),
-    radial-gradient(circle at 88% 12%, rgba(255, 215, 0, 0.15) 0%, transparent 8px),
-    radial-gradient(circle at 12% 88%, rgba(255, 215, 0, 0.15) 0%, transparent 8px),
-    radial-gradient(circle at 88% 88%, rgba(255, 215, 0, 0.15) 0%, transparent 8px),
+    radial-gradient(circle at 12% 12%, rgba(140, 140, 160, 0.10) 0%, transparent 8px),
+    radial-gradient(circle at 88% 12%, rgba(140, 140, 160, 0.10) 0%, transparent 8px),
+    radial-gradient(circle at 12% 88%, rgba(140, 140, 160, 0.10) 0%, transparent 8px),
+    radial-gradient(circle at 88% 88%, rgba(140, 140, 160, 0.10) 0%, transparent 8px),
     /* Center diamond motif */
-    radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.10) 0%, transparent 12px);
+    radial-gradient(circle at 50% 50%, rgba(140, 140, 160, 0.07) 0%, transparent 12px);
   /* Soft inner shadow for depth */
   box-shadow:
     inset 0 0 12px rgba(0, 0, 0, 0.6),
-    inset 0 0 4px rgba(255, 215, 0, 0.08),
+    inset 0 0 4px rgba(140, 140, 160, 0.05),
     0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
@@ -1025,11 +1025,11 @@ input, button, select, textarea { color: inherit; }
   content: "";
   position: absolute;
   inset: 14px;
-  border: 1px solid rgba(255, 215, 0, 0.20);
+  border: 1px solid rgba(140, 140, 160, 0.12);
   border-radius: 4px;
   box-shadow:
     inset 0 0 6px rgba(0, 0, 0, 0.4),
-    0 0 8px rgba(255, 215, 0, 0.05);
+    0 0 8px rgba(140, 140, 160, 0.03);
 }
 
 .card.face-down .corner,
@@ -1146,11 +1146,12 @@ input, button, select, textarea { color: inherit; }
   justify-content: center;
   font-family: "Trebuchet MS", "Helvetica Neue", sans-serif;
   font-weight: 700;
-  color: #1f1a14;
+  color: var(--card-black);
   position: relative;
   overflow: hidden;
 }
 .card-face.front.card-red .card-content { color: var(--card-red); }
+.card-face.front.card-black .card-content { color: var(--card-black); }
 
 .card-face.front .corner {
   position: absolute;
@@ -1172,7 +1173,6 @@ input, button, select, textarea { color: inherit; }
   transform: translate(-50%, -50%);
   font-size: 40px;
   line-height: 1;
-  opacity: 0.92;
   pointer-events: none;
 }
 
