@@ -433,12 +433,12 @@
     color: #111111;
   }
   .mt-card--red {
-    background: linear-gradient(160deg, #ff6b6b 0%, #D32F2F 92%);
-    border-color: #b71c1c;
+    background: linear-gradient(160deg, #ffffff 0%, #f5f0e6 92%);
+    border-color: #e0c0c0;
   }
   .mt-card--red .mt-card-rank,
   .mt-card--red .mt-card-suit {
-    color: #fff;
+    color: #D32F2F;
   }
   .mt-card--black {
     background: linear-gradient(160deg, #2a2a2a 0%, #111111 92%);
@@ -518,7 +518,7 @@
   }
   .mt-card--red .mt-card-rank,
   .mt-card--red .mt-card-suit {
-    color: #fff;
+    color: #D32F2F;
   }
   /* Face-down: dark pattern with fine gold geometric lattice + soft inner shadow */
   .mt-card--down {
