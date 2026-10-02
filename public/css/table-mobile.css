@@ -416,7 +416,7 @@
     height: 97px;
     flex: 0 0 auto;
     border-radius: 8px;
-    background: linear-gradient(160deg, #ffffff 0%, #f7efdc 92%);
+    background: #FFFFFF;
     border: 1px solid #d7c7a8;
     box-shadow:
       0 2px 8px rgba(0, 0, 0, 0.45),
@@ -425,19 +425,19 @@
   }
   .mt-card .mt-card-rank,
   .mt-card .mt-card-suit {
-    color: #111111;
+    color: #000000;
   }
   .mt-card--red {
-    background: linear-gradient(160deg, #ffffff 0%, #f5f0e6 92%);
-    border-color: #e0c0c0;
+    background: #FFFFFF;
+    border-color: #d7c7a8;
   }
   .mt-card--red .mt-card-rank,
   .mt-card--red .mt-card-suit {
-    color: #D32F2F;
+    color: #D00000;
   }
   .mt-card--black {
-    background: linear-gradient(160deg, #2a2a2a 0%, #111111 92%);
-    border-color: #000000;
+    background: #FFFFFF;
+    border-color: #d7c7a8;
   }
   .mt-card--down {
     background-color: #1a1a1f;
@@ -479,6 +479,33 @@
     box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.3), 0 0 6px rgba(140, 140, 160, 0.03);
   }
 
+  /* Rank top-left, suit bottom-left — both large and bold. */
+  .mt-card-rank {
+    position: absolute;
+    top: 3px;
+    left: 8px;
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--card-black);
+  }
+  .mt-card-suit {
+    position: absolute;
+    bottom: 3px;
+    left: 8px;
+    font-size: 24px;
+    line-height: 1.1;
+    color: var(--card-black);
+  }
+  .mt-card--red .mt-card-rank,
+  .mt-card--red .mt-card-suit {
+    color: var(--card-red);
+  }
+  .mt-card--black .mt-card-rank,
+  .mt-card--black .mt-card-suit {
+    color: var(--card-black);
+  }
   /* Opponent showdown reveal: after a hand is over, each non-folded
      opponent keeps its cards face-up for 5 seconds so the table reads as an
      open showdown, then flips back to the face-down back once the reveal
@@ -493,27 +520,6 @@
   .mt-seat.has-revealed .mt-seat-hole-cards .mt-card {
     transform: scale(0.96);
     opacity: 0;
-  }
-  /* Rank top-left, suit bottom-left — both large and bold. */
-  .mt-card-rank {
-    position: absolute;
-    top: 3px;
-    left: 8px;
-    font-size: 26px;
-    font-weight: 700;
-    line-height: 1.1;
-    font-variant-numeric: tabular-nums;
-  }
-  .mt-card-suit {
-    position: absolute;
-    bottom: 3px;
-    left: 8px;
-    font-size: 24px;
-    line-height: 1.1;
-  }
-  .mt-card--red .mt-card-rank,
-  .mt-card--red .mt-card-suit {
-    color: #D32F2F;
   }
   /* Face-down: dark pattern with fine gold geometric lattice + soft inner shadow */
   .mt-card--down {
@@ -791,13 +797,23 @@
     font-size: 13px;
     top: 2px;
     left: 5px;
-    color: inherit;
+  }
+  .mt-seat-hole-cards .mt-card-rank,
+  .mt-seat-hole-cards .mt-card-suit {
+    color: var(--card-black);
   }
   .mt-seat-hole-cards .mt-card-suit {
     font-size: 11px;
     bottom: 2px;
     left: 5px;
-    color: inherit;
+  }
+  .mt-seat-hole-cards .mt-card--red .mt-card-rank,
+  .mt-seat-hole-cards .mt-card--red .mt-card-suit {
+    color: var(--card-red);
+  }
+  .mt-seat-hole-cards .mt-card--black .mt-card-rank,
+  .mt-seat-hole-cards .mt-card--black .mt-card-suit {
+    color: var(--card-black);
   }
   .mt-seat-hole-cards-empty {
     width: 34px;
@@ -1034,8 +1050,16 @@
   }
   .mt-hole-cards .mt-card:not(.mt-card--down) .mt-card-rank,
   .mt-hole-cards .mt-card:not(.mt-card--down) .mt-card-suit {
-    color: #000000;
+    color: var(--card-black);
     font-weight: 700;
+  }
+  .mt-hole-cards .mt-card--red:not(.mt-card--down) .mt-card-rank,
+  .mt-hole-cards .mt-card--red:not(.mt-card--down) .mt-card-suit {
+    color: var(--card-red);
+  }
+  .mt-hole-cards .mt-card--black:not(.mt-card--down) .mt-card-rank,
+  .mt-hole-cards .mt-card--black:not(.mt-card--down) .mt-card-suit {
+    color: var(--card-black);
   }
   .mt-hole-cards .mt-card + .mt-card {
     margin-left: -8px;

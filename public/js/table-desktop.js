@@ -130,7 +130,7 @@
     if (!c) return el('div', { class: 'mt-card mt-card--down' });
     var red = SUIT_COLOR[c.suit] === 'red';
     return el('div', {
-      class: 'mt-card mt-card--up' + (red ? ' mt-card--red' : ''),
+      class: 'mt-card mt-card--up' + (red ? ' mt-card--red' : ' mt-card--black'),
     }, [
       el('span', { class: 'mt-card-rank', text: rankLabel(c.rank) }),
       el('span', { class: 'mt-card-suit', text: SUIT_GLYPH[c.suit] || '' }),

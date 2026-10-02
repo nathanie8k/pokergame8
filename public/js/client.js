@@ -2014,7 +2014,7 @@ function renderCard(c, opts = {}) {
   });
   
   // Front face (face-up content)
-  const frontFace = el('div', { class: 'card-face front' + (isRed ? ' card-red' : '') });
+  const frontFace = el('div', { class: 'card-face front' + (isRed ? ' card-red' : ' card-black') });
   const cardContent = el('div', { class: 'card-content' });
   
   if (!faceDown && c) {
