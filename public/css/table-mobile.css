@@ -1091,6 +1091,74 @@
   }
 }
 
+/* ---------- Mobile "Want to leave table?" prompt ----------
+   Rendered once inside the mobile hand-result banner (.mt-hand-result),
+   which sits directly under the hero panel on the mobile felt. It is the
+   sharp, on-top leave/stay prompt that appears only when a hand ends.
+   No blur, no backdrop layer — crisp on the felt.
+   ============================================================ */
+.mt-hand-result .result-hud-leave-prompt {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 14px 16px 16px;
+  border-radius: 14px;
+  background: rgba(8, 12, 10, 0.92);
+  border: 1px solid rgba(230, 57, 70, 0.55);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  animation: mtHandResultPromptIn 280ms var(--ease) both;
+}
+.mt-hand-result .result-hud-leave-label {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  line-height: 1.3;
+  margin: 0;
+}
+.mt-hand-result .result-hud-leave-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+}
+.mt-hand-result .result-hud-leave-yes,
+.mt-hand-result .result-hud-leave-no {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 46px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms, transform 100ms;
+  color: #fff;
+}
+.mt-hand-result .result-hud-leave-yes {
+  background: #e63946;
+}
+.mt-hand-result .result-hud-leave-yes:hover,
+.mt-hand-result .result-hud-leave-yes:focus-visible {
+  background: #ff5a6b;
+}
+.mt-hand-result .result-hud-leave-no {
+  background: rgba(255, 255, 255, 0.10);
+}
+.mt-hand-result .result-hud-leave-no:hover,
+.mt-hand-result .result-hud-leave-no:focus-visible {
+  background: rgba(255, 255, 255, 0.18);
+}
+@keyframes mtHandResultPromptIn {
+  from { transform: translateY(6px) scale(0.97); opacity: 0; }
+  to   { transform: translateY(0) scale(1);     opacity: 1; }
+}
+
 /* ============================================================
    DESKTOP (>= 721px): the mobile table must never render.
    ============================================================ */
