@@ -534,9 +534,9 @@
   //
   // Trigger: a hand has just ended while the viewer is seated (table_state
   // carries lastHandResults with at least one winner). The prompt is appended
-  // ONCE, inside the mobile hand-result banner (.mt-hand-result /
-  // #mtHandResult), directly under the hero panel on the felt — so it reads as
-  // part of the "You Won!" card, sharp and on top (no blur, no backdrop layer).
+  // ONCE, inside the mobile hand-result banner body (#mtHandResultBody),
+  // directly under the hero panel on the felt — so it reads as part of the
+  // "You Won!" card, sharp and on top (no blur, no backdrop layer).
   //
   // Behaviour:
   //   Leave  → leaveCurrentTable()  (stand up, exit to lobby).
@@ -558,21 +558,31 @@
   //      auto-close.
   //   3. The viewer is no longer seated (left / sat out / removed) — the prompt
   //      is pointless once we are not in the seat.
+  //
+  // Reset gates (in addition to the hand-number debounce above) so the prompt
+  // is also cleared on sit down, join, and reconnect — any transition that puts
+  // the viewer back into a seat should start a fresh hand window.
   var _mobilePromptEnv = null; // { handNumber } for the hand that spawned the prompt
 
   function clearMobileLeavePrompt() {
-    var host = $('mtHandResult');
-    if (!host) host = $('mtHandResultBody');
+    var host = $('mtHandResultBody');
     if (!host) return;
     var prompt = host.querySelector('.result-hud-leave-prompt');
     if (prompt) prompt.remove();
     _mobilePromptEnv = null;
   }
 
+  // Reset the leave/stay prompt when the viewer sits back down (sit-in after a
+  // sit-out, or a fresh join / reconnect that lands in a seat). Any state that
+  // results in the viewer being seated should discard a stale prompt so the next
+  // hand-over starts with a clean slate.
+  function clearMobileLeavePromptOnSit() {
+    if (_mobilePromptEnv) clearMobileLeavePrompt();
+  }
+
   function populateMobileHandResult(t) {
     if (!t || !t.lastHandResults) return;
-    var host = $('mtHandResult');
-    if (!host) host = $('mtHandResultBody');
+    var host = $('mtHandResultBody');
     if (!host) return;
 
     // Only on a real hand-over with a winner — that is the only time the prompt
@@ -581,9 +591,9 @@
     if (!winners.length) return;
 
     // Never show when we are not seated at this table. This gates join, rejoin,
-    // page load, reconnect, and any mid-transition state where the viewer has no
-    // seat yet. Keep reading from the live current table so a stale snapshot cannot
-    // force a prompt when we have already stood up.
+    // page load, reconnect, sit-down, and any mid-transition state where the
+    // viewer has no seat yet. Keep reading from the live current table so a
+    // stale snapshot cannot force a prompt when we have already stood up.
     var live = state.currentTable;
     if (!live || !live.seats) return;
     var selfSeat = live.seats.find(function (s) { return s && s.isSelf; });
@@ -593,11 +603,16 @@
     if (_mobilePromptEnv && _mobilePromptEnv.handNumber === t.handNumber) return;
 
     // A new hand is underway (different hand number from the one that spawned the
-    // prompt, or no prompt was ever shown). Clear any stale prompt first so a
-    // no-action viewer is not stuck with a leftover prompt from the prior hand.
+    // prompt). Clear any stale prompt first so a no-action viewer is not stuck
+    // with a leftover prompt from the prior hand.
     if (_mobilePromptEnv && _mobilePromptEnv.handNumber !== t.handNumber) {
       clearMobileLeavePrompt();
     }
+
+    // Reset when the viewer sits back down. Any state that results in the viewer
+    // being seated (sit-in, join, reconnect) should discard a stale prompt so the
+    // next hand-over starts with a clean slate.
+    clearMobileLeavePromptOnSit();
 
     // Build once, on top of the felt result banner.
     var prompt = document.createElement('div');
@@ -630,6 +645,7 @@
   // Install the hook once, before the first render. renderTable() calls it on
   // every state change, so the mobile hand-result banner is populated there.
   window.populateMobileHandResult = populateMobileHandResult;
+  window.clearMobileLeavePromptOnSit = clearMobileLeavePromptOnSit;
 
   // Install the override before the first render. renderTable() references
   // these names at call time, so the mobile hooks resolve here.
@@ -722,4 +738,33 @@
       });
     }
   });
+})();
+
+// Clear the leave/stay prompt whenever the viewer leaves or sits out, so the
+// prompt can't linger once we are no longer in a seat.
+(function () {
+  function wireLeaveAndSitOutClear() {
+    var leaveBtns = ['leaveTableBtn'];
+    var sitOutBtns = ['sitOutBtn'];
+    leaveBtns.concat(sitOutBtns).forEach(function (id) {
+      var btn = $(id);
+      if (btn) btn.addEventListener('click', clearMobileLeavePrompt);
+    });
+  }
+  function wireMenuSitOutClear() {
+    var item = $('mtMenuSitOutItem');
+    if (!item) return;
+    item.addEventListener('click', function () {
+      if (_mobilePromptEnv) clearMobileLeavePrompt();
+    });
+  }
+  function run() {
+    wireLeaveAndSitOutClear();
+    wireMenuSitOutClear();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
 })();

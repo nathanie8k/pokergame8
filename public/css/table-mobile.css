@@ -1136,6 +1136,9 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
   pointer-events: auto;
   animation: mtHandResultPromptIn 280ms var(--ease) both;
+  /* Inside the "You Won!" result card, on top of the felt result banner.
+     No blur, no backdrop layer — crisp on the felt. Raised z-index so it
+     sits above the non-interactive result banner and every sibling panel. */
 }
 .mt-hand-result .result-hud-leave-label {
   font-size: 16px;

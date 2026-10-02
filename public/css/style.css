@@ -4580,7 +4580,10 @@ input, button, select, textarea { color: inherit; }
   /* Mobile hand-result: sits right under the viewer's own hand panel
      (mtHeroPanel), so it inherits the mobile bottom-of-screen layout.
      Positioned at the bottom of the table view so it never overlaps
-     the seats / board / action bar. -->
+     the seats / board / action bar.
+     The banner itself is non-interactive (pointer-events:none) so only the
+     sharp leave/stay prompt inside #mtHandResultBody captures taps; that
+     prompt has its own pointer-events:auto + highest z-index. -->
   .mt-hand-result {
     position: absolute;
     bottom: 22px;

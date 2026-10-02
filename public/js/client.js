@@ -1551,6 +1551,9 @@ function joinTable(tableId, seatIdx) {
   showLoading('Taking your seat…');
   socket.emit('join_table', { tableId, seatIdx }, res => {
     if (res && res.ok) {
+      // A fresh join (or reconnect-into-seat) starts a new hand window;
+      // discard any stale leave/stay prompt so the next hand-over starts clean.
+      if (window.clearMobileLeavePromptOnSit) window.clearMobileLeavePromptOnSit();
       setView('table');
     } else {
       hideLoading();
@@ -2527,8 +2530,12 @@ function updateChatReadOnly() {
 function seatEmpty(seatIdx, tableId) {
   showLoading('Taking your seat…');
   socket.emit('join_table', { tableId, seatIdx }, res => {
-    if (res && res.ok) setView('table');
-    else { hideLoading(); showToast(res && res.error ? res.error : 'Could not sit', 'error'); }
+    if (res && res.ok) {
+      // Sitting into a fresh seat starts a new hand window;
+      // discard any stale leave/stay prompt so the next hand-over starts clean.
+      if (window.clearMobileLeavePromptOnSit) window.clearMobileLeavePromptOnSit();
+      setView('table');
+    } else { hideLoading(); showToast(res && res.error ? res.error : 'Could not sit', 'error'); }
   });
 }
 
@@ -4243,6 +4250,9 @@ socket.on('hello', ({ player, reconnectInfo, reconnectExpired }) => {
   if (reconnectInfo) {
     socket.emit('join_table', { tableId: reconnectInfo.tableId, seatIdx: reconnectInfo.seatIdx }, res => {
       if (res && res.ok) {
+        // Reconnect-into-seat starts a new hand window;
+        // discard any stale leave/stay prompt so the next hand-over starts clean.
+        if (window.clearMobileLeavePromptOnSit) window.clearMobileLeavePromptOnSit();
         setView('table');
         showToast('Reconnected to your seat', 'good');
       } else {
@@ -4253,6 +4263,9 @@ socket.on('hello', ({ player, reconnectInfo, reconnectExpired }) => {
     });
   } else if (reconnectExpired) {
     state.currentTable = null;
+    // Expired reconnect means we are no longer seated;
+    // discard any stale leave/stay prompt so it can't linger.
+    if (window.clearMobileLeavePromptOnSit) window.clearMobileLeavePromptOnSit();
     setView('lobby');
     showToast('Your table session expired — you are back in the lobby', 'info');
   }
@@ -4319,6 +4332,8 @@ socket.on('connect_error', (error) => {
 socket.on('kicked_from_table', ({ reason }) => {
   state.currentTable = null;
   clearShowdown();
+  // Kicked out — discard any stale leave/stay prompt so it can't linger.
+  if (window.clearMobileLeavePromptOnSit) window.clearMobileLeavePromptOnSit();
   showToast(reason || 'You were removed from the table', 'error');
   setView('lobby');
 });

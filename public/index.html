@@ -304,10 +304,10 @@
         </div>
 
       <!-- Mobile hand-result banner: shows the result right under the
-           viewer's own hand panel. Server populates the container (via a
-           socket event); the mobile renderer appends the leave-prompt so
-           every player -- not just the winner -- can bail out of the
-           seated hand with one tap. -->
+           viewer's own hand panel. Server populates the container; the
+           mobile renderer appends any hand-over leave/stay prompt directly
+           inside #mtHandResultBody so it reads as part of the "You Won!"
+           card (sharp, on top, no blur). -->
       <div class="mt-hand-result" id="mtHandResult">
         <div class="mt-hand-result-body" id="mtHandResultBody"></div>
       </div>
