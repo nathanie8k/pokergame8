@@ -537,13 +537,11 @@
   // Mobile hand-results banner. The server already renders the outer
   // .hand-result / #handResult element (populated by a socket event on
   // every hand_over + lastHandResults), so this reuses that DOM and just
-  // appends the "Want to leave table?" prompt to it. The Leave/Stay
-  // buttons reuse the same .result-hud-leave-* classes as the desktop
-  // result HUD (see showResultHUD in client.js) so no new styling is
-  // needed there — only mobile-specific tweaks (this block).
+  // appends the "Want to leave table?" prompt to it.
   //
   // Leave → leaveCurrentTable() (frees the seat, returns to lobby);
-  // Stay → no-op (player stays seated, auto-joins the next hand).
+  // Stay → removes the prompt; player stays seated and auto-joins the next hand.
+  // If the player presses nothing, the prompt is cleared when the next hand starts.
   function populateMobileHandResult(t) {
     if (!t || !t.lastHandResults) return;
     var resultHost = $('mtHandResult');
@@ -576,7 +574,8 @@
     no.textContent = 'Stay';
     no.type = 'button';
     no.addEventListener('click', function () {
-      // No-op: player stays seated and auto-joins the next hand as usual.
+      // Player stays seated — remove the prompt.
+      if (prompt.parentNode) prompt.remove();
     });
     row.appendChild(yes);
     row.appendChild(no);

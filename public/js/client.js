@@ -478,41 +478,6 @@ function showResultHUD(t) {
     setTimeout(function() { if (overlay.parentNode) overlay.remove(); }, 400);
   });
   document.body.appendChild(overlay);
-  // Leave-prompt for every player viewing the results screen (winners and
-  // losers alike). No `isViewerWinner` gate here: anyone watching the
-  // hand results sees "Want to leave table?" and can bail out of the
-  // seated hand to the lobby immediately via leaveCurrentTable().
-  var leavePrompt = document.createElement('div');
-  leavePrompt.className = 'result-hud-leave-prompt';
-  var leaveLabel = document.createElement('div');
-  leaveLabel.className = 'result-hud-leave-label';
-  leaveLabel.textContent = 'Want to leave table?';
-  var leaveRow = document.createElement('div');
-  leaveRow.className = 'result-hud-leave-row';
-  var leaveYes = document.createElement('button');
-  leaveYes.className = 'result-hud-leave-yes';
-  leaveYes.textContent = 'Leave';
-  leaveYes.addEventListener('click', function() {
-    leaveCurrentTable();
-  });
-  var leaveNo = document.createElement('button');
-  leaveNo.className = 'result-hud-leave-no';
-  leaveNo.textContent = 'Stay';
-  leaveNo.addEventListener('click', function() {
-    // No-op: player stays seated and auto-joins the next hand as usual.
-  });
-  leaveRow.appendChild(leaveYes);
-  leaveRow.appendChild(leaveNo);
-  leavePrompt.appendChild(leaveLabel);
-  leavePrompt.appendChild(leaveRow);
-  card.appendChild(leavePrompt);
-  overlay.appendChild(card);
-  // Click to dismiss early.
-  overlay.addEventListener('click', function() {
-    overlay.classList.add('hud-dismissing');
-    setTimeout(function() { if (overlay.parentNode) overlay.remove(); }, 400);
-  });
-  document.body.appendChild(overlay);
   // Auto-dismiss after 5 seconds.
   setTimeout(function() {
     if (!overlay.parentNode) return;
