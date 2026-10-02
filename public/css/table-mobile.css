@@ -1015,10 +1015,27 @@
     display: flex;
     align-items: flex-end;
   }
+  /* Own hole cards (bottom-left hero). Face-up cards are white with bold
+     black rank + suit, readable on any phone. Face-down back keeps the same
+     dark back as the rest of the table so an undealt / pre-deal hand still
+     reads correctly. */
   .mt-hole-cards .mt-card {
     width: 86px;
     height: 119px;
     border-radius: 11px;
+  }
+  .mt-hole-cards .mt-card:not(.mt-card--down) {
+    background: #FFFFFF;
+    background-image: none;
+    border: 1px solid #d7c7a8;
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255,255,255,0.7);
+  }
+  .mt-hole-cards .mt-card:not(.mt-card--down) .mt-card-rank,
+  .mt-hole-cards .mt-card:not(.mt-card--down) .mt-card-suit {
+    color: #000000;
+    font-weight: 700;
   }
   .mt-hole-cards .mt-card + .mt-card {
     margin-left: -8px;
@@ -1028,13 +1045,13 @@
     top: 5px;
     left: 11px;
     font-size: 37px;
-    color: inherit;
+    line-height: 1.1;
   }
   .mt-hole-cards .mt-card-suit {
     bottom: 5px;
     left: 11px;
     font-size: 34px;
-    color: inherit;
+    line-height: 1.1;
   }
   .mt-hero-panel {
     flex: 1 1 auto;
