@@ -567,8 +567,16 @@
   function clearMobileLeavePrompt() {
     var host = $('mtHandResultBody');
     if (!host) return;
-    var prompt = host.querySelector('.result-hud-leave-prompt');
-    if (prompt) prompt.remove();
+    var row = host.querySelector('.mr-action-row');
+    if (row) {
+      // Fade out the buttons, then clear the whole card.
+      row.classList.add('is-exiting');
+      setTimeout(function () {
+        if (host && host.parentNode) host.innerHTML = '';
+      }, 200);
+    } else {
+      host.innerHTML = '';
+    }
     _mobilePromptEnv = null;
   }
 
@@ -585,36 +593,35 @@
     var host = $('mtHandResultBody');
     if (!host) return;
 
-    // Only on a real hand-over with a winner — that is the only time the prompt
-    // is meaningful. No winners, no prompt.
+    // Only on a real hand-over with a winner — that is the only time the card
+    // is meaningful. No winners, no card.
     var winners = t.lastHandResults.winners || [];
     if (!winners.length) return;
 
     // Never show when we are not seated at this table. This gates join, rejoin,
     // page load, reconnect, sit-down, and any mid-transition state where the
     // viewer has no seat yet. Keep reading from the live current table so a
-    // stale snapshot cannot force a prompt when we have already stood up.
+    // stale snapshot cannot force a card when we have already stood up.
     var live = state.currentTable;
     if (!live || !live.seats) return;
     var selfSeat = live.seats.find(function (s) { return s && s.isSelf; });
     if (!selfSeat) return;
 
-    // Already showing for this hand — do not append a second copy on re-renders.
+    // Already showing for this hand — do not rebuild on re-renders.
     if (_mobilePromptEnv && _mobilePromptEnv.handNumber === t.handNumber) return;
 
-    // A new hand is underway (different hand number from the one that spawned the
-    // prompt). Clear any stale prompt first so a no-action viewer is not stuck
-    // with a leftover prompt from the prior hand.
+    // A new hand is underway (different hand number from the one that built the
+    // card). Clear any stale card first so a no-action viewer is not stuck
+    // with a leftover card from the prior hand.
     if (_mobilePromptEnv && _mobilePromptEnv.handNumber !== t.handNumber) {
       clearMobileLeavePrompt();
     }
 
     // Reset when the viewer sits back down. Any state that results in the viewer
-    // being seated (sit-in, join, reconnect) should discard a stale prompt so the
+    // being seated (sit-in, join, reconnect) should discard a stale card so the
     // next hand-over starts with a clean slate.
     clearMobileLeavePromptOnSit();
 
-    // Build once, on top of the felt result banner.
     // Determine result context: viewer's win/loss status, winner details.
     var viewerName = state.player && state.player.name;
     var winners = t.lastHandResults.winners || [];
@@ -623,48 +630,61 @@
     var winnerHand = winners.length === 1 ? winners[0].handName : '';
     var winnerShare = winners.length === 1 ? winners[0].share : 0;
 
-    var prompt = document.createElement('div');
-    prompt.className = 'result-hud-leave-prompt';
-    prompt.setAttribute('role', 'dialog');
-    prompt.setAttribute('aria-label', 'Stay or leave table?');
+    // Clear previous content and rebuild the card.
+    host.innerHTML = '';
 
-    // Result headline: You Won! / You Lost! — big, clear, immediate.
-    var headline = document.createElement('div');
-    headline.className = 'result-hud-leave-headline ' + (isViewerWinner ? 'is-winner' : 'is-loser');
-    headline.textContent = isViewerWinner ? 'You Won!' : 'You Lost';
-    prompt.appendChild(headline);
-
-    // Sub-line: who took the pot and with what hand (only when there's a single
-    // winner we can name). Keeps the player oriented before they decide.
-    if (winnerName && winnerHand) {
-      var sub = document.createElement('div');
-      sub.className = 'result-hud-leave-sub';
-      sub.textContent = winnerName + ' took ' + formatNumber(winnerShare) + ' with ' + winnerHand;
-      prompt.appendChild(sub);
+    // Result headline.
+    if (isViewerWinner) {
+      host.appendChild(el('div', {
+        className: 'mr-result-headline is-winner',
+        text: 'You Won!',
+      }));
+    } else if (winnerName) {
+      // Spectator view or viewer lost: show who won.
+      var headlineText = winnerName + ' Wins';
+      var headlineCls = winnerName === viewerName ? 'is-winner' : 'is-spectator';
+      host.appendChild(el('div', {
+        className: 'mr-result-headline ' + headlineCls,
+        text: headlineText,
+      }));
+    } else {
+      host.appendChild(el('div', {
+        className: 'mr-result-headline is-loser',
+        text: 'You Lost',
+      }));
     }
 
-    // Main question label.
-    prompt.appendChild(el('div', {
-      className: 'result-hud-leave-label',
-      text: 'Stay at the table or leave?',
+    // Winner detail line.
+    if (winnerName && winnerHand) {
+      host.appendChild(el('div', {
+        className: 'mr-result-detail',
+        text: winnerName + ' took ' + formatNumber(winnerShare) + ' with ' + winnerHand,
+      }));
+    }
+
+    // Pot + Hand # line.
+    host.appendChild(el('div', {
+      className: 'mr-result-detail',
+      text: 'Pot: ' + formatNumber(t.pot) + ' · Hand #' + (t.handNumber || 0),
     }));
 
+    // Buttons row at the bottom.
     var row = document.createElement('div');
-    row.className = 'result-hud-leave-row';
-    var yes = document.createElement('button');
-    yes.className = 'result-hud-leave-yes';
-    yes.textContent = 'Leave table';
-    yes.type = 'button';
-    yes.addEventListener('click', function () { leaveCurrentTable(); });
-    var no = document.createElement('button');
-    no.className = 'result-hud-leave-no';
-    no.textContent = 'Stay here';
-    no.type = 'button';
-    no.addEventListener('click', function () { clearMobileLeavePrompt(); });
-    row.appendChild(no);
-    row.appendChild(yes);
-    prompt.appendChild(row);
-    host.appendChild(prompt);
+    row.className = 'mr-action-row';
+    var stayBtn = document.createElement('button');
+    stayBtn.className = 'mr-btn mr-btn--stay';
+    stayBtn.textContent = 'Stay';
+    stayBtn.type = 'button';
+    stayBtn.addEventListener('click', function () { clearMobileLeavePrompt(); });
+    var leaveBtn = document.createElement('button');
+    leaveBtn.className = 'mr-btn mr-btn--leave';
+    leaveBtn.textContent = 'Leave';
+    leaveBtn.type = 'button';
+    leaveBtn.addEventListener('click', function () { leaveCurrentTable(); });
+    row.appendChild(stayBtn);
+    row.appendChild(leaveBtn);
+    host.appendChild(row);
+
     _mobilePromptEnv = { handNumber: t.handNumber };
   }
 
