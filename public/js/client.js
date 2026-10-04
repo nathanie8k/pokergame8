@@ -423,6 +423,19 @@ function animatePotSplit(potEl, winnerCount) {
 }
 
 // 13. RESULT HUD — shows the outcome overlay on hand completion.
+// Tracks the active HUD so the next-hand render can dismiss it cleanly.
+var _resultHudOverlay = null;
+var _resultHudTimer = null;
+
+function dismissResultHUD() {
+  if (_resultHudOverlay && _resultHudOverlay.parentNode) {
+    _resultHudOverlay.classList.add('hud-dismissing');
+    setTimeout(function() { if (_resultHudOverlay && _resultHudOverlay.parentNode) _resultHudOverlay.remove(); }, 400);
+  }
+  _resultHudOverlay = null;
+  if (_resultHudTimer) { window.clearTimeout(_resultHudTimer); _resultHudTimer = null; }
+}
+
 function showResultHUD(t) {
   if (!t || !t.lastHandResults || prefersReducedMotion()) return;
   var results = t.lastHandResults;
@@ -471,19 +484,29 @@ function showResultHUD(t) {
   handItem.textContent = 'Hand #' + (t.handNumber || 0);
   detail.appendChild(handItem);
   card.appendChild(detail);
+
+  // Leave / Stay row under Pot / Hand #.
+  var actionRow = document.createElement('div');
+  actionRow.className = 'mr-action-row';
+  var stayBtn = document.createElement('button');
+  stayBtn.className = 'mr-btn mr-btn--stay';
+  stayBtn.type = 'button';
+  stayBtn.textContent = 'Stay';
+  stayBtn.addEventListener('click', function () { dismissResultHUD(); });
+  var leaveBtn = document.createElement('button');
+  leaveBtn.className = 'mr-btn mr-btn--leave';
+  leaveBtn.type = 'button';
+  leaveBtn.textContent = 'Leave';
+  leaveBtn.addEventListener('click', function () { dismissResultHUD(); leaveCurrentTable(); });
+  actionRow.appendChild(stayBtn);
+  actionRow.appendChild(leaveBtn);
+  card.appendChild(actionRow);
+
   overlay.appendChild(card);
-  // Click to dismiss early.
-  overlay.addEventListener('click', function() {
-    overlay.classList.add('hud-dismissing');
-    setTimeout(function() { if (overlay.parentNode) overlay.remove(); }, 400);
-  });
   document.body.appendChild(overlay);
-  // Auto-dismiss after 5 seconds.
-  setTimeout(function() {
-    if (!overlay.parentNode) return;
-    overlay.classList.add('hud-dismissing');
-    setTimeout(function() { if (overlay.parentNode) overlay.remove(); }, 400);
-  }, 5000);
+  _resultHudOverlay = overlay;
+  // No auto-dismiss and no overlay-click dismiss while the buttons are visible.
+  // Dismiss on Stay / Leave, or when the next hand starts (handled in renderTable).
 }
 
 // Soft-prompt gate helpers (UI only — server untouched).
@@ -1817,6 +1840,9 @@ function renderTable() {
   // 13. Result HUD overlay on hand completion.
   if (t.phase === 'hand_over' && t.lastHandResults) {
     showResultHUD(t);
+  } else if (t.phase !== 'hand_over' && _resultHudOverlay) {
+    // Next hand started (phase left hand_over) — dismiss the HUD.
+    dismissResultHUD();
   }
   // 9. Pot split animation when multiple winners.
   if (t.phase === 'hand_over' && t.lastHandResults && t.lastHandResults.winners && t.lastHandResults.winners.length > 1) {
@@ -2717,6 +2743,7 @@ function submitNameChange() {
 }
 
 function leaveCurrentTable() {
+  dismissResultHUD();
   socket.emit('leave_table', null, res => {
     if (res && res.ok) {
       state.currentTable = null;

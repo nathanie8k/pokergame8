@@ -5236,6 +5236,62 @@ input, button, select, textarea { color: inherit; }
   .seat-dealer-chip.spinning { animation: none; }
   .result-hud-overlay,
   .result-hud-overlay .result-hud-card { animation: none; }
+
+  @keyframes mrActionFadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(6px); }
+  }
+
+  /* Result HUD Leave/Stay buttons (desktop). Reuses .mr-btn styles. */
+  .result-hud-card { pointer-events: auto; }
+  .result-hud-card .mr-action-row {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .result-hud-card .mr-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 44px;
+    border: 0;
+    border-radius: 999px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 100ms, transform 80ms;
+    color: #fff;
+    letter-spacing: 0.2px;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .result-hud-card .mr-btn--leave {
+    background: #e63946;
+  }
+  .result-hud-card .mr-btn--leave:hover,
+  .result-hud-card .mr-btn--leave:focus-visible {
+    background: #ff5a6b;
+    outline: none;
+  }
+  .result-hud-card .mr-btn--leave:active {
+    transform: scale(0.96);
+  }
+  .result-hud-card .mr-btn--stay {
+    background: rgba(255, 255, 255, 0.12);
+  }
+  .result-hud-card .mr-btn--stay:hover,
+  .result-hud-card .mr-btn--stay:focus-visible {
+    background: rgba(255, 255, 255, 0.22);
+    outline: none;
+  }
+  .result-hud-card .mr-btn--stay:active {
+    transform: scale(0.96);
+  }
+  .result-hud-card .mr-action-row.is-exiting {
+    animation: mrActionFadeOut 200ms ease both;
+  }
   .mfsm-seat.mfsm-perf-won .mfsm-name,
   .mfsm-seat.mfsm-perf-lost .mfsm-name,
   .mfsm-seat.mfsm-perf-fold .mfsm-name { animation: none; }
