@@ -530,7 +530,7 @@
     populateMobileHandResult(t);
     applyShowdownReveal(t);
   }  // ------------------------------------------------------------
-  // Mobile "Want to leave table?" prompt.
+  // Mobile "Stay or leave table?" prompt.
   //
   // Trigger: a hand has just ended while the viewer is seated (table_state
   // carries lastHandResults with at least one winner). The prompt is appended
@@ -615,28 +615,54 @@
     clearMobileLeavePromptOnSit();
 
     // Build once, on top of the felt result banner.
+    // Determine result context: viewer's win/loss status, winner details.
+    var viewerName = state.player && state.player.name;
+    var winners = t.lastHandResults.winners || [];
+    var isViewerWinner = winners.some(function (w) { return w.name === viewerName; });
+    var winnerName = winners.length === 1 ? winners[0].name : '';
+    var winnerHand = winners.length === 1 ? winners[0].handName : '';
+    var winnerShare = winners.length === 1 ? winners[0].share : 0;
+
     var prompt = document.createElement('div');
     prompt.className = 'result-hud-leave-prompt';
     prompt.setAttribute('role', 'dialog');
-    prompt.setAttribute('aria-label', 'Want to leave table?');
+    prompt.setAttribute('aria-label', 'Stay or leave table?');
+
+    // Result headline: You Won! / You Lost! — big, clear, immediate.
+    var headline = document.createElement('div');
+    headline.className = 'result-hud-leave-headline ' + (isViewerWinner ? 'is-winner' : 'is-loser');
+    headline.textContent = isViewerWinner ? 'You Won!' : 'You Lost';
+    prompt.appendChild(headline);
+
+    // Sub-line: who took the pot and with what hand (only when there's a single
+    // winner we can name). Keeps the player oriented before they decide.
+    if (winnerName && winnerHand) {
+      var sub = document.createElement('div');
+      sub.className = 'result-hud-leave-sub';
+      sub.textContent = winnerName + ' took ' + formatNumber(winnerShare) + ' with ' + winnerHand;
+      prompt.appendChild(sub);
+    }
+
+    // Main question label.
     prompt.appendChild(el('div', {
       className: 'result-hud-leave-label',
-      text: 'Want to leave table?',
+      text: 'Stay at the table or leave?',
     }));
+
     var row = document.createElement('div');
     row.className = 'result-hud-leave-row';
     var yes = document.createElement('button');
     yes.className = 'result-hud-leave-yes';
-    yes.textContent = 'Leave';
+    yes.textContent = 'Leave table';
     yes.type = 'button';
     yes.addEventListener('click', function () { leaveCurrentTable(); });
     var no = document.createElement('button');
     no.className = 'result-hud-leave-no';
-    no.textContent = 'Stay';
+    no.textContent = 'Stay here';
     no.type = 'button';
     no.addEventListener('click', function () { clearMobileLeavePrompt(); });
-    row.appendChild(yes);
     row.appendChild(no);
+    row.appendChild(yes);
     prompt.appendChild(row);
     host.appendChild(prompt);
     _mobilePromptEnv = { handNumber: t.handNumber };

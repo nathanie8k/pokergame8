@@ -1115,7 +1115,7 @@
   }
 }
 
-/* ---------- Mobile "Want to leave table?" prompt ----------
+/* ---------- Mobile "Stay or leave table?" prompt ----------
    Rendered once inside the mobile hand-result banner (.mt-hand-result),
    which sits directly under the hero panel on the mobile felt. It is the
    sharp, on-top leave/stay prompt that appears only when a hand ends.
@@ -1127,12 +1127,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 8px;
   padding: 14px 16px 16px;
   border-radius: 14px;
-  background: rgba(8, 12, 10, 0.92);
-  border: 1px solid rgba(230, 57, 70, 0.55);
+  background: rgba(8, 12, 10, 0.94);
+  border: 1px solid rgba(230, 57, 70, 0.6);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
   pointer-events: auto;
   animation: mtHandResultPromptIn 280ms var(--ease) both;
@@ -1140,49 +1140,97 @@
      No blur, no backdrop layer — crisp on the felt. Raised z-index so it
      sits above the non-interactive result banner and every sibling panel. */
 }
-.mt-hand-result .result-hud-leave-label {
-  font-size: 16px;
-  font-weight: 700;
-  color: #fff;
+
+/* Result headline: You Won! / You Lost! — big, bold, immediate. */
+.mt-hand-result .result-hud-leave-headline {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 0;
+  text-align: center;
+}
+.mt-hand-result .result-hud-leave-headline.is-winner {
+  color: #2ecc71;
+}
+.mt-hand-result .result-hud-leave-headline.is-loser {
+  color: #e63946;
+}
+
+/* Sub-line: who took the pot and with what hand. */
+.mt-hand-result .result-hud-leave-sub {
+  font-size: 13px;
+  font-weight: 500;
+  color: #b0b0b0;
   text-align: center;
   line-height: 1.3;
   margin: 0;
 }
+
+/* Main question label. */
+.mt-hand-result .result-hud-leave-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ddd;
+  text-align: center;
+  line-height: 1.3;
+  margin: 2px 0 0;
+}
+
 .mt-hand-result .result-hud-leave-row {
   display: flex;
   gap: 10px;
   width: 100%;
   max-width: 320px;
+  margin-top: 4px;
 }
+
 .mt-hand-result .result-hud-leave-yes,
 .mt-hand-result .result-hud-leave-no {
   flex: 1 1 0;
   min-width: 0;
-  height: 46px;
+  height: 48px;
   border: 0;
   border-radius: 999px;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 120ms, transform 100ms;
+  transition: background 100ms, transform 80ms, box-shadow 100ms;
   color: #fff;
+  letter-spacing: 0.2px;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
+
+/* Leave button: solid red, the primary action. */
 .mt-hand-result .result-hud-leave-yes {
   background: #e63946;
+  box-shadow: 0 4px 14px rgba(230, 57, 70, 0.4);
+}
+.mt-hand-result .result-hud-leave-yes:active {
+  transform: scale(0.96);
 }
 .mt-hand-result .result-hud-leave-yes:hover,
 .mt-hand-result .result-hud-leave-yes:focus-visible {
   background: #ff5a6b;
+  box-shadow: 0 4px 18px rgba(230, 57, 70, 0.55);
+  outline: none;
 }
+
+/* Stay button: ghost, secondary. */
 .mt-hand-result .result-hud-leave-no {
   background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.mt-hand-result .result-hud-leave-no:active {
+  transform: scale(0.96);
 }
 .mt-hand-result .result-hud-leave-no:hover,
 .mt-hand-result .result-hud-leave-no:focus-visible {
   background: rgba(255, 255, 255, 0.18);
+  outline: none;
 }
 @keyframes mtHandResultPromptIn {
-  from { transform: translateY(6px) scale(0.97); opacity: 0; }
+  from { transform: translateY(8px) scale(0.96); opacity: 0; }
   to   { transform: translateY(0) scale(1);     opacity: 1; }
 }
 
